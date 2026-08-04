@@ -1,0 +1,41 @@
+# --- Gradle / Kotlin / JVM ---
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# --- IntelliJ (keep .run/ and the .iml/module files, ignore caches) ---
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/shelf/
+.idea/**/dictionaries
+.idea/**/contentModel.xml
+.idea/httpRequests/
+.idea/caches/
+.idea/libraries/
+.idea/artifacts/
+.idea/compiler.xml
+.idea/jarRepositories.xml
+
+# --- Node / Angular ---
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+npm-debug.log*
+
+# --- Python / importers ---
+importers/.venv/
+importers/**/__pycache__/
+importers/**/*.pyc
+importers/.pytest_cache/
+importers/*.egg-info/
+importers/dist/
+
+# --- Reports / local artifacts ---
+importers/reports/
+*.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db

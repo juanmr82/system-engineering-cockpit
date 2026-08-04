@@ -1,0 +1,29 @@
+[project]
+name = "sec-import"
+version = "0.1.0"
+description = "Source importers for the System Engineering Cockpit knowledge graph"
+requires-python = ">=3.11"
+dependencies = [
+    "neo4j>=5.24,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+sec-import-doors = "sec_import.doors.cli:main"
+sec-import-windchill = "sec_import.windchill.cli:main"
+sec-import-cameo = "sec_import.cameo.cli:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

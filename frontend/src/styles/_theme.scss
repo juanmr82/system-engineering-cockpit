@@ -1,0 +1,16 @@
+// Generate the M3 palette from the Airbus seed once, and commit the result:
+//   ng generate @angular/material:theme-color
+//   seed: #00205B ; secondary: #0085AD ; tertiary: #009F4D
+// That command writes styles/_theme-colors.scss ($light-theme / $dark-theme). This file is a
+// placeholder until it exists — do not hand-roll a palette here (CLAUDE.md §8).
+@use '@angular/material' as mat;
+@use '../../theme-colors' as theme-colors;
+
+html {
+  @include mat.theme((
+    color: (
+      primary: theme-colors.$primary-palette,
+      tertiary: theme-colors.$tertiary-palette,
+    ),
+  ));
+}

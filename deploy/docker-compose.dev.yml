@@ -1,0 +1,20 @@
+# Local dev only. Neo4j Community — no RBAC, no property-existence constraints, no query
+# governor; see CLAUDE.md §7 for what that means for the backend and importers.
+services:
+  neo4j:
+    image: neo4j:2026.01-community
+    container_name: sec-neo4j-dev
+    ports:
+      - "7474:7474" # HTTP browser
+      - "7687:7687" # Bolt
+    environment:
+      NEO4J_AUTH: "neo4j/${SEC_NEO4J_PASSWORD:?set SEC_NEO4J_PASSWORD before starting}"
+      NEO4J_server_memory_heap_initial__size: "512m"
+      NEO4J_server_memory_heap_max__size: "1G"
+    volumes:
+      - sec-neo4j-data:/data
+      - sec-neo4j-logs:/logs
+
+volumes:
+  sec-neo4j-data:
+  sec-neo4j-logs:

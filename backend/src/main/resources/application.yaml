@@ -1,0 +1,44 @@
+ktor:
+  application:
+    modules:
+      - com.sec.ApplicationKt.module
+  deployment:
+    port: 8080
+
+neo4j:
+  uri: "bolt://localhost:7687"
+  database: "neo4j"
+  # user/password are supplied via environment variables (SEC_NEO4J_USER / SEC_NEO4J_PASSWORD),
+  # never committed here.
+
+# Sidenav structure — order is config, not graph data (CLAUDE.md §2, "Where a given piece of state lives").
+# Served read-only at GET /api/v1/config/navigation.
+navigation:
+  groups:
+    - key: requirements
+      label: "Requirements"
+      items:
+        - key: requirements-statistics
+          label: "Statistics"
+          route: "/requirements/statistics"
+        - key: requirements-modules
+          label: "Modules"
+          route: "/requirements/modules"
+        - key: requirements-review
+          label: "Req review"
+          route: "/requirements/review"
+    - key: documents
+      label: "Documents"
+      items:
+        - key: documents-windchill
+          label: "Windchill"
+          route: "/documents/windchill"
+    - key: cameo
+      label: "CAMEO"
+      items:
+        - key: cameo-soi-views
+          label: "SOI views"
+          route: "/mbse/soi-views"
+        - key: cameo-functions
+          label: "Functions"
+          route: "/mbse/functions"

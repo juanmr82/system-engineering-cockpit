@@ -1,0 +1,17 @@
+// Airbus house style tokens (CLAUDE.md §8). Primary palette drives the Material theme seed
+// in _theme.scss; highlight colours are accents — brand rule is one highlight per view.
+:root {
+  --sec-blue: #00205b;
+  --sec-blue-deep: #005670;
+  --sec-blue-mid: #0085ad;
+  --sec-blue-light: #48a9c5;
+  --sec-blue-pale: #74d2e7;
+  --sec-grey-blue: #8db9ca;
+
+  // Semantic highlight mapping — do not use these for anything but the meaning listed.
+  --sec-highlight-verified: #009f4d; // verified / imported cleanly
+  --sec-highlight-tbd: #efdf00; // TBD / unclassified (DOORSTBD without __typeRaw)
+  --sec-highlight-undefined: #fe5000; // unresolved placeholder (__UNDEFINED)
+  --sec-highlight-error: #e4002b; // import error, dangling link
+  --sec-highlight-meta: #0077c8; // Tier-2 application data (R2)
+}

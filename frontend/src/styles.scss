@@ -1,0 +1,25 @@
+@use './styles/tokens';
+@use './styles/theme';
+
+// Inter, self-hosted (Airbus GDPR guidance forbids the Google Fonts CDN). Ship the woff2 files
+// in frontend/public/fonts/ — CLAUDE.md §8. Not yet added; this @font-face is the contract.
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+// Sentence case everywhere, never italic (CLAUDE.md §8) — the defaults, not an opt-in.
+* {
+  font-style: normal;
+}
