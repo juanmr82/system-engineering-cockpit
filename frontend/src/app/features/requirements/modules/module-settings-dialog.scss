@@ -1,0 +1,65 @@
+@use 'mixins' as sec;
+
+.sec-field-readout {
+  @include sec.field-readout;
+}
+
+.sec-settings__name {
+  padding: 0 24px 8px;
+}
+
+// A concrete height, not flex alone: the sticky headers inside the tabs need a bounded scroll
+// container to stick to, and both tabs must scroll identically (CLAUDE.md §6).
+.sec-settings__content {
+  height: 460px;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0;
+}
+
+.sec-settings__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  padding: 16px 4px 0;
+  box-sizing: border-box;
+}
+
+.sec-settings__level {
+  width: 260px;
+}
+
+.sec-settings__hint {
+  margin: 0;
+  color: var(--sec-grey-blue);
+  font-size: 0.8125rem;
+}
+
+.sec-settings__scroll {
+  @include sec.scroll-panel;
+
+  border: 1px solid color-mix(in srgb, var(--sec-blue) 15%, white);
+}
+
+table {
+  @include sec.data-table($row-height: 36px);
+}
+
+// Ticking this writes Tier-2 data, so it wears the application accent, never a neutral control.
+.sec-settings__attributes mat-checkbox {
+  @include sec.meta-checkbox;
+}
+
+.sec-settings__error {
+  @include sec.inline-error;
+}
+
+// An empty attribute set is a normal state (a sanitised export), not a failure — it gets a plain
+// message, never a bare header row that reads as a broken table (R5, §9).
+.sec-settings__empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--sec-grey-blue);
+  font-size: 0.8125rem;
+}

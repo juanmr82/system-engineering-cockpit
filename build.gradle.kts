@@ -1,4 +1,3 @@
-/
 // Root build. Module wiring only — plugin application and dependencies live in each
 // subproject's own build.gradle.kts (backend/build.gradle.kts).
 

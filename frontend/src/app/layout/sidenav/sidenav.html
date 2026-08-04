@@ -1,0 +1,13 @@
+<nav class="sec-sidenav" aria-label="Primary">
+  <sec-logo />
+  @for (group of navigation.groups(); track group.key) {
+    <div class="sec-sidenav__group-label">{{ group.label }}</div>
+    <mat-nav-list>
+      @for (item of group.items; track item.key) {
+        <a mat-list-item [routerLink]="item.route" routerLinkActive="sec-sidenav__item--active">
+          {{ item.label }}
+        </a>
+      }
+    </mat-nav-list>
+  }
+</nav>

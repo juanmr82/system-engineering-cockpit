@@ -1,0 +1,11 @@
+<mat-toolbar class="sec-toolbar">
+  <span class="sec-toolbar__spacer"></span>
+
+  <button mat-icon-button [matMenuTriggerFor]="userMenu" aria-label="Account menu">
+    <mat-icon svgIcon="account-circle" />
+  </button>
+  <mat-menu #userMenu="matMenu">
+    <button mat-menu-item disabled>Signed in</button>
+    <button mat-menu-item>Sign out</button>
+  </mat-menu>
+</mat-toolbar>

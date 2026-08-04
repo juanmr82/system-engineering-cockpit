@@ -2,8 +2,8 @@
 
 Guidance for Claude Code working in this repository. Read this fully before the first
 edit of a session. If something here conflicts with a spec in `docs/`, the spec wins for
-its own subject area (importer mechanics, graph schema, ad-hoc Cypher) and this file
-wins for everything else.
+its own subject area (importer mechanics, graph schema, ad-hoc Cypher, a feature spec)
+and this file wins for everything else.
 
 ---
 
@@ -31,7 +31,10 @@ cross-platform.
 
 ---
 
-## 2. The six rules that are never negotiable
+## 2. The rules that are never negotiable
+
+> The numbers are stable identifiers referenced from `docs/` and from code comments, so
+> they are never renumbered. There is no R4.
 
 ### R1 — `__` is the application namespace, and it has two tiers
 
@@ -54,17 +57,24 @@ Tier 1 **may** be node properties or relationships, because it is *regenerable*:
 it, re-run the import over the same file, and you get byte-identical results.
 
 **Tier 2 — knowledge the import cannot produce.** Review status, tags, notes,
-assignments, ratings, hand-drawn links — anything a user or the application decides.
-**Never a property.** Always a separate node, reached by a `__`-prefixed relationship.
+assignments, ratings, classifications, hand-drawn links — anything a user or the
+application decides. **Never a property.** Always a separate node, reached by a
+`__`-prefixed relationship.
 
 > The test is a single question: **could a fresh import of the same source file reproduce
 > this?** Yes → Tier 1. No → Tier 2. Nothing sits between them.
 
+**The application is read-only on imported data.** It never writes a property or a label
+on a node an importer created — not source data, not Tier 1. The importers do write those
+nodes, on every run, with `MERGE … SET n += props`; that asymmetry is precisely why
+application data cannot live on them. Anything the app stored there would be silently
+overwritten by the next import. Tier 2 exists to survive that.
+
 ### R2 — Tier 2 attaches as meta-relationships, never as properties
 
 Everything the *application* knows that the source system does not — review status,
-tags, comments, ratings, assignments, links the user drew by hand — is modelled as a
-separate node reached by a relationship whose **type starts with `__`**.
+tags, comments, ratings, assignments, classifications, links the user drew by hand — is
+modelled as a separate node reached by a relationship whose **type starts with `__`**.
 
 ```cypher
 (:SEItem)-[:__reviewOf]->(:__Meta:__Review { ... })
@@ -104,6 +114,9 @@ Rules that follow from this and must be enforced in code and in review:
   the model has drifted.
 - The API layer's write endpoints touch `:__Meta` and its `__`-prefixed relationships
   **and nothing else**. Enforce this in one place (a guarded write helper), not per route.
+- **Every feature that writes Tier 2 carries a regression test asserting the anchor node's
+  property map is byte-identical before and after the write.** This is how R1's read-only
+  guarantee stays true as views multiply.
 
 #### The `__metaKind` catalogue — closed enum, three anchor shapes
 
@@ -118,21 +131,36 @@ Adding a kind means deciding its shape first.
 | `tag` | `:__Tag` | `__taggedAs` | `namespace`, `value` — e.g. `domain:thermal` |
 | `review` | `:__Review` | `__reviewOf` | `campaign`, `verdict`, `rationale` |
 | `flag` | `:__Flag` | `__flagOn` | `severity`, `reason` |
+| `classification` | `:__Classification` | `__classifiedAs` | `scheme`, `code` |
 
 `flag` and `review` stay distinct deliberately. A flag is **data quality** — garbled text,
 a dangling link, an empty `Absolute Number`. A review is a **verdict in a process**.
 Different authors, different lifecycles, different views. Do not merge them.
+
+A `classification` places an item on one axis of a controlled vocabulary. `scheme` names
+the axis so future axes (criticality, discipline, domain) need no new label; `code` is
+validated against a closed enum at the API boundary. **The display label is never stored** —
+"L2 – Segment" is resolved from the alias map (R5), so the wording stays changeable. One
+classification per `(item, scheme)`, enforced by the write query, since Community cannot
+constrain it. First use: the system level on a `:DOORSModule`, set from the Modules
+settings dialog.
 
 **Shape B — a rule scoped to a set, not an item.**
 `(:DOORSModule)-[:__policyFor]->(:__Meta:__Policy)`
 
 | `__metaKind` | Label | Relationship | Payload |
 |---|---|---|---|
-| `policy` | `:__Policy` | `__policyFor` | `attributeName`, `rule` (`mandatory` / `forbidden` / `pattern`), optional `appliesToLabels` |
+| `policy` | `:__Policy` | `__policyFor` | `attributeName`, `rule` (`mandatory` / `forbidden` / `pattern`), `appliesToLabels` |
 
 This is the "which attributes are mandatory" case. One node governs every object in the
 module. **Never model this per item** — 984 nodes that still cannot answer "what is the
 rule" is the failure mode.
+
+`appliesToLabels` is **always stored, never implied**. A policy that applies to everything
+is a policy nobody can reason about, and a default living in query code is a default that
+drifts between call sites. Mandatory-attribute policies default to `['DOORSRequirement']`
+— headings, information objects and table structure are not requirements and are never
+checked. See `docs/features/attribute-policy-checks.md`.
 
 **Shape C — a reified user-drawn link.**
 `(:__Meta:__Link)-[:__linkFrom]->(:SEItem)` and `-[:__linkTo]->(:SEItem)`
@@ -150,8 +178,8 @@ the DXL discards — and so it is still removed by the single `:__Meta` delete q
 
 **Explicitly not `:__Meta`:**
 
-- **Anything derivable** — counts, coverage percentages, statistics. Computed on read,
-  never stored. Stored derivations go stale silently.
+- **Anything derivable** — counts, coverage percentages, statistics, policy-check results.
+  Computed on read, never stored. Stored derivations go stale silently.
 - **Saved queries, saved filters, view layouts.** These anchor to a *user*, not to an
   `:SEItem`, so forcing them into `:__Meta` breaks the invariant that every meta node
   hangs off the imported graph. Give them their own label.
@@ -232,10 +260,28 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `:__UNDEFINED` | the *Not yet imported* state, with the owning module named |
 | `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; drive table layout |
 | `refersTo` | **References** (outgoing) |
-| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link** |
+| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification** |
 | `__schemaVersion`, `__metaKind` | never shown |
-| `__createdBy` / `__createdAt` | **Added by** / **Added on** |
 | `__metaId`, `__metaKind` | never shown |
+| `__createdBy` / `__createdAt` | **Added by** / **Added on** |
+
+Controlled vocabularies and source-native field labels also live in `Aliases.kt`:
+
+| Stored | Shown as |
+|---|---|
+| `:__Classification` + `scheme: systemLevel` | **System level** |
+| `code: L0` / `L1` / `L2` / `L3` / `L4` | L0 – Customer / L1 – System of Systems / L2 – Segment / L3 – Subsystem / L4 – Component |
+| `:__Policy` + `rule: mandatory` | **Mandatory attribute** |
+| `description` | Description |
+| `moduleFullPath` | Path |
+| `prefix` | Object ID prefix |
+| `created_By` / `created_On` | Created by / Created on |
+| `last_Modified_By` / `last_Modified_On` | Last modified by / Last modified |
+| `_ModuleType` | Module type |
+| `wordDocBaseline`, `wordDocCaptionLevel`, `wordDocIssue`, `wordDocNumber`, `wordDocTitle` | Word export baseline / caption level / issue / number / title |
+
+Note `_ModuleType` carries a **single** leading underscore — it is source data and is
+displayed, unlike `__`-prefixed names.
 
 ### R6 — `__id` is application identity, not source identity
 
@@ -243,6 +289,27 @@ Every node in the database has `__id`, `__name`, `__version`. `__id` is globally
 and is what the frontend uses as a route parameter and list key. A source system's own
 identifier (DOORS `id`, a Windchill number, a Cameo element name) is **module-local or
 tool-local and must never be used as a key**. See `docs/SE_ITEM_SCHEMA.md`.
+
+### R7 — saving is local to the thing being edited
+
+Every dialog and every editable table commits its own changes. **There is no global save
+button, no staging layer, no pending-changes queue and no cross-view dirty state.** One
+user gesture, one request, one server-side transaction. A user who presses Save has
+written to the graph before the dialog closes; a user who navigates away without pressing
+Save has written nothing.
+
+Consequences:
+
+- Dirty state is local to the open dialog or table and dies with it. No shared store.
+- No unsaved-changes route guard is needed, because nothing can be unsaved outside a modal
+  that cannot be navigated away from.
+- A save that spans two tabs of one dialog is still **one** request and one transaction.
+- On failure, the dialog stays open with the user's input intact and shows the error
+  inline. Never close a dialog on a failed write; without a staging layer there is no
+  queue to recover from.
+
+This is a UI rule only. The backend keeps its single guarded meta write path (§5) —
+removing client-side staging must not produce a second server-side way to write `:__Meta`.
 
 ### Where a given piece of state lives
 
@@ -253,7 +320,7 @@ new, place it here **before** writing code.
 |---|---|---|---|
 | Source data | Neo4j, un-prefixed properties + native relationships | importers only | `Object Text`, `refersTo` |
 | Derived structure (Tier 1) | Neo4j, `__`-prefixed | importers only | `__child`, `__sortKey`, `__id` |
-| **Business annotation (Tier 2)** | Neo4j, `:__Meta` nodes | **the API, on user action** | comments, mandatory-attribute rules, review status |
+| **Business annotation (Tier 2)** | Neo4j, `:__Meta` nodes | **the API, on an explicit save in the dialog or table that owns the data** | comments, mandatory-attribute rules, system level, review status |
 | Application configuration | **backend config file**, git-versioned | a developer, at release | sidenav structure and order, feature flags |
 | Per-user UI preference | browser, client-side | the browser | sidenav collapsed, column widths, last route |
 
@@ -306,6 +373,9 @@ system-engineering-cockpit/
 │   ├── SE_ITEM_SCHEMA.md
 │   ├── DOORS_TO_NEO4J_IMPORTER_SPEC.md
 │   ├── CYPHER_API_DESIGN.md
+│   ├── features/                 ← one spec per dynamic-content view
+│   │   ├── requirements-modules.md
+│   │   └── attribute-policy-checks.md
 │   └── adr/                      ← one short ADR per non-obvious decision
 ├── deploy/
 │   ├── docker-compose.dev.yml    ← Neo4j Community for local dev
@@ -408,13 +478,23 @@ GET  /api/v1/items/{ref}/annotations    ← Tier-2 data attached to an item
 POST /api/v1/items/{ref}/annotations    ← R2 write path
 PATCH/DELETE /api/v1/annotations/{ref}
 GET  /api/v1/modules                    ← DOORS-specific projection
+GET  /api/v1/modules/{ref}              ← module detail for the settings dialog
+POST /api/v1/modules/{ref}/settings     ← system level + mandatory-attribute diff, one txn
 GET  /api/v1/modules/{ref}/attributes   ← runtime attribute discovery, namespace filtered
+GET  /api/v1/modules/{ref}/checks/attribute-policy
+GET  /api/v1/config/navigation          ← sidenav structure, read-only
+GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
 POST /api/v1/cypher/explain             ← see docs/CYPHER_API_DESIGN.md
 POST /api/v1/cypher/run
 ```
 
 `{ref}` is the base64url encoding of `__id` (R5). Decode it in one place — a route
 parameter converter — never inline in a handler.
+
+Feature-shaped write endpoints such as `POST /modules/{ref}/settings` exist because a
+dialog is one transaction, not N annotation calls. They **route through the same guarded
+meta writer** as `POST /items/{ref}/annotations`. One meta write path, however many
+endpoints reach it.
 
 Item responses carry `labels: string[]` so the frontend can switch on the type label, and
 this is the one place raw label strings cross the wire. They are a *state channel*, not
@@ -463,7 +543,7 @@ illustrative — the real implementation must tokenize, not substring-match.
 frontend/src/app/
 ├── app.config.ts               ← providers: router, httpClient(withFetch), material
 ├── app.routes.ts
-├── core/                       ← singletons: api client, auth, meta store, error handling
+├── core/                       ← singletons: api client, auth, error handling
 ├── shared/                     ← reusable dumb components, pipes, directives
 ├── layout/
 │   ├── shell/                  ← the skeleton: toolbar + sidenav + router outlet
@@ -475,6 +555,90 @@ frontend/src/app/
 │   └── mbse/{soi-views,functions}/
 └── styles/                     ← theme, tokens, typography
 ```
+
+### Component file layout — the project standard
+
+**A component is three files: `name.ts`, `name.html`, `name.scss`.** Wire them with
+`templateUrl` and `styleUrl` (singular — `styles:`/`styleUrls:` are not used anywhere).
+
+- **No inline `styles:` block, ever.** A component's CSS goes in its `.scss` file. This is
+  what keeps a `.ts` file readable as logic and lets the stylesheet be edited, searched and
+  reviewed as a stylesheet.
+- **Templates move out too**, with one exception: a component whose entire template is a
+  single element (`layout/sidenav/logo.ts`) may keep it inline, because a separate file for
+  one tag adds noise, not clarity. It still gets its `.scss` file.
+- **No `.component.ts` / `.service.ts` suffix**, matching the Angular v20+ style guide and
+  the existing files: the class is `Modules`, the file is `modules.ts`. Feature specs in
+  `docs/features/` written before this rule use the old `*.component.ts` spelling; the file
+  *split* they ask for is the binding part, the suffix is not.
+
+### Shared styles — `src/styles/_mixins.scss`
+
+`src/styles` is on the Sass load path (`stylePreprocessorOptions.includePaths` in
+`angular.json`), so any component imports shared patterns without `../../..` climbing:
+
+```scss
+@use 'mixins' as sec;
+
+.sec-modules { @include sec.page-shell; }
+.sec-modules__table-scroll { @include sec.scroll-panel; }
+table { @include sec.data-table; }
+```
+
+- **Recurring UI patterns are mixins, not global utility classes.** Component styles stay
+  scoped and semantically named, while the values that must not drift — table density, the
+  Tier-2 accent, the bounded scroll container `position: sticky` depends on — live in one
+  place. Add to `_mixins.scss` the second time a pattern appears; do not copy it.
+- **Colour tokens are never `@use`d.** `_tokens.scss` emits the `--sec-*` custom properties
+  once, globally, from `styles.scss`. Components reference `var(--sec-blue)` and never
+  redeclare a token or hardcode a hex.
+- Changing `angular.json` requires a **dev-server restart** — it is build configuration, not
+  watched source, and a running `ng serve` will silently keep the old Sass load path.
+
+### Dialogs
+
+A dialog owns its own presentation. Give it a **static `open()`** and let call sites pass
+data only, so no caller can size it wrongly or forget the modal contract:
+
+```ts
+static open(dialog: MatDialog, data: ModuleSettingsDialogData) {
+  return dialog.open<ModuleSettingsDialog, ModuleSettingsDialogData, boolean>(
+    ModuleSettingsDialog,
+    { ...SEC_MODAL_DIALOG, width: '760px', height: '620px', data },
+  );
+}
+```
+
+`SEC_MODAL_DIALOG` (`shared/dialog/modal-dialog.config.ts`) carries the R7 contract —
+`disableClose`, `autoFocus`, `restoreFocus`. Spread it into every dialog; never re-declare
+`disableClose` per call site and never set it to `false`. The three type arguments to
+`open<T, D, R>` are what make `afterClosed()` return a typed result instead of `any`.
+
+### Icons — `core/icons/sec-icons.ts`
+
+Custom icons are real `.svg` assets in `public/icons/`, registered once by
+`provideSecIcons()` and used as `<mat-icon svgIcon="gearbox" />`. Add an icon by dropping the
+file in and adding one line to the `SEC_ICONS` map — never paste an SVG path into a
+component.
+
+Paths in that map are **root-absolute** (`/icons/x.svg`): a relative path resolves against
+the current route and 404s on anything deeper than the root.
+
+This deliberately avoids the Material icon *font*, which §8 requires be self-hosted (no
+Google Fonts CDN, GDPR) and which is not shipped yet — a ligature such as
+`<mat-icon>settings</mat-icon>` renders as the raw text "settings" until it is.
+
+### Material pitfalls already paid for
+
+- **Sticky table headers inside `mat-tab-group`.** Tabs measure lazily; a sticky header
+  rendered while its tab was hidden gets wrong offsets. Set `[preserveContent]="true"` and
+  call `table.updateStickyHeaderRowStyles()` on `(selectedTabChange)` for the newly shown
+  table.
+- **`position: sticky` needs a bounded scroll container.** Give the panel a concrete
+  `height`/`max-height` in SCSS — `flex: 1` alone is not enough — and put `overflow: auto`
+  on the wrapper, not on the table.
+- **Modal dialogs are not movable or minimisable, by default and by intent.** Do not add
+  `cdkDrag`. `disableClose: true` plus explicit Save/Cancel is the shape (R7).
 
 ---
 
@@ -495,6 +659,36 @@ Read this before designing anything that assumes a normal database.
   properties — never separate databases.
 - Do not create an index on a property that already has a uniqueness constraint; the
   constraint creates a backing range index and a duplicate index errors.
+
+### Indexes — label-property indexes are per-label
+
+This one is not obvious and costs real performance. The importer creates
+`FOR (n:DOORSObject) ON (n.__moduleUrl)`, but the planner will **not** use it for
+`MATCH (r:DOORSRequirement {__moduleUrl: $u})` — it has no knowledge that every
+`DOORSRequirement` is also a `DOORSObject`. Without a dedicated index that pattern degrades
+to a label scan of every requirement in the database.
+
+**Any query that filters a *type* label by `__moduleUrl` needs its own index.**
+
+```cypher
+CYPHER 25
+CREATE INDEX doors_requirement_module IF NOT EXISTS
+FOR (n:DOORSRequirement) ON (n.__moduleUrl);
+
+CYPHER 25
+CREATE INDEX meta_policy_attribute IF NOT EXISTS
+FOR (p:__Policy) ON (p.attributeName);
+```
+
+`doors_requirement_module` belongs in the **importer's** schema phase
+(`DOORS_TO_NEO4J_IMPORTER_SPEC.md` §7.3) alongside the other imported-label indexes — it
+must exist even if the backend has never started. `meta_policy_attribute` belongs in the
+backend's meta-schema migration and serves the inverse question, "which modules mark this
+attribute mandatory".
+
+Do **not** index attribute *values*. Attribute names differ per module (78 in the reference
+module), so value indexes would mean dozens of indexes per module, created dynamically from
+user data, on properties whose names contain spaces and umlauts.
 
 ---
 
@@ -523,9 +717,8 @@ once in `styles/_tokens.scss`:
 - `#FE5000` — unresolved placeholder (`__UNDEFINED`)
 - `#E4002B` — import error, dangling link
 - `#0077C8` — Tier-2 application data (R2), so a user annotation is instantly
-  distinguishable from
-  imported truth. This mapping matters: **a user must never mistake something the app
-  added for something DOORS said.**
+  distinguishable from imported truth. This mapping matters: **a user must never mistake
+  something the app added for something DOORS said.**
 
 Backgrounds are white and near-white greys. Airbus permits percentages of black from 10%
 to 90% — use those for greys rather than inventing a neutral ramp.
@@ -575,14 +768,15 @@ expand/collapse, menu open, route transition. No decorative animation. Respect
 
 ---
 
-## 9. The UI skeleton (current milestone)
+## 9. The UI shell
 
-Build exactly this shell, with placeholder content in every feature route. Getting the
-shell right and empty is the milestone; the views come after.
+**Status: built.** The current milestone is the first dynamic-content view,
+**Requirements → Modules**, specified in `docs/features/requirements-modules.md`. Keep this
+section as the contract the shell must continue to satisfy.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│ ░░░ toolbar (Airbus blue, fixed, 56px)          [👤] [💾]         │
+│ ░░░ toolbar (Airbus blue, fixed, 56px)                    [👤]    │
 ├──────────────────┬────────────────────────────────────────────────┤
 │  LOGO            │                                                │
 │  (64px header)   │                                                │
@@ -619,21 +813,19 @@ shell right and empty is the milestone; the views come after.
   YAML.
 - Ship a hardcoded default `NavGroup[]` in the frontend as the fallback when the config
   endpoint fails. A broken config file must not produce an app with no navigation.
-- Group headers are section labels in the Airbus blue at reduced opacity, not clickable
+- Group headers (Requirements, Documents, CAMEO) are the prominent level: `0.9375rem`,
+  semibold, Airbus blue, on a faint tinted background (`color-mix(in srgb, var(--sec-blue)
+  8%, white)` — stays in near-white territory, never a saturated fill). Not clickable
   accordions, unless the group grows past ~6 items.
+- Sub-items are the quiet level: `0.8125rem` via the sidenav-scoped
+  `--mat-list-list-item-label-text-size` override, one step down from the group header.
 - Active route is marked with a 3px left rule in `--sec-blue-mid` plus a pale background —
-  not a filled pill.
+  not a filled pill. M3 nav-list items default `--mat-list-active-indicator-shape` to
+  `corner-full` (a pill); the sidenav overrides it to `0` so hover/focus/active states are
+  square, matching this rule.
 - **User icon** (right of toolbar): opens a `mat-menu` with display name, email, roles,
-  connected graph/database name, and a sign-out item.
-- **Save icon** (right of toolbar): commits pending **Tier-2 business annotations** —
-  comments on an item, which attributes a module treats as mandatory, review outcomes.
-  Nothing else routes through it: navigation order is config, sidenav state is a browser
-  preference, and neither is ever "unsaved".
-  It is disabled when nothing is dirty and shows a `mat-badge` with the pending-change
-  count when it is. Dirty state comes from an `AnnotationStore` signal service in `core/`.
-  Wire the button and the dirty signal **now**, even though no view produces edits yet —
-  retrofitting a global save across a dozen views is far harder than stubbing one, and the
-  store is where optimistic update, conflict handling and audit fields will land.
+  connected graph/database name, and a sign-out item. It is the **only** toolbar action —
+  there is no global save (R7).
 - Every route is lazy (`loadComponent`) and renders a titled empty state naming what will
   live there. Empty states are an invitation to act, not an apology.
 - Keyboard: visible focus rings on toolbar buttons and every nav item; the sidenav is a
@@ -678,8 +870,15 @@ inside the shell, not a bare page.
 - The `.bat` files in `importers/win/` are **thin wrappers only** — resolve the Python
   interpreter, set encoding to UTF-8, call the module entry point, propagate the exit
   code. No business logic in batch, ever.
+- The importers own the schema for imported labels: constraints and indexes on `:SEItem`,
+  `:DOORSObject`, `:DOORSRequirement` are created in their schema phase, not by the
+  backend. The backend owns only the `:__Meta` schema.
 - DOORS specifics are fully described in `docs/DOORS_TO_NEO4J_IMPORTER_SPEC.md`, including
   seven known export defects that the importer must survive. Do not re-derive that design.
+- **Exports sanitised for sharing outside the work environment blank every user
+  attribute**, including `Object Type`, so every object imports as `DOORSTBD` and nothing
+  carries a real type label. Real exports do not have this problem. Keep test fixtures
+  realistic, or type-dependent tests silently assert nothing.
 
 ---
 
@@ -687,6 +886,8 @@ inside the shell, not a bare page.
 
 **Before writing code**
 
+- If the task has a spec in `docs/features/`, read it first — it exists because the
+  decisions in it were expensive.
 - Check `gradle/libs.versions.toml` and `package.json` for the pinned version and use its
   current API, not a remembered one. Angular 22, Ktor 3.5 and Neo4j driver 6 all changed
   APIs recently.
@@ -715,6 +916,7 @@ inside the shell, not a bare page.
 - `./gradlew check` and `npm --prefix frontend run lint && npm --prefix frontend test` pass.
 - New graph behaviour has a Testcontainers test against a real Neo4j **Community** image.
   Never test against Enterprise; the constraint differences are the whole point.
+- Any feature that writes Tier 2 has the byte-identical-anchor test from R2.
 - Any decision that took real thought gets a short ADR in `docs/adr/`.
 - Update this file if you changed something it describes.
 
@@ -723,9 +925,12 @@ inside the shell, not a bare page.
 - Add a dependency not in §4.
 - Write a Tier-2 value as a node property, or invent a per-source alternative to
   `__child` / `__sortKey` (R1–R3).
+- Write anything at all onto a node an importer created (R1).
 - Surface a `__`-prefixed name to the user, or put a raw `__id` in a URL (R5).
+- Add a global save button, a staging layer, or any cross-view dirty state (R7).
 - Introduce a second persistence mechanism — no side database, no local cache of graph
   state, no browser storage of graph data.
+- Store a derived value — counts, coverage, policy-check results — in the graph.
 - Change the identity scheme, the label model, or the meta model.
 - Make anything DOORS-specific outside `importers/.../doors/`, `source/doors/`, and the
   DOORS-specific API routes.

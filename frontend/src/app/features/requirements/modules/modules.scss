@@ -1,0 +1,46 @@
+@use 'mixins' as sec;
+
+.sec-modules {
+  @include sec.page-shell;
+}
+
+.sec-modules__search {
+  width: 100%;
+}
+
+.sec-modules__error {
+  @include sec.inline-error;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.sec-modules__table-scroll {
+  @include sec.scroll-panel;
+}
+
+table {
+  @include sec.data-table;
+}
+
+// Name and gear share a baseline: the button is a peer of the text, not a floating overlay.
+.sec-modules__name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sec-modules__settings-button {
+  @include sec.compact-icon-button;
+}
+
+.sec-modules__level-chip {
+  @include sec.meta-chip;
+}
+
+.sec-modules__no-match td {
+  padding: 16px;
+  color: var(--sec-grey-blue);
+}

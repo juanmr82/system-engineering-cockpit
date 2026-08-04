@@ -1,0 +1,92 @@
+// Reusable UI patterns for feature views (CLAUDE.md §6, §8).
+//
+// Mixins rather than global utility classes, deliberately: component styles stay scoped and
+// semantically named, while the values that must not drift — table density, the Tier-2 accent,
+// the bounded scroll container `position: sticky` depends on — live in exactly one place.
+//
+// Consumed as `@use 'mixins' as sec;` — src/styles is on the Sass load path via
+// stylePreprocessorOptions in angular.json, so no ../../.. climbing from a feature folder.
+//
+// Colour tokens are NOT imported here: _tokens.scss emits CSS custom properties once, globally,
+// from styles.scss. Components reference them as var(--sec-blue) and never re-declare them.
+
+// The wrapper every routed feature view uses. The view fills the shell and scrolls internally —
+// the page itself never scrolls horizontally or vertically.
+@mixin page-shell($padding: 24px, $gap: 16px) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: $padding;
+  gap: $gap;
+  box-sizing: border-box;
+}
+
+// A bounded scroll container. Sticky table headers do nothing without one, and `flex: 1` alone is
+// not enough — `min-height: 0` is what actually lets a flex child shrink below its content
+// (CLAUDE.md §6, "Material pitfalls already paid for"). Put this on the wrapper, never the table.
+@mixin scroll-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+// Compact density (-2) for data tables. This is a data tool: requirement tables read as data, not
+// prose, hence tabular figures so digits and IDs line up column-wise (CLAUDE.md §8).
+@mixin data-table($row-height: 40px, $header-height: 40px) {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  --mat-table-header-container-height: #{$header-height};
+  --mat-table-row-item-container-height: #{$row-height};
+}
+
+// Tier-2 accent (#0077C8). Anything wearing this was added by the application, not by DOORS — a
+// user must never mistake an app annotation for imported truth (CLAUDE.md §8, R2).
+@mixin meta-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: var(--sec-highlight-meta);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+// The same Tier-2 signal for a control the user toggles rather than a value they read.
+@mixin meta-checkbox {
+  --mdc-checkbox-selected-icon-color: var(--sec-highlight-meta);
+  --mdc-checkbox-selected-hover-icon-color: var(--sec-highlight-meta);
+  --mdc-checkbox-selected-focus-icon-color: var(--sec-highlight-meta);
+  --mdc-checkbox-selected-pressed-icon-color: var(--sec-highlight-meta);
+}
+
+// Errors get human sentences in the UI (R5) — this is only their appearance.
+@mixin inline-error {
+  color: var(--sec-highlight-error);
+  font-size: 0.875rem;
+}
+
+// An icon button sized to sit inline with body text without inflating the row. The touch target is
+// switched off because Material's default 48px overlay would break vertical alignment in a
+// compact table row.
+@mixin compact-icon-button($icon-size: 18px, $hit-size: 32px) {
+  --mat-icon-button-icon-size: #{$icon-size};
+  --mat-icon-button-state-layer-size: #{$hit-size};
+  --mat-icon-button-touch-target-display: none;
+}
+
+// A label/value pair rendered inline, e.g. the read-only module name above a dialog's tabs.
+@mixin field-readout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+
+  .sec-field-readout__label {
+    color: var(--sec-grey-blue);
+  }
+
+  .sec-field-readout__value {
+    color: var(--sec-blue);
+    font-weight: 600;
+  }
+}

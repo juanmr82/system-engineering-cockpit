@@ -1,0 +1,76 @@
+<div class="sec-modules">
+  <mat-form-field appearance="outline" class="sec-modules__search" subscriptSizing="dynamic">
+    <input
+      matInput
+      type="text"
+      placeholder="Search"
+      aria-label="Search modules"
+      [value]="search()"
+      (input)="search.set($any($event.target).value)"
+    />
+  </mat-form-field>
+
+  @if (api.modules.isLoading() && !api.modules.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (api.modules.error()) {
+    <div class="sec-modules__error">
+      <p>Couldn't load modules.</p>
+      <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else if (allRows().length === 0) {
+    <sec-empty-state
+      title="No modules imported yet"
+      description="Run the DOORS importer to bring modules into the graph."
+    />
+  } @else {
+    <div class="sec-modules__table-scroll">
+      <table mat-table [dataSource]="dataSource" matSort matSortActive="name" matSortDirection="asc">
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Module</th>
+          <td mat-cell *matCellDef="let row">
+            <span class="sec-modules__name-cell">
+              <span>{{ row.name }}</span>
+              <button
+                mat-icon-button
+                type="button"
+                class="sec-modules__settings-button"
+                [attr.aria-label]="'Settings for ' + row.name"
+                matTooltip="Module Settings"
+                (click)="openSettings(row)"
+              >
+                <mat-icon svgIcon="gearbox" />
+              </button>
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="lastModified">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Last modified</th>
+          <td mat-cell *matCellDef="let row">{{ row.lastModified }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="path">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Path</th>
+          <td mat-cell *matCellDef="let row">{{ row.path }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="level">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Level</th>
+          <td mat-cell *matCellDef="let row">
+            @if (row.systemLevel; as level) {
+              <span class="sec-modules__level-chip">{{ level.label }}</span>
+            } @else {
+              <span>&mdash;</span>
+            }
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+        <tr class="sec-modules__no-match" *matNoDataRow>
+          <td [attr.colspan]="displayedColumns.length">No modules match "{{ search() }}".</td>
+        </tr>
+      </table>
+    </div>
+  }
+</div>

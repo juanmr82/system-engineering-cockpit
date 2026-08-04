@@ -15,3 +15,12 @@ public suspend fun <T> GraphDriver.executeWrite(query: Query, transform: (List<R
             session.executeWrite { tx -> transform(tx.run(query).list()) }
         }
     }
+
+// A dialog that spans two tabs still saves once, atomically (CLAUDE.md §2 R7): running every
+// statement inside one executeWrite lambda keeps them all in a single server-side transaction.
+public suspend fun GraphDriver.executeWrite(queries: List<Query>): Unit =
+    withContext(Dispatchers.IO) {
+        driver.session(SessionConfig.forDatabase(database)).use { session ->
+            session.executeWrite { tx -> queries.forEach { tx.run(it) } }
+        }
+    }

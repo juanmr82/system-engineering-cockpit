@@ -42,4 +42,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // module() requires these unconditionally (config/AppConfig.kt); tests never touch real
+    // credentials, and Testcontainers tests point GraphDriver at their own container instead.
+    environment("SEC_NEO4J_USER", "test")
+    environment("SEC_NEO4J_PASSWORD", "test")
 }

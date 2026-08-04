@@ -1,0 +1,9 @@
+// Pinned below the fixed 56px toolbar so the routed view owns the rest of the viewport and
+// scrolls internally — the page itself never scrolls (CLAUDE.md §9).
+.sec-shell {
+  position: absolute;
+  top: 56px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+}
