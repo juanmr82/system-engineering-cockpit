@@ -1,24 +1,59 @@
 @use 'mixins' as sec;
 
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
 .sec-modules {
   @include sec.page-shell;
 }
 
+.sec-modules__header {
+  flex: none;
+}
+
+.sec-modules__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-modules__title {
+  @include sec.view-title;
+}
+
+// Search and counts share one sticky bar, so the controls for the table stay reachable while the
+// table scrolls under them.
+.sec-modules__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
 .sec-modules__search {
-  width: 100%;
+  flex: 1 1 260px;
+
+  // The bar sets its own rhythm; the form field's subscript reserve would double the bar's height.
+  --mat-form-field-container-height: 34px;
+}
+
+.sec-modules__stats {
+  @include sec.stat-readout;
 }
 
 .sec-modules__error {
-  @include sec.inline-error;
+  @include sec.error-panel;
 
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
 }
 
+// The table is the sheet in this view: white paper, hairline edge, its own bounded scroll.
 .sec-modules__table-scroll {
-  @include sec.scroll-panel;
+  @include sec.table-well;
 }
 
 table {
@@ -29,18 +64,29 @@ table {
 .sec-modules__name-cell {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+}
+
+.sec-modules__name {
+  font-weight: 600;
+  color: var(--sec-blue);
 }
 
 .sec-modules__settings-button {
   @include sec.compact-icon-button;
 }
 
+// The system level is Tier-2 data the application wrote, never something DOORS said (R2, §8).
 .sec-modules__level-chip {
   @include sec.meta-chip;
 }
 
+// An unclassified module is a normal state, not a gap to apologise for.
+.sec-modules__level-empty {
+  color: var(--sec-ink-3);
+}
+
 .sec-modules__no-match td {
   padding: 16px;
-  color: var(--sec-grey-blue);
+  color: var(--sec-ink-3);
 }

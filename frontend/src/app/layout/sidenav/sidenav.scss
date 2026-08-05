@@ -1,33 +1,50 @@
+@use 'mixins' as sec;
+
+// Fills the drawer rather than setting its own width: the width is one number, and it lives on
+// the sidenav container token (styles/_theme.scss) where Material can actually act on it.
 .sec-sidenav {
-  width: 280px;
+  width: 100%;
   height: 100%;
-  background: white;
+  background: var(--sec-paper);
+
+  // The drawer is a sheet edge against the shell, so it gets the same hairline as one.
+  border-right: var(--sec-hairline) solid var(--sec-line);
 }
 
-// Group headers are the prominent level; the faint tint stays in near-white territory rather than
-// becoming a saturated fill (CLAUDE.md §9).
+// Group headers are the prominent level. The tint stays in near-white territory rather than
+// becoming a saturated fill (CLAUDE.md §9) — colour is a rule, not a background (style rule 3),
+// so the group is marked by the hairline above it as much as by the wash behind it.
 .sec-sidenav__group-label {
-  padding: 12px 16px;
+  padding: 11px 16px;
+  margin-top: 6px;
   color: var(--sec-blue);
-  background: color-mix(in srgb, var(--sec-blue) 8%, white);
+  background: color-mix(in srgb, var(--sec-blue) 6%, white);
+  border-top: var(--sec-hairline) solid var(--sec-line-soft);
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
   font-size: 0.9375rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
-// Sub-items are the quiet level, one step down from the group header.
+// Sub-items are the quiet level, one step down from the group header. Size, colour and the
+// square active-indicator shape come from the list token overrides in styles/_theme.scss.
 .sec-sidenav mat-nav-list {
-  --mat-list-list-item-label-text-size: 0.8125rem;
+  padding-top: 4px;
+  padding-bottom: 4px;
 }
 
-// M3 defaults the active indicator to corner-full (a pill); the house style is a square edge with
-// a left rule instead.
-.sec-sidenav .mat-mdc-list-item {
-  --mat-list-active-indicator-shape: 0;
+// The active route: a 3px left rail and a pale wash — never a filled pill (§9). The rail is the
+// same 3px as a document card's depth rail, so "you are here" reads identically in both places.
+// The transparent border on every item keeps the label from shifting 3px when a route activates.
+.sec-sidenav__item {
+  border-left: var(--sec-rail) solid transparent;
 }
 
 .sec-sidenav__item--active {
-  border-left: 3px solid var(--sec-blue-mid);
-  background: var(--sec-blue-pale);
+  border-left-color: var(--sec-blue-mid);
+  background: color-mix(in srgb, var(--sec-blue-pale) 30%, white);
+
+  --mat-list-list-item-label-text-color: var(--sec-blue);
+  --mat-list-list-item-label-text-weight: 600;
 }

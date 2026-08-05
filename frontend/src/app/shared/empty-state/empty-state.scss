@@ -1,8 +1,12 @@
+@use 'mixins' as sec;
+
+// An empty state is an invitation to act, not an apology (CLAUDE.md §9), so it is a lead sheet
+// like any other view content — not greyed-out centred text. The gutter around it comes from the
+// shell, so this works identically as a whole placeholder route and as one branch inside a view.
+:host {
+  display: block;
+}
+
 .sec-empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 48px;
-  color: var(--sec-blue);
+  @include sec.empty-state;
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Structured logging for production (CLAUDE.md §5). Selected at launch with
+      -Dlogback.configurationFile=logback-production.xml
+  rather than by a conditional in logback.xml, because conditionals need Janino and that is a
+  dependency this does not justify (§4, §11).
+
+  JsonEncoder ships with logback-classic itself, so this adds nothing to the dependency set.
+  It emits the MDC, which CallLogging fills with `callId` — so every line of a request, the
+  `instance` field of any problem detail it produced, and the client's report all carry the
+  same correlation id.
+-->
+<configuration>
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.JsonEncoder">
+            <withSequenceNumber>false</withSequenceNumber>
+            <withFormattedMessage>true</withFormattedMessage>
+            <withMessage>false</withMessage>
+            <withArguments>false</withArguments>
+            <withMDC>true</withMDC>
+            <withThrowable>true</withThrowable>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="JSON" />
+    </root>
+</configuration>

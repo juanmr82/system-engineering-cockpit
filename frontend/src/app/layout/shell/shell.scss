@@ -1,9 +1,25 @@
-// Pinned below the fixed 56px toolbar so the routed view owns the rest of the viewport and
-// scrolls internally — the page itself never scrolls (CLAUDE.md §9).
+// Pinned below the fixed toolbar so the routed view owns the rest of the viewport and scrolls
+// internally — the page itself never scrolls (CLAUDE.md §9).
 .sec-shell {
   position: absolute;
-  top: 56px;
+  top: var(--sec-toolbar-height);
   bottom: 0;
   left: 0;
   right: 0;
+}
+
+// The gutter around every routed view, set once here rather than by each view, so a placeholder
+// and a full data view are framed identically. The shell background comes from the sidenav
+// token override (content-background-color) in styles/_theme.scss.
+//
+// Material's own height/overflow defaults are left alone: a view that fills the height manages
+// its own bounded scroll panel and this never scrolls, while a short view simply sits at the top.
+.sec-shell mat-sidenav-content {
+  padding: var(--sec-gutter);
+}
+
+// The outlet is an empty anchor element, but as an inline box it still contributes a line box
+// above the view it renders.
+.sec-shell router-outlet {
+  display: none;
 }

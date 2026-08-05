@@ -415,7 +415,19 @@ Pin these in `gradle/libs.versions.toml` and `package.json`. Do not float versio
 | TypeScript | **6.x** | required by Angular 22 |
 | Python | **3.11+** | importers |
 
-Before adding *any* dependency not in this table, check whether the platform already
+Frontend quality gate — these exist so `npm run lint` and `npm test` are real (§11):
+
+| Component | Version | Notes |
+|---|---|---|
+| ESLint | **10.x** | flat config, `frontend/eslint.config.mjs` |
+| angular-eslint | **22.x** | matched major to Angular; supplies the `lint` builder and the template rules |
+| typescript-eslint | **8.x** | peer requirement of angular-eslint 22 |
+| jsdom | **30.x** | the DOM for `@angular/build:unit-test`; without it `ng test` refuses to start |
+
+There is **no static analysis on the backend yet** (ktlint/detekt). It needs its own decision —
+`explicitApi()` already carries some of the weight, and adding a formatter is a separate call.
+
+Before adding *any* dependency not in these tables, check whether the platform already
 provides it. Prefer fewer libraries over convenience wrappers.
 
 ---
@@ -608,6 +620,16 @@ table { @include sec.data-table; }
 - **Colour tokens are never `@use`d.** `_tokens.scss` emits the `--sec-*` custom properties
   once, globally, from `styles.scss`. Components reference `var(--sec-blue)` and never
   redeclare a token or hardcode a hex.
+- **Material is adjusted only through M3 token overrides**, all of them in `_theme.scss`
+  (`mat.table-overrides`, `mat.dialog-overrides`, …). No `::ng-deep`, and no rule targeting a
+  `.mat-mdc-*` or `.mdc-*` class — those are internals and they move between minor versions.
+  Styling `th`, `tr` or `table` from a component's own stylesheet is fine: that is the
+  template's own markup.
+- `_document.scss` holds the requirement-tree vocabulary (depth rails, object cards,
+  verification and extended-attribute panels) from `docs/proposed_new_style.md`. Nothing
+  includes it yet — it is the specified look for the review and tree views, kept in tokens so
+  it does not rot in an untracked stylesheet. Mixins emit nothing until included, so it costs
+  no bytes.
 - Changing `angular.json` requires a **dev-server restart** — it is build configuration, not
   watched source, and a running `ng serve` will silently keep the old Sass load path.
 
@@ -736,8 +758,34 @@ once in `styles/_tokens.scss`:
   distinguishable from imported truth. This mapping matters: **a user must never mistake
   something the app added for something DOORS said.**
 
-Backgrounds are white and near-white greys. Airbus permits percentages of black from 10%
-to 90% — use those for greys rather than inventing a neutral ramp.
+### Surfaces and neutrals — the paper style
+
+The product is styled as **paper on a desk**, specified in `docs/proposed_new_style.md` and
+implemented in `styles/_tokens.scss`. Content sits on white sheets with hairline edges over a
+light blue-grey shell. Four rules generate the whole look, and a new pattern is derived from
+them rather than invented:
+
+1. **Separate with a hairline, not a shadow or a fill.** `--sec-line` at sheet and table edges,
+   `--sec-line-soft` inside them. There is exactly one shadow token, for the sticky bar.
+2. **Squared corners** — `--sec-radius` (2px) on a control, `--sec-radius-sheet` (3px) on a
+   sheet. Never a pill; M3 defaults to pills and is overridden per component in `_theme.scss`.
+3. **Colour is a rail or a rule, never a background** — the 3px navy top rule on a lead sheet,
+   the depth rail down a card, the left rule on an accent panel. Two deliberate exceptions: the
+   navy application toolbar, and the filled Tier-2 chip, because that distinction must never
+   need a second look.
+4. **Non-content text is 10px uppercase, letter-spaced, in `--sec-ink-3`** — column headers,
+   field labels, the view eyebrow.
+
+The neutral ramp is **cooled towards the blue** rather than taken from percentages of black:
+against Airbus blue a pure-grey ramp reads as dirty, and white sheets on a neutral grey shell
+read as holes rather than as paper. This is the one deliberate departure from the "use
+percentages of black" guidance, and it is why the ramp is a closed set of tokens
+(`--sec-shell`, `--sec-paper`, `--sec-wash`, `--sec-line`, `--sec-ink`…) — extend it in
+`_tokens.scss` or not at all. Never hardcode a hex in a component.
+
+Sizes, tracking and geometry are tokens too (`--sec-text-*`, `--sec-tracking-*`,
+`--sec-radius*`). A component that needs a value not in the scale is a signal the scale is
+wrong, not that the component is special.
 
 ### Typography
 
@@ -921,7 +969,12 @@ inside the shell, not a bare page.
   map.
 - **No `__`-prefixed string ever appears in a template, a translation file, or an export
   header** (R5). If you need one for display, it is missing from `Aliases.kt` — add it
-  there. A lint rule catching `__` inside `.html` templates is worth the ten minutes.
+  there. **This is enforced**: `sec/no-internal-namespace`
+  (`frontend/tools/eslint/sec-rules.mjs`) fails the build on a `__` name in a template, an
+  inline `template:`, or any string literal. It tells an internal name from a BEM element by
+  what precedes the underscores — `sec-modules__header` has a block name in front, `:__Meta`
+  does not — so BEM class names are untouched. Comments are not checked; they are where these
+  names *should* appear.
 - `""` from DOORS means "attribute exists and is empty", not "absent". Render it as empty,
   do not fall back as if it were missing.
 - Sort document-order lists by `__sortKey`, never by a source-native order field such as
@@ -929,7 +982,11 @@ inside the shell, not a bare page.
 
 **Before saying you are done**
 
-- `./gradlew check` and `npm --prefix frontend run lint && npm --prefix frontend test` pass.
+- `./gradlew check` passes, and from `frontend/`: `npm run lint && npm test && npm run build`.
+  Run the npm commands **from the `frontend/` directory**, not with `npm --prefix frontend`
+  from the root — `--prefix` also changes where `npm install` writes, and installing from the
+  wrong directory silently creates `frontend/frontend/node_modules` and leaves `package.json`
+  untouched.
 - New graph behaviour has a Testcontainers test against a real Neo4j **Community** image.
   Never test against Enterprise; the constraint differences are the whole point.
 - **Container tests are tagged `docker` and are not part of `check`.** Not every machine that

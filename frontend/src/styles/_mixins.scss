@@ -9,16 +9,51 @@
 //
 // Colour tokens are NOT imported here: _tokens.scss emits CSS custom properties once, globally,
 // from styles.scss. Components reference them as var(--sec-blue) and never re-declare them.
+//
+// The vocabulary below is the paper style of docs/proposed_new_style.md. Where that stylesheet
+// defines a pattern (.paper, .eyebrow, .xattrs, .verif, .level, .btn, .stats) the mixin carries
+// the same name and geometry. Where it does not — tables, dialogs, tabs, navigation, form
+// controls — the pattern is extrapolated from the same four rules the proposal follows
+// throughout:
+//
+//   1. Separate with a hairline, not with a shadow or a fill.
+//   2. Squared corners: 2px on a control, 3px on a sheet, never a pill.
+//   3. Colour is a rail or a rule, never a background, except on the one navy toolbar.
+//   4. Non-content text is 10px uppercase, letter-spaced, in --sec-ink-3.
 
-// The wrapper every routed feature view uses. The view fills the shell and scrolls internally —
-// the page itself never scrolls horizontally or vertically.
-@mixin page-shell($padding: 24px, $gap: 16px) {
+// ---------------------------------------------------------------------------------------------
+// Sheets and page frame
+// ---------------------------------------------------------------------------------------------
+
+// A sheet of paper on the shell. The unit of content: one view, one dialog body, one panel.
+@mixin sheet($padding: 24px 26px 28px) {
+  background: var(--sec-paper);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius-sheet);
+  padding: $padding;
+}
+
+// The lead sheet of a view, marked by a navy top rule. Exactly one per view — it is what says
+// "this is the subject", so a second one makes both meaningless.
+@mixin sheet-lead($padding: 22px 26px 28px) {
+  @include sheet($padding);
+
+  border-top: var(--sec-rail) solid var(--sec-blue);
+}
+
+// The wrapper a routed feature view uses when it manages its own scrolling — a view with a data
+// table, whose sticky header needs a bounded panel. The view fills the shell and scrolls
+// internally; the page itself never scrolls horizontally or vertically (CLAUDE.md §9).
+//
+// No padding: the gutter is set once on mat-sidenav-content (layout/shell/shell.scss) so every
+// view is framed identically whether or not it uses this mixin. Pair it with
+// `:host { display: block; height: 100%; }` — the routed host is created by the router, so the
+// shell's own stylesheet cannot reach it.
+@mixin page-shell($gap: 14px) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: $padding;
   gap: $gap;
-  box-sizing: border-box;
 }
 
 // A bounded scroll container. Sticky table headers do nothing without one, and `flex: 1` alone is
@@ -30,63 +65,356 @@
   overflow: auto;
 }
 
-// Compact density (-2) for data tables. This is a data tool: requirement tables read as data, not
-// prose, hence tabular figures so digits and IDs line up column-wise (CLAUDE.md §8).
-@mixin data-table($row-height: 40px, $header-height: 40px) {
-  width: 100%;
-  font-variant-numeric: tabular-nums;
-  --mat-table-header-container-height: #{$header-height};
-  --mat-table-row-item-container-height: #{$row-height};
+// ---------------------------------------------------------------------------------------------
+// Typography
+// ---------------------------------------------------------------------------------------------
+
+// The line above a view title that says which part of the tool you are in. Widest tracking in
+// the system, and the only place that tracking is used.
+@mixin eyebrow {
+  margin: 0;
+  font-size: var(--sec-text-label);
+  letter-spacing: var(--sec-tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
 }
 
-// Tier-2 accent (#0077C8). Anything wearing this was added by the application, not by DOORS — a
-// user must never mistake an app annotation for imported truth (CLAUDE.md §8, R2).
-@mixin meta-chip {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 4px;
-  background: var(--sec-highlight-meta);
-  color: white;
-  font-size: 0.75rem;
+// The view title. Sentence case, never a heavier weight than 600 (CLAUDE.md §8).
+@mixin view-title {
+  margin: 5px 0 0;
+  font-size: var(--sec-text-title);
+  line-height: 1.25;
   font-weight: 600;
+  color: var(--sec-blue);
+  overflow-wrap: anywhere;
 }
 
-// The same Tier-2 signal for a control the user toggles rather than a value they read.
-@mixin meta-checkbox {
-  --mdc-checkbox-selected-icon-color: var(--sec-highlight-meta);
-  --mdc-checkbox-selected-hover-icon-color: var(--sec-highlight-meta);
-  --mdc-checkbox-selected-focus-icon-color: var(--sec-highlight-meta);
-  --mdc-checkbox-selected-pressed-icon-color: var(--sec-highlight-meta);
+// The quiet heading over a block inside a sheet — a table, a panel, a list.
+@mixin section-title {
+  margin: 0 0 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
 }
 
-// Errors get human sentences in the UI (R5) — this is only their appearance.
-@mixin inline-error {
-  color: var(--sec-highlight-error);
-  font-size: 0.875rem;
+// The label half of a label/value pair, and the header of a data column. Rule 4.
+@mixin field-label {
+  font-size: var(--sec-text-label);
+  font-weight: 600;
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
 }
 
-// An icon button sized to sit inline with body text without inflating the row. The touch target is
-// switched off because Material's default 48px overlay would break vertical alignment in a
-// compact table row.
-@mixin compact-icon-button($icon-size: 18px, $hit-size: 32px) {
-  --mat-icon-button-icon-size: #{$icon-size};
-  --mat-icon-button-state-layer-size: #{$hit-size};
-  --mat-icon-button-touch-target-display: none;
+// Identifiers, URLs and raw source values — anything the user may need to compare character by
+// character, or copy into DOORS.
+@mixin mono {
+  font-family: var(--sec-font-mono);
+  font-variant-ligatures: none;
 }
 
 // A label/value pair rendered inline, e.g. the read-only module name above a dialog's tabs.
 @mixin field-readout {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.875rem;
+  gap: 10px;
+  font-size: var(--sec-text-body);
 
   .sec-field-readout__label {
-    color: var(--sec-grey-blue);
+    @include field-label;
   }
 
   .sec-field-readout__value {
     color: var(--sec-blue);
     font-weight: 600;
+    overflow-wrap: anywhere;
   }
+}
+
+// A stacked label/value grid for metadata — the proposal's .meta-grid. Wraps to the width it has.
+@mixin fact-grid($min-column: 200px) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax($min-column, 1fr));
+  gap: 18px 26px;
+  margin: 0;
+
+  dt {
+    @include field-label;
+  }
+
+  dd {
+    margin: 3px 0 0;
+    font-size: var(--sec-text-sm);
+    overflow-wrap: anywhere;
+  }
+}
+
+// The proposal's .root-facts: full-width rows separated by hairlines, label left, value right.
+// Used where the values are long enough that a grid would ragged-edge badly.
+@mixin fact-rows($label-width: 145px) {
+  margin: 0;
+  padding: 0;
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+  }
+
+  > div:first-child {
+    border-top: var(--sec-hairline) solid var(--sec-line-soft);
+  }
+
+  dt {
+    flex: none;
+    width: $label-width;
+    color: var(--sec-ink-3);
+  }
+
+  dd {
+    flex: 1 1 240px;
+    margin: 0;
+    color: var(--sec-ink);
+    overflow-wrap: anywhere;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Bars
+// ---------------------------------------------------------------------------------------------
+
+// The proposal's .toolbar: a sheet that sticks to the top of the scroll area and holds the
+// controls for what is below it. Not the application toolbar — that one is navy and fixed.
+@mixin sticky-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--sec-paper);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius-sheet);
+  box-shadow: var(--sec-shadow-raised);
+}
+
+// Counts sitting at the far end of a sticky bar. Tabular figures so they do not jitter as they
+// change (CLAUDE.md §8).
+@mixin stat-readout {
+  margin-left: auto;
+  display: flex;
+  gap: 18px;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+  font-variant-numeric: tabular-nums;
+
+  b {
+    font-weight: 600;
+    color: var(--sec-blue);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Data tables
+// ---------------------------------------------------------------------------------------------
+
+// Compact density (-2) in the paper idiom. This is a data tool: requirement tables read as data,
+// not prose, hence tabular figures so digits and IDs line up column-wise (CLAUDE.md §8).
+//
+// Extrapolated from the proposal, which has no table: the header is a micro-label row (rule 4),
+// rows are separated by the soft hairline and hover to --sec-wash, exactly like .card-head does.
+@mixin data-table($row-height: 40px, $header-height: 38px) {
+  width: 100%;
+  background: var(--sec-paper);
+  font-variant-numeric: tabular-nums;
+
+  --mat-table-background-color: var(--sec-paper);
+  --mat-table-header-container-height: #{$header-height};
+  --mat-table-row-item-container-height: #{$row-height};
+  --mat-table-row-item-outline-color: var(--sec-line-soft);
+  --mat-table-row-item-label-text-size: var(--sec-text-sm);
+  --mat-table-row-item-label-text-color: var(--sec-ink);
+  --mat-table-header-headline-size: var(--sec-text-label);
+  --mat-table-header-headline-weight: 600;
+  --mat-table-header-headline-tracking: var(--sec-tracking-label);
+  --mat-table-header-headline-color: var(--sec-ink-3);
+
+  // `th` and `tr` are the template's own elements, not Material internals, so styling them here
+  // is the sanctioned route — no .mat-mdc-* selector and no ::ng-deep (CLAUDE.md §8).
+  th {
+    text-transform: uppercase;
+    border-bottom-color: var(--sec-line);
+
+    // A micro-label is already at the smallest size in the scale; letting it wrap to two lines
+    // makes it unreadable and shifts the header height. Let the column be narrow instead.
+    white-space: nowrap;
+
+    // A sticky header must be opaque, or rows show through it as they scroll underneath.
+    background: var(--sec-paper);
+  }
+
+  tbody tr:hover {
+    background: var(--sec-wash);
+  }
+}
+
+// A table that lives inside its own bordered well rather than directly on a sheet — the dialog
+// case, where the table is one of several things in a panel.
+@mixin table-well {
+  @include scroll-panel;
+
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Badges and chips
+// ---------------------------------------------------------------------------------------------
+
+// The proposal's .level: a small filled badge carrying a classification code. Filled, because it
+// is a value; the fill colour is the meaning, so it is always passed in explicitly.
+@mixin badge($background: var(--sec-blue)) {
+  display: inline-block;
+  min-width: 26px;
+  padding: 2px 6px;
+  border-radius: var(--sec-radius);
+  background: $background;
+  color: var(--sec-paper);
+  font-size: var(--sec-text-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+// Tier-2 accent (#0077C8). Anything wearing this was added by the application, not by DOORS — a
+// user must never mistake an app annotation for imported truth (CLAUDE.md §8, R2).
+//
+// Filled rather than outlined, which is the one place the style's "colour is a rail, not a fill"
+// rule is deliberately broken: this distinction is the one a user must never have to look twice
+// at. It carries a resolved label ("L1 – System of Systems"), not a code, so unlike `badge` it
+// drops the caps-badge weight and tracking and refuses to wrap.
+@mixin meta-chip {
+  @include badge(var(--sec-highlight-meta));
+
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  padding: 3px 8px;
+}
+
+// The proposal's .folder: an outlined uppercase chip for a container or a kind, not a value.
+// Outlined rather than filled precisely so it does not compete with a badge next to it.
+@mixin outline-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sec-ink-2);
+}
+
+// The same Tier-2 signal for a control the user toggles rather than a value they read.
+@mixin meta-checkbox {
+  --mat-checkbox-selected-icon-color: var(--sec-highlight-meta);
+  --mat-checkbox-selected-hover-icon-color: var(--sec-highlight-meta);
+  --mat-checkbox-selected-focus-icon-color: var(--sec-highlight-meta);
+  --mat-checkbox-selected-pressed-icon-color: var(--sec-highlight-meta);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Panels: tinted block, coloured left rule
+// ---------------------------------------------------------------------------------------------
+
+// The shape shared by the proposal's .xattrs and .verif — a quiet tint with a 2px coloured rule
+// down the left edge. The rule carries the meaning, so callers pass it; the tint stays near-white
+// in every case, because a saturated panel would out-shout the data it annotates.
+@mixin accent-panel($accent: var(--sec-blue-mid), $tint: var(--sec-wash-cool)) {
+  padding: 10px 12px;
+  background: $tint;
+  border-left: 2px solid $accent;
+  border-radius: 0 var(--sec-radius) var(--sec-radius) 0;
+}
+
+// Errors get human sentences in the UI (R5) — this is only their appearance. A panel rather than
+// loose red text, so an error occupies a definite place instead of shifting the layout around it.
+@mixin error-panel {
+  @include accent-panel(var(--sec-highlight-error), #fdf4f6);
+
+  color: var(--sec-ink);
+  font-size: var(--sec-text-sm);
+}
+
+// The same shape at the weight of a passing note.
+@mixin note-panel {
+  @include accent-panel(var(--sec-highlight-verified), var(--sec-wash));
+
+  color: var(--sec-ink-2);
+  font-size: var(--sec-text-sm);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Absence
+// ---------------------------------------------------------------------------------------------
+
+// Empty is a state, not a failure, and it is never an apology (CLAUDE.md §9).
+//
+// The proposal italicises empty text; this does not. "Never italic" is an explicit Airbus rule
+// with no exception for captions or placeholders (§8), and styles.scss enforces it globally, so
+// the distinction is carried by colour — --sec-ink-3 is the non-content ink — instead.
+@mixin absent-text {
+  margin: 0;
+  color: var(--sec-ink-3);
+  font-size: var(--sec-text-sm);
+}
+
+// The empty state of a whole view: says what will live here and what to do about it.
+@mixin empty-state {
+  @include sheet-lead;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  h2 {
+    @include view-title;
+
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+    color: var(--sec-ink-2);
+    max-width: 60ch;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------------------------
+
+// An icon button sized to sit inline with body text without inflating the row. The touch target is
+// switched off because Material's default 48px overlay would break vertical alignment in a
+// compact table row.
+@mixin compact-icon-button($icon-size: 18px, $hit-size: 30px) {
+  --mat-icon-button-icon-size: #{$icon-size};
+  --mat-icon-button-state-layer-size: #{$hit-size};
+  --mat-icon-button-touch-target-display: none;
+}
+
+// The one focus ring in the system, from the proposal's :focus-visible rule. styles.scss applies
+// it globally; this exists for the cases that need it inset, where an offset ring would be
+// clipped by a bounded scroll container.
+@mixin focus-ring($offset: 2px) {
+  outline: 2px solid var(--sec-blue-mid);
+  outline-offset: $offset;
 }

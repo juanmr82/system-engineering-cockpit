@@ -1,6 +1,18 @@
-// Airbus house style tokens (CLAUDE.md §8). Primary palette drives the Material theme seed
-// in _theme.scss; highlight colours are accents — brand rule is one highlight per view.
+// The design language, emitted once, globally, from styles.scss (CLAUDE.md §6).
+// Components reference these as var(--sec-*) and never redeclare a token or hardcode a hex.
+//
+// This is the "paper" style from docs/proposed_new_style.md: a light blue-grey shell, white
+// sheets with hairline rules, tiny uppercase micro-labels, squared corners, and colour used as
+// a thin rail rather than a fill. The proposal names its tokens --ab-*; the values are the same
+// Airbus palette that was already here, so they keep the --sec-* names rather than introducing a
+// second, parallel token system. The mapping, once, for anyone reading the proposal beside this:
+//
+//   --ab-navy → --sec-blue          --ab-mist  → --sec-grey-blue
+//   --ab-deep → --sec-blue-deep     --ab-green → --sec-highlight-verified
+//   --ab-mid  → --sec-blue-mid      --ab-red   → --sec-highlight-error
+//   --ab-sky  → --sec-blue-light    --ab-light → --sec-blue-pale
 :root {
+  // --- Brand palette (CLAUDE.md §8) ---------------------------------------------------------
   --sec-blue: #00205b;
   --sec-blue-deep: #005670;
   --sec-blue-mid: #0085ad;
@@ -8,10 +20,60 @@
   --sec-blue-pale: #74d2e7;
   --sec-grey-blue: #8db9ca;
 
-  // Semantic highlight mapping — do not use these for anything but the meaning listed.
+  // --- Semantic highlights — do not use these for anything but the meaning listed ------------
   --sec-highlight-verified: #009f4d; // verified / imported cleanly
   --sec-highlight-tbd: #efdf00; // TBD / unclassified (DOORSTBD without __typeRaw)
   --sec-highlight-undefined: #fe5000; // unresolved placeholder (__UNDEFINED)
   --sec-highlight-error: #e4002b; // import error, dangling link
   --sec-highlight-meta: #0077c8; // Tier-2 application data (R2)
+
+  // --- Surfaces -----------------------------------------------------------------------------
+  // The shell is the desk, paper is the sheet on it. Airbus permits percentages of black for
+  // neutrals; this ramp is cooled towards the blue so white sheets read as paper, not as holes.
+  --sec-shell: #ebf0f4;
+  --sec-paper: #fff;
+  --sec-wash: #f4f8fa; // row hover, quiet panels
+  --sec-wash-cool: #f7fafb; // secondary panel tint, one step further back
+  --sec-line: #d5dee5; // structural hairline: sheet edges, table grid
+  --sec-line-soft: #e8edf1; // internal hairline: row separators, dividers
+
+  // --- Ink ----------------------------------------------------------------------------------
+  --sec-ink: #12212e; // body copy and data
+  --sec-ink-2: #4a5b68; // secondary copy, quiet controls
+  --sec-ink-3: #7c8b97; // micro-labels, empty states, non-content
+
+  // --- Type ---------------------------------------------------------------------------------
+  // Inter is the Airbus web typeface and is self-hosted (§8, GDPR). The fallbacks matter: this
+  // runs on RHEL and Windows 11, and Segoe UI is what Windows actually has.
+  --sec-font: 'Inter', 'Segoe UI', roboto, arial, helvetica, sans-serif;
+  --sec-font-mono: consolas, 'Courier New', monospace;
+
+  --sec-text-title: 21px; // view title
+  --sec-text-lead: 16px; // dialog title, section headline
+  --sec-text-body: 14px; // the base size — data and copy
+  --sec-text-sm: 13px; // dense table cells, panel copy
+  --sec-text-xs: 11.5px; // counts, hints, secondary metadata
+  --sec-text-micro: 10.5px; // in-badge text
+  --sec-text-label: 10px; // uppercase micro-labels
+
+  --sec-leading: 1.55;
+  --sec-tracking-label: 0.13em; // field labels, section titles
+  --sec-tracking-eyebrow: 0.18em; // the one step wider, for the view eyebrow
+
+  // --- Geometry -----------------------------------------------------------------------------
+  // Squared, not rounded: 2px on controls, 3px on sheets. M3 defaults to pills and is overridden
+  // component by component in _theme.scss.
+  --sec-radius: 2px;
+  --sec-radius-sheet: 3px;
+  --sec-rail: 3px; // the accent rail down a card and along an active nav item
+  --sec-hairline: 1px;
+
+  // The only shadow in the system. Everything else is separated by a hairline, not by depth.
+  --sec-shadow-raised: 0 2px 6px rgb(0 32 91 / 9%);
+
+  // --- Frame --------------------------------------------------------------------------------
+  --sec-toolbar-height: 56px;
+  --sec-sidenav-width: 280px;
+  --sec-sheet-max-width: 1120px;
+  --sec-gutter: 26px;
 }

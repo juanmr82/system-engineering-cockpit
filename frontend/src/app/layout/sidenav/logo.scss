@@ -1,8 +1,15 @@
+// The 64px sidenav header. Sentence case, Airbus blue on white, and no trademark (CLAUDE.md §8).
+// The navy bottom rule is the same 3px lead rule a sheet carries — it marks this block as the
+// masthead of the navigation without needing a fill.
 .sec-logo {
   display: flex;
   align-items: center;
   height: 64px;
   padding: 0 16px;
-  font-weight: 600;
+  border-bottom: var(--sec-rail) solid var(--sec-blue);
   color: var(--sec-blue);
+  font-size: var(--sec-text-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
 }

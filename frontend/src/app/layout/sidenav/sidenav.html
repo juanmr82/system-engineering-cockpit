@@ -4,7 +4,12 @@
     <div class="sec-sidenav__group-label">{{ group.label }}</div>
     <mat-nav-list>
       @for (item of group.items; track item.key) {
-        <a mat-list-item [routerLink]="item.route" routerLinkActive="sec-sidenav__item--active">
+        <a
+          mat-list-item
+          class="sec-sidenav__item"
+          [routerLink]="item.route"
+          routerLinkActive="sec-sidenav__item--active"
+        >
           {{ item.label }}
         </a>
       }

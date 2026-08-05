@@ -1,0 +1,252 @@
+// The document vocabulary: a requirement tree rendered as nested paper cards.
+//
+// This is the other half of docs/proposed_new_style.md — the half that targets a view the app
+// has not built yet (`/requirements/review`, and whatever renders a module's objects in document
+// order). It is kept here, translated into tokens and mixins, so the specified look survives
+// until that view lands instead of living in an untracked stylesheet.
+//
+// Nothing includes these yet. Sass mixins emit no CSS until they are included, so this file
+// costs nothing in the bundle — it is a contract, not shipped code.
+//
+// Consumed as `@use 'document' as doc;` alongside `@use 'mixins' as sec;`.
+
+@use 'mixins' as sec;
+
+// ---------------------------------------------------------------------------------------------
+// The depth rail
+// ---------------------------------------------------------------------------------------------
+
+// Hierarchy depth is carried by one custom property, --rail, set on the node and read by
+// everything inside it: the card's left border, the connector line to its children, the level
+// badge's fill. Depth therefore has exactly one definition, and a card never needs to know how
+// deep it sits — it just reads --rail.
+//
+// The ramp runs navy → mist, so the deeper the object the quieter its rail. That is the right
+// direction for a requirements tree: the structure recedes and the text stays.
+@mixin depth-rails {
+  --rail: var(--sec-grey-blue);
+
+  &[data-level='1'] {
+    --rail: var(--sec-blue);
+  }
+
+  &[data-level='2'] {
+    --rail: var(--sec-blue-deep);
+  }
+
+  &[data-level='3'] {
+    --rail: var(--sec-blue-mid);
+  }
+
+  &[data-level='4'] {
+    --rail: var(--sec-blue-light);
+  }
+
+  &[data-level='5'] {
+    --rail: var(--sec-blue-pale);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tree structure
+// ---------------------------------------------------------------------------------------------
+
+@mixin tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+// The indented list of children, hung off its parent's rail colour. `:empty` collapses so a leaf
+// with an empty children list does not leave a dangling connector.
+@mixin tree-children {
+  list-style: none;
+  margin: 0 0 0 15px;
+  padding: 6px 0 0 22px;
+  border-left: var(--sec-hairline) solid var(--sec-line);
+
+  &:empty {
+    display: none;
+    padding: 0;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The object card
+// ---------------------------------------------------------------------------------------------
+
+@mixin tree-card {
+  background: var(--sec-paper);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-left: var(--sec-rail) solid var(--rail);
+  border-radius: var(--sec-radius);
+  margin: 0 0 8px;
+}
+
+// The clickable summary line: twisty, level badge, object id, then the collapsed-only count.
+@mixin tree-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background: var(--sec-wash);
+  }
+
+  // Inset, because the card sits inside a bounded scroll container that would clip an offset ring.
+  &:focus-visible {
+    @include sec.focus-ring(-2px);
+  }
+}
+
+@mixin tree-card-body {
+  padding: 2px 14px 14px;
+  border-top: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+// A CSS triangle rather than an icon: it is a disclosure affordance, not content, and one that
+// never waits on an SVG to load.
+@mixin twisty {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid var(--sec-ink-3);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform: rotate(90deg);
+  transition: transform 0.12s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+// The object identifier — the thing a user reads first and quotes in a review.
+@mixin object-id {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sec-blue);
+}
+
+// `Object Text` and friends. `pre-wrap` because DOORS text carries its own line breaks and they
+// are meaningful; `anywhere` because it also carries unbroken identifiers and paths.
+@mixin object-text {
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  color: var(--sec-ink);
+}
+
+// A card whose object is a problem — a dangling link, an unparseable number, an __UNDEFINED
+// placeholder. Red rail, red id, and not expandable, because there is nothing beneath it.
+@mixin tree-card-warning {
+  border-left-color: var(--sec-highlight-error);
+
+  .sec-doc__id {
+    color: var(--sec-highlight-error);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Annotations hanging off a card
+// ---------------------------------------------------------------------------------------------
+
+// Extended attributes: the source attributes beyond the ones the card header shows.
+@mixin extended-attributes($label-width: 150px) {
+  @include sec.accent-panel(var(--sec-blue-mid), var(--sec-wash-cool));
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 3px 0;
+  }
+
+  dt {
+    @include sec.field-label;
+
+    flex: none;
+    width: $label-width;
+    color: var(--sec-blue-deep);
+  }
+
+  dd {
+    flex: 1 1 220px;
+    margin: 0;
+    font-size: var(--sec-text-sm);
+    color: var(--sec-ink);
+    overflow-wrap: anywhere;
+  }
+
+  .sec-doc__missing {
+    @include sec.absent-text;
+  }
+}
+
+// Verification: green rail when a method is stated, neutral when none is.
+@mixin verification-panel {
+  @include sec.accent-panel(var(--sec-highlight-verified), var(--sec-wash));
+
+  &.sec-doc__verification--none {
+    border-left-color: var(--sec-line);
+    background: #f7f9fa;
+  }
+}
+
+@mixin verification-method {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--sec-text-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sec-ink-2);
+
+  b {
+    @include sec.badge(var(--sec-blue-deep));
+
+    min-width: 17px;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Supporting blocks
+// ---------------------------------------------------------------------------------------------
+
+// A list of module names or URLs — monospaced, because these are identifiers to compare, and
+// wrapped in their own tinted tiles so a long path does not run into the next one.
+@mixin identifier-list($min-column: 320px) {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax($min-column, 1fr));
+  gap: 6px;
+
+  li {
+    @include sec.mono;
+
+    padding: 6px 10px;
+    background: var(--sec-wash);
+    border: var(--sec-hairline) solid var(--sec-line-soft);
+    border-radius: var(--sec-radius);
+    font-size: 12px;
+    color: var(--sec-ink-2);
+    overflow-wrap: anywhere;
+  }
+}
+
+@mixin document-footer {
+  margin: 20px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
+  text-align: center;
+}

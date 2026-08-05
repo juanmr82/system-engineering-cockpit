@@ -7,7 +7,7 @@ import { EmptyState } from '../../../shared/empty-state/empty-state';
   template: `
     <sec-empty-state
       title="Req review"
-      description="Review campaigns and verdicts (Tier-2 :__Meta data) will be managed here."
+      description="Review campaigns and their verdicts will be managed here."
     />
   `,
 })

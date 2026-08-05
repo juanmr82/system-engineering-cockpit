@@ -2,7 +2,8 @@
 @use './styles/theme';
 
 // Inter, self-hosted (Airbus GDPR guidance forbids the Google Fonts CDN). Ship the woff2 files
-// in frontend/public/fonts/ — CLAUDE.md §8. Not yet added; this @font-face is the contract.
+// in frontend/public/fonts/ — CLAUDE.md §8. Not yet added; this @font-face is the contract, and
+// --sec-font falls back to Segoe UI until it is, which is what Windows 11 actually has.
 @font-face {
   font-family: 'Inter';
   src: url('/fonts/Inter-Variable.woff2') format('woff2');
@@ -11,15 +12,97 @@
   font-display: swap;
 }
 
-html,
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+
+  // Stops mobile Safari/Chrome inflating type on rotate, which would break the fixed 14px scale.
+  text-size-adjust: 100%;
+}
+
 body {
   height: 100%;
   margin: 0;
-  font-family: 'Inter', sans-serif;
+  background: var(--sec-shell);
+  color: var(--sec-ink);
+  font-family: var(--sec-font);
+  font-size: var(--sec-text-body);
+  line-height: var(--sec-leading);
+
+  // Requirement tables read as data, not prose: digits and object numbers line up column-wise.
   font-variant-numeric: tabular-nums;
 }
 
-// Sentence case everywhere, never italic (CLAUDE.md §8) — the defaults, not an opt-in.
+// Sentence case everywhere, never italic (CLAUDE.md §8) — the defaults, not an opt-in. This is
+// also what keeps empty states and placeholders upright, where the source style italicised them.
 * {
   font-style: normal;
+}
+
+// One focus ring for the whole application, in the mid blue. Declared once here rather than per
+// component so no control can end up with a weaker one, or none (CLAUDE.md §9, keyboard).
+:focus-visible {
+  outline: 2px solid var(--sec-blue-mid);
+  outline-offset: 2px;
+}
+
+// Scrollbars in the paper idiom: a hairline-weight thumb on the shell, not a chrome-coloured bar
+// cutting across a sheet. Firefox takes the standard properties, Chromium needs the -webkit- ones.
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sec-grey-blue) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sec-grey-blue);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sec-blue-mid);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+// Motion is functional only, and this is part of the quality floor, not a nice-to-have
+// (CLAUDE.md §8). Everything decorative stops; nothing that conveys state is removed.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// Printing a view is how a review gets taken into a meeting, so it is a supported output: drop
+// the shell and the chrome, keep the sheets, and never break a card across a page.
+@media print {
+  body {
+    background: var(--sec-paper);
+  }
+
+  .sec-toolbar,
+  .sec-sidenav,
+  .mat-drawer-backdrop {
+    display: none !important;
+  }
 }

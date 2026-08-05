@@ -1,8 +1,17 @@
-// Generate the M3 palette from the Airbus seed once, and commit the result:
+// Angular Material, mapped onto the paper style.
+//
+// The M3 palette is generated from the Airbus seed and committed (CLAUDE.md §8):
 //   ng generate @angular/material:theme-color
 //   seed: #00205B ; secondary: #0085AD ; tertiary: #009F4D
-// That command writes styles/_theme-colors.scss ($light-theme / $dark-theme). This file is a
-// placeholder until it exists — do not hand-roll a palette here (CLAUDE.md §8).
+//
+// Everything below the palette is the extrapolation the proposed style does not cover: Material
+// ships rounded, roomy, Material-blue components, and the house style is squared, dense and
+// hairline-separated. Each adjustment goes through an M3 component token override — never
+// ::ng-deep, and never a rule targeting a .mdc-* or .mat-mdc-* internal class (§8).
+//
+// Density is deliberately not set globally. §8 asks for compact (-2) on tables and lists and
+// default on toolbar and dialogs, so container heights are stated per component here instead of
+// letting one density scale flatten all of them.
 @use '@angular/material' as mat;
 @use '../../theme-colors' as theme-colors;
 
@@ -12,5 +21,217 @@ html {
       primary: theme-colors.$primary-palette,
       tertiary: theme-colors.$tertiary-palette,
     ),
+    typography: (
+      plain-family: (Inter, 'Segoe UI', roboto, arial, helvetica, sans-serif),
+      brand-family: (Inter, 'Segoe UI', roboto, arial, helvetica, sans-serif),
+      regular-weight: 400,
+      medium-weight: 600,
+      bold-weight: 700,
+    ),
+  ));
+
+  // --- The application bar. The one saturated surface in the product (§9). ---------------------
+  @include mat.toolbar-overrides((
+    container-background-color: var(--sec-blue),
+    container-text-color: var(--sec-paper),
+    standard-height: var(--sec-toolbar-height),
+    mobile-height: var(--sec-toolbar-height),
+    title-text-font: var(--sec-font),
+    title-text-size: var(--sec-text-body),
+    title-text-weight: 600,
+  ));
+
+  // --- The drawer and the surface it reveals ---------------------------------------------------
+  // The content background is the shell, so a routed view's sheets have something to sit on.
+  //
+  // container-width matters: M3 defaults the drawer to 360px while §9 specifies 280px, and the
+  // nav inside it cannot narrow the host — the difference renders as a band of empty white
+  // between the navigation and the content, which reads as a broken column.
+  @include mat.sidenav-overrides((
+    container-width: var(--sec-sidenav-width),
+    container-background-color: var(--sec-paper),
+    container-divider-color: var(--sec-line),
+    container-text-color: var(--sec-ink),
+    container-shape: 0,
+    content-background-color: var(--sec-shell),
+    content-text-color: var(--sec-ink),
+  ));
+
+  // --- Navigation items. Quiet by default; the active rule is drawn in sidenav.scss. -----------
+  // M3 defaults the active indicator to corner-full (a pill); the house style is a square edge.
+  @include mat.list-overrides((
+    active-indicator-shape: 0,
+    active-indicator-color: transparent,
+    list-item-container-shape: 0,
+    list-item-one-line-container-height: 38px,
+    list-item-label-text-font: var(--sec-font),
+    list-item-label-text-size: var(--sec-text-sm),
+    list-item-label-text-color: var(--sec-ink-2),
+    list-item-hover-label-text-color: var(--sec-blue),
+    list-item-hover-state-layer-color: var(--sec-blue-mid),
+    list-item-hover-state-layer-opacity: 0.06,
+    list-item-focus-state-layer-color: var(--sec-blue-mid),
+    list-item-focus-state-layer-opacity: 0.1,
+  ));
+
+  // --- Buttons, from the proposal's .btn: 12.5px, squared, navy on white, mid-blue on hover. ---
+  // A filled button is the one committing action in a view; outlined and text are everything else.
+  @include mat.button-overrides((
+    filled-container-color: var(--sec-blue),
+    filled-container-shape: var(--sec-radius),
+    filled-container-height: 34px,
+    filled-label-text-color: var(--sec-paper),
+    filled-label-text-font: var(--sec-font),
+    filled-label-text-size: 12.5px,
+    filled-label-text-weight: 500,
+    filled-horizontal-padding: 16px,
+    outlined-container-shape: var(--sec-radius),
+    outlined-container-height: 34px,
+    outlined-outline-color: var(--sec-line),
+    outlined-outline-width: 1px,
+    outlined-label-text-color: var(--sec-blue),
+    outlined-label-text-font: var(--sec-font),
+    outlined-label-text-size: 12.5px,
+    outlined-label-text-weight: 500,
+    outlined-horizontal-padding: 14px,
+    text-container-shape: var(--sec-radius),
+    text-container-height: 34px,
+    text-label-text-color: var(--sec-blue),
+    text-label-text-font: var(--sec-font),
+    text-label-text-size: 12.5px,
+    text-label-text-weight: 500,
+  ));
+
+  @include mat.icon-button-overrides((
+    container-shape: var(--sec-radius),
+    icon-color: var(--sec-ink-2),
+    state-layer-color: var(--sec-blue-mid),
+  ));
+
+  // --- Text input. Outline only — the filled variant has no place in a paper document. ---------
+  @include mat.form-field-overrides((
+    outlined-container-shape: var(--sec-radius),
+    outlined-outline-width: 1px,
+    outlined-outline-color: var(--sec-line),
+    outlined-hover-outline-color: var(--sec-blue-mid),
+    outlined-focus-outline-color: var(--sec-blue-mid),
+    outlined-focus-outline-width: 2px,
+    outlined-label-text-color: var(--sec-ink-3),
+    outlined-focus-label-text-color: var(--sec-blue-mid),
+    outlined-input-text-color: var(--sec-ink),
+    outlined-input-text-placeholder-color: var(--sec-ink-3),
+    container-text-font: var(--sec-font),
+    container-text-size: var(--sec-text-body),
+    container-height: 42px,
+    subscript-text-size: var(--sec-text-xs),
+    error-text-color: var(--sec-highlight-error),
+  ));
+
+  @include mat.select-overrides((
+    enabled-trigger-text-color: var(--sec-ink),
+    enabled-arrow-color: var(--sec-ink-3),
+    focused-arrow-color: var(--sec-blue-mid),
+    placeholder-text-color: var(--sec-ink-3),
+    trigger-text-font: var(--sec-font),
+    trigger-text-size: var(--sec-text-body),
+    panel-background-color: var(--sec-paper),
+  ));
+
+  @include mat.option-overrides((
+    label-text-font: var(--sec-font),
+    label-text-size: var(--sec-text-sm),
+    label-text-color: var(--sec-ink),
+    selected-state-label-text-color: var(--sec-blue),
+    selected-state-layer-color: var(--sec-wash),
+    hover-state-layer-color: var(--sec-wash),
+  ));
+
+  // --- Tabs: a 2px navy rule under the active tab, nothing else. -------------------------------
+  // Labels stay sentence case at 11.5px rather than becoming 10px uppercase micro-labels: a tab
+  // is a control the user clicks, not a caption over data, and §8 allows caps only for headlines.
+  @include mat.tabs-overrides((
+    active-indicator-color: var(--sec-blue),
+    active-indicator-height: 2px,
+    active-indicator-shape: 0,
+    active-label-text-color: var(--sec-blue),
+    active-hover-label-text-color: var(--sec-blue),
+    active-focus-label-text-color: var(--sec-blue),
+    inactive-label-text-color: var(--sec-ink-3),
+    inactive-hover-label-text-color: var(--sec-blue-mid),
+
+    // Material's default state layer is an off-palette grey, which reads as a filled tab and
+    // competes with the underline that is supposed to carry "active".
+    active-ripple-color: var(--sec-blue-mid),
+    inactive-ripple-color: var(--sec-blue-mid),
+    label-text-font: var(--sec-font),
+    label-text-size: var(--sec-text-xs),
+    label-text-weight: 600,
+    label-text-tracking: 0.04em,
+    divider-color: var(--sec-line),
+    divider-height: 1px,
+    container-height: 42px,
+  ));
+
+  // --- Checkbox. Navy by default; Tier-2 writes recolour it via sec.meta-checkbox. -------------
+  @include mat.checkbox-overrides((
+    selected-icon-color: var(--sec-blue),
+    selected-hover-icon-color: var(--sec-blue),
+    selected-focus-icon-color: var(--sec-blue),
+    selected-pressed-icon-color: var(--sec-blue),
+    selected-checkmark-color: var(--sec-paper),
+    unselected-icon-color: var(--sec-ink-3),
+    unselected-hover-icon-color: var(--sec-blue-mid),
+    label-text-font: var(--sec-font),
+    label-text-size: var(--sec-text-sm),
+    label-text-color: var(--sec-ink),
+    state-layer-size: 34px,
+  ));
+
+  // --- Dialogs are sheets: 3px radius, the same as .paper, and tight padding. -------------------
+  @include mat.dialog-overrides((
+    container-color: var(--sec-paper),
+    container-shape: var(--sec-radius-sheet),
+    subhead-color: var(--sec-blue),
+    subhead-font: var(--sec-font),
+    subhead-size: var(--sec-text-lead),
+    subhead-weight: 600,
+    supporting-text-color: var(--sec-ink),
+    supporting-text-font: var(--sec-font),
+    supporting-text-size: var(--sec-text-body),
+    headline-padding: 18px 22px 6px,
+    content-padding: 0 22px,
+    with-actions-content-padding: 0 22px,
+    actions-padding: 12px 22px 16px,
+  ));
+
+  @include mat.menu-overrides((
+    container-color: var(--sec-paper),
+    container-shape: var(--sec-radius),
+    item-label-text-font: var(--sec-font),
+    item-label-text-size: var(--sec-text-sm),
+    item-label-text-color: var(--sec-ink),
+    item-hover-state-layer-color: var(--sec-wash),
+    divider-color: var(--sec-line-soft),
+  ));
+
+  @include mat.tooltip-overrides((
+    container-color: var(--sec-blue),
+    container-shape: var(--sec-radius),
+    supporting-text-color: var(--sec-paper),
+    supporting-text-font: var(--sec-font),
+    supporting-text-size: var(--sec-text-xs),
+  ));
+
+  // A 2px rule, not a 4px bar: loading is information, not decoration.
+  @include mat.progress-bar-overrides((
+    active-indicator-color: var(--sec-blue-mid),
+    active-indicator-height: 2px,
+    track-color: var(--sec-line-soft),
+    track-height: 2px,
+    track-shape: 0,
+  ));
+
+  @include mat.sort-overrides((
+    arrow-color: var(--sec-ink-3),
   ));
 }

@@ -5,7 +5,9 @@
 }
 
 .sec-settings__name {
-  padding: 0 24px 8px;
+  padding: 0 22px 10px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+  margin-bottom: 4px;
 }
 
 // A concrete height, not flex alone: the sticky headers inside the tabs need a bounded scroll
@@ -22,8 +24,7 @@
   flex-direction: column;
   gap: 12px;
   height: 100%;
-  padding: 16px 4px 0;
-  box-sizing: border-box;
+  padding: 16px 2px 0;
 }
 
 .sec-settings__level {
@@ -31,19 +32,19 @@
 }
 
 .sec-settings__hint {
-  margin: 0;
-  color: var(--sec-grey-blue);
-  font-size: 0.8125rem;
+  @include sec.absent-text;
+
+  color: var(--sec-ink-2);
+  max-width: 70ch;
 }
 
+// The table sits in its own well inside the panel, the same shape the Modules view uses.
 .sec-settings__scroll {
-  @include sec.scroll-panel;
-
-  border: 1px solid color-mix(in srgb, var(--sec-blue) 15%, white);
+  @include sec.table-well;
 }
 
 table {
-  @include sec.data-table($row-height: 36px);
+  @include sec.data-table($row-height: 34px, $header-height: 34px);
 }
 
 // Ticking this writes Tier-2 data, so it wears the application accent, never a neutral control.
@@ -52,14 +53,15 @@ table {
 }
 
 .sec-settings__error {
-  @include sec.inline-error;
+  @include sec.error-panel;
+
+  margin: 12px 0 0;
 }
 
 // An empty attribute set is a normal state (a sanitised export), not a failure — it gets a plain
 // message, never a bare header row that reads as a broken table (R5, §9).
 .sec-settings__empty {
-  margin: 0;
+  @include sec.absent-text;
+
   padding: 16px;
-  color: var(--sec-grey-blue);
-  font-size: 0.8125rem;
 }
