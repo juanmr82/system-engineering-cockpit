@@ -3,124 +3,123 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-05 (end of session 4)
+## State as of 2026-08-06 (end of session 5)
 
-Branch `master`, nothing pushed. `master` is **not** the repo's main branch.
+Branch `master`, working tree clean, nothing pushed. `master` is **not** the repo's main branch.
 
-- `b7c1e78 Verify the Req review backend against Neo4j, and unblock the container tests`
-- plus the Req review Angular view, committed on top of it.
+```
+c693c09 Rework the attribute settings dialog for modules with 78 attributes
+4aeffb8 Discover attributes from the whole module, not the first 25 objects
+58bcce2 Give the review table enough scroll buffer to survive a flick
+77b6542 Fix three things the Req review view only showed in a browser
+7092eba Build the Req review view
+b7c1e78 Verify the Req review backend against Neo4j, and unblock the container tests
+```
 
-Session 3's open item — "prove the Req review backend works, then build its Angular view" — is
-done on both halves, and the view has now been driven in a browser against the live 984-object
-module.
+The Req review view (`docs/REQ_REVIEW.md` §1–§7) is built, driven in a browser against real data,
+and works. **Two real DOORS modules are now imported**, which changed what "works" means — see the
+next section.
 
 ---
 
 ## Resume here
 
-Nothing is half-done. The largest unbuilt things, in the order they were specified:
+### 1. The table is the open problem, and it needs a decision first
 
-1. **`docs/features/attribute-policy-checks.md`** — the spec is complete and
-   `GET /modules/{ref}/checks/attribute-policy` does not exist. It is the natural next feature: the
-   Mandatory flag the review dialog now writes has no consumer until it ships.
-2. **`GET /api/v1/config/navigation`** — still a TODO that 404s on every page load.
-3. The remaining views are still empty states (Statistics, Windchill, SOI views, Functions).
+With real data the review table has three defects that share one cause — it was designed against a
+module with five columns and now has fourteen:
 
-**What could not be exercised, and needs an unsanitised DOORS export:** the whole
-attribute-dependent half of the review view. The live export is sanitised, so
-`GET /modules/{ref}/attributes` legitimately returns `[]`, nothing can be marked Visible,
-Mandatory or Verification, and the table shows only its five fixed columns. The component tests
-cover that logic against a fixture that has attributes; the browser cannot, on this data.
+| Defect | Why it matters |
+|---|---|
+| **ID scrolls out of view** — by column 6 you cannot tell which requirement a row is | Fatal for review work |
+| **Comment is ~9 columns off-screen** — the point of the view is unreachable without scrolling right | Fatal |
+| **No column resize** — `Object Text` is a full requirement statement truncated to one line | Severe |
+| **No sorting** — `REQ_REVIEW.md` §5 asks for it; it was never built | Owed |
+| **No column virtualization** — tick 40 attributes and every rendered row holds 45 cells | Degrades as it is used |
 
-### What was checked in the browser, and what it cost
+Pinned columns + resize + sort + column virtualization is exactly ag-grid Community's (MIT) feature
+list. **The decision is open and it is the user's:**
 
-Driven against the live module: the empty state, the module selector, 984 rows in document order,
-virtual scrolling, search (`1 shown / 984 in module`), the requirements-only filter (**487 shown**,
-matching the backend's `requirementLike` count exactly), the detail panel from a row id and from an
-incoming reference, a comment typed → saved → verified in the graph → cleared → verified gone, the
-exit guard with its singular wording and Keep editing, and the settings dialog. The graph was left
-with exactly the one `:__Classification` it started with.
+- **ag-grid Community** — ~10–12 h for the review table, +2 h to move the Modules view onto it so
+  there are not two table systems. Everything above arrives working. Costs: a second theming
+  system next to Material's M3 tokens (the user said they are flexible on ag-grid's styling, which
+  removes most of that), and a trap — ag-grid's `field` treats a dot as a property path, so
+  `REQ. Priorität` silently renders blank. Every column must use `colId` + `valueGetter`.
+- **By hand** — sticky pinned columns ~3 h, resize ~4 h, sorting ~2 h ≈ 9 h. Barely cheaper, no
+  column virtualization, and we own it forever.
+- **TanStack Table** was considered and is the weaker fit *for this complaint*: headless means the
+  scroll container and pinning land back on us. It would be the better answer if the objection were
+  the styling.
 
-Three defects were found and fixed:
+Recommendation on the evidence: **ag-grid Community**. Do not start the table until this is settled,
+because the two paths share almost no work.
 
-- The module selector's closed control rendered the option's secondary path text too, as one
-  run-on string (`SRD/XXX-/Level 1 - System/SRD`). Needs an explicit `mat-select-trigger`.
-- A row with several unresolved references repeated "Not yet imported" once per target — three
-  identical phrases, clipped, in a 46px row. Unresolved targets are now counted
-  (`3 not yet imported`) with the modules named in the tooltip. A placeholder has no id to tell
-  one from another anyway, which is why listing them individually was never going to work.
-- The requirements-only checkbox wore the Tier-2 accent. That accent means "the application wrote
-  this, DOORS did not"; a filter writes nothing, and spending the signal there weakens it.
+### 2. The Modules settings dialog has the same problem the review dialog just had
 
-One trap for the next session: **`Page.captureScreenshot` times out on this app** roughly one call
-in five, reporting "the renderer may be frozen". It is not — a frame-gap measurement across the
-same interaction showed a worst frame of 18ms. Re-take the screenshot rather than debugging the
-app.
+`features/requirements/modules/module-settings-dialog.*` still has the pre-rework shape: a
+mandatory-only tab, no search, a small scroll window. Against SRD's 78 attributes it is as awkward
+as the review dialog was. The pattern to copy now exists in `review-settings-dialog.*` — one
+CSS-grid list, `shared/text/normalize.ts` for the search, per-column All/None with `markAsDirty()`.
+**~2 h, independent of the ag-grid decision.**
+
+### 3. Smaller, already specified
+
+- **`docs/features/attribute-policy-checks.md` is not implemented.** The spec is complete and
+  `GET /modules/{ref}/checks/attribute-policy` does not exist. The Mandatory flag the dialog writes
+  has no consumer until it ships — and 8 policies are already stored on Segment.
+- **`GET /api/v1/config/navigation` is still a TODO** and 404s on every page load. The sidenav's
+  hardcoded fallback masks it; it is the one standing console error and it is expected.
+- Statistics, Windchill, SOI views and Functions are still empty states.
 
 ---
 
-## What was built this session
+## What was done this session
 
-### 1. Docker, and why the error lied
+### The two-module import went clean
 
-`integrationTest` had never run. Testcontainers reported **"Could not find a valid Docker
-environment"**, which reads as "the daemon is down" — it was up, and `docker info` worked.
+Checked after loading: **0 stale `:__UNDEFINED:DOORSObject`** — the risk that a placeholder keeps
+its `__UNDEFINED` label after the referenced module is imported did not materialise, so the loader
+clears it. **461 cross-module references now resolve**, which is the path that could never be
+exercised before. 318 placeholders remain, pointing at modules that are genuinely not imported.
 
-The real cause: docker-java negotiates **Docker API 1.32**, and **Engine 29 rejects anything below
-1.40** with a 400 carrying no message. Reproduce it in one line:
-`DOCKER_API_VERSION=1.32 docker info` fails, `1.41` succeeds.
+| Module | Objects | Attributes | Configured |
+|---|---|---|---|
+| SRD | 977 | 78 | system level L1 |
+| Segment | 903 | 53 | L2, 9 visible, 8 mandatory |
 
-Fixed in `backend/build.gradle.kts` by pinning `api.version=1.41` on the `integrationTest` task
-(overridable from the command line), with Testcontainers bumped to 1.21.3. Nothing about
-`DOCKER_HOST` or the `desktop-linux` context was the problem, though both look like it.
+### A silent data bug, found and fixed (`4aeffb8`)
 
-### 2. The review backend, verified
+**Attribute discovery sampled the first 25 objects and lost `Object Text` on SRD.** 774 of 977
+objects carry it and 203 do not; the 25 the planner returned were among the 203. The module's most
+important attribute never reached the settings dialog and could not be shown in the table — it
+looked like a gap in the export, not a bug. Discovery now reads the whole module.
 
-`./gradlew :backend:check :backend:integrationTest` is **green**: 15 Docker-free tests plus
-`ReviewFeatureTest` (11) and `ModulesFeatureTest` (3) against a real Neo4j Community container.
+The sample was never buying anything: through the driver, 25 objects and 977 both answer in
+**~17ms**. Beware measuring this with Neo4j's HTTP API on `:7474` — it charges ~2.1s for `RETURN 1`,
+which is how the full scan first looked like a 2-second regression.
 
-`ModulesFeatureTest`'s meta-schema test could never have passed as written: `SHOW INDEXES` returns
-**NULL `labelsOrTypes`** for the token-lookup indexes every database ships, and coercing that to a
-list throws. It now also asserts `meta_attribute_setting`.
+### The dialog rework (`c693c09`)
 
-Against the live 984-object module, every expectation in session 3's table held. One correction to
-that table: **document order is not id order.** `SRD-1` is followed by `SRD-228`, `SRD-1187`,
-because DOORS ids do not ascend down the outline — which is exactly why `__sortKey` exists. A
-paged read looks unsorted and is not; check `__sortKey`, never the ids.
+Two stacked `mat-table`s became one CSS-grid list under one header; added search, per-column
+All/None over the filtered rows, and a taller dialog. Material caps dialog content at 65vh whatever
+the dialog's height is — overridden on our own class, not on a `.mat-mdc-*` internal.
 
-Also exercised live: item detail, traces both directions, a comment written, read back and cleared,
-with the graph returning to exactly one `:__Classification`.
+Two details worth keeping in mind:
 
-### 3. The Req review view (`docs/REQ_REVIEW.md` §1–§7)
+- **Bulk actions must call `markAsDirty()`.** Writing through a Signal Forms field's `value` signal
+  updates the model but does not mark the form dirty, and Save is gated on dirty — without it the
+  change is unsaveable.
+- **The search filters the view, never the payload.** Save sends the absolute state of all 78
+  attributes; sending only the visible rows would silently unset everything filtered out of sight.
+  That is what the last dialog test guards.
 
-`features/requirements/review/`: `requirement-review.{ts,html,scss}`, `review-settings-dialog.*`,
-`item-detail-panel.*`, `review-api.service.ts`, `review.model.ts`, `review.guard.ts`,
-`requirement-review.spec.ts`. New shared `ConfirmDialog`; four new SVG icons (close, save, search,
-info) registered in `sec-icons.ts`.
+### Scroll buffer (`58bcce2`) and three browser-found fixes (`77b6542`)
 
-**The table is not a `mat-table`.** Material has no virtual scroll for tables, and the combination
-of ~1 000 rows, a dynamic column set and a sticky header is where that hurts. The layout instead
-is: one box that scrolls horizontally, holding a header row and a `cdk-virtual-scroll-viewport`
-that scrolls vertically. The header is inside the horizontal scroller, so it tracks the columns
-sideways and never moves vertically — no scroll listener, no `position: sticky`, no transform
-fighting. Header and rows share one `grid-template-columns` string computed from the visible
-attribute list.
-
-Consequences worth knowing before changing it: rows are a fixed 46px because virtual scroll
-requires it, so every cell truncates with an ellipsis and carries a tooltip; and a DOORS attribute
-name is only ever a display label — cells are addressed by index, never by name.
-
-Other decisions:
-
-- **Saving does not reload the table** (§5.2). The save response is applied as an overlay keyed by
-  `ref`, which is what that response payload is for. `commentText()` reads edit → overlay → loaded
-  row, and `storedText()` is the baseline an edit is measured against, so typing a comment back to
-  its original text stops being an edit.
-- **The exit guard is one `CanDeactivateFn`** reading the component instance, plus a
-  `window:beforeunload` host binding for tab close. No store, no router-wide guard (R7).
-- The selected module is a query parameter, seeded from the route snapshot. On a cancelled discard
-  the `MatSelect` is put back by hand — Material has already moved its own value by the time
-  `selectionChange` fires, and re-rendering an unchanged binding will not undo that.
+The viewport had CDK's default 100px/200px buffers — three spare rows at 46px — so a flick showed
+blank bands until the re-render landed. Now one screen of buffer, two at most. Also fixed: the
+module selector leaked the option's path into the closed control, unresolved references repeated
+"Not yet imported" once per target and clipped, and the requirements-only checkbox wore the Tier-2
+accent (which means "the app wrote this", and a filter writes nothing).
 
 ---
 
@@ -129,69 +128,69 @@ Other decisions:
 | | Status |
 |---|---|
 | `./gradlew :backend:check` | **green** |
-| `./gradlew :backend:integrationTest` | **green** — 14 container tests |
-| Review endpoints against the live 984-object graph | **green** — reads, comment write, comment delete |
-| `npm run lint` / `npm test` / `npm run build` | **green** — 14 tests, 7 of them new |
-| The Req review view in a browser, against the live module | **driven end to end** — see above |
-| Dynamic attribute columns, mandatory/visible/verification end to end | **not exercisable** on the sanitised export |
+| `./gradlew :backend:integrationTest` | **green** — 15 container tests |
+| `npm run lint` / `npm test` / `npm run build` | **green** — 20 tests |
+| Review view in a browser: table, search, filter, detail panel, comment save/clear, exit guard | **driven end to end** against the live modules |
+| The **reworked** dialog rendered | **not seen** — the Chrome extension disconnected after the rework. Covered by 6 tests and DOM measurements |
+| Cross-module references rendering in the table | **not looked at** — 461 now resolve, so the References column finally has real ids and module names to show |
 
 ---
 
 ## Environment
 
-- Neo4j runs natively from `C:\Users\juanm\neo4j\neo4j-community-2026.06.0`, creds
-  `neo4j` / `admin123`, no Windows service: `./bin/neo4j.bat console`.
-- Docker Desktop 29.4.0. The `neo4j:2026.06.0-community` image is pulled.
-- Backend `:8080`; `npm start` → `:4200` (`proxy.conf.json` forwards `/api`).
-- Neo4j's HTTP API on `:7474` is the quickest way to inspect the graph:
-  `POST /db/neo4j/tx/commit` with basic auth and `{"statements":[{"statement":"..."}]}`. It warns
-  that it is deprecated in favour of the Query API; it still works.
+- Backend `:8080` (`SEC_NEO4J_USER=neo4j SEC_NEO4J_PASSWORD=admin123 ./gradlew :backend:run`);
+  frontend `npm start` → `:4200`. Both were left running.
+- Neo4j runs natively from `C:\Users\juanm\neo4j\neo4j-community-2026.06.0`, creds `neo4j` /
+  `admin123`, no Windows service: `./bin/neo4j.bat console`.
+- Docker Desktop 29.4.0, `neo4j:2026.06.0-community` pulled. Container tests need the
+  `api.version=1.41` pin already in `backend/build.gradle.kts` — Engine 29 rejects the 1.32 that
+  docker-java negotiates by default, and reports it as "Could not find a valid Docker environment".
 
-### The live graph, as measured
+### Traps that cost time this session
 
-984 `DOORSObject` (all `DOORSTBD` — sanitised export), 318 `:__UNDEFINED` placeholders,
-1 `DOORSModule`, 409 `refersTo` of which 343 objects have at least one unresolved target,
-33 objects have an incoming link, 1 `:__Classification`. No user attributes at all.
-
-### Traps that cost time
-
-1. **The `Write` tool mangles raw Unicode combining characters** — confirmed again. The accent
-   regex in `requirement-review.ts` had to be patched to `/[\u0300-\u036f]/g` at byte level after
-   `Write` wrote the literal characters. Check with `grep | cat -A` after writing one.
-2. **`git checkout -- <file>` reverts the whole file**, including uncommitted work you meant to
-   keep. Cost a restore of four unrelated edits here.
-3. `angular.json` changes need a dev-server restart; the symptom is all component CSS silently
-   missing.
-4. Never run npm as `npm --prefix frontend …` from the repo root. Run it from `frontend/`.
+1. **`./gradlew :backend:run` keeps serving the code it started with.** A backend left running from
+   an earlier session served the old attribute discovery for the whole browser pass, so the dialog
+   showed 76 attributes after the fix was committed. Restart it after any backend change:
+   `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process`.
+2. **Neo4j's HTTP API on `:7474` costs ~2.1s per request regardless of the query.** Fine for
+   inspecting the graph, useless for timing it. Time through the app's endpoints instead.
+3. **`Page.captureScreenshot` intermittently times out on this app** ("the renderer may be frozen")
+   and dialog screenshots come back looking translucent. Both are the capture pipeline: the surface
+   measures `rgb(255,255,255)` at opacity 1, and frame-gap sampling showed a worst frame of 18ms.
+   Re-take the screenshot; do not debug the app. Measure with `javascript_tool` when in doubt —
+   but note `requestAnimationFrame` does not fire in a non-focused tab, so rAF loops hang.
+4. **The `Write` tool mangles raw Unicode combining characters.** The accent range must read
+   `/[\u0300-\u036f]/g`; check with `grep | cat -A` after writing, and patch at byte level with
+   Python if needed. It is now in one place: `shared/text/normalize.ts`.
+5. **`git checkout -- <file>` reverts the whole file**, including uncommitted work meant to be kept.
 
 ---
 
-## Known gaps
+## Known gaps that are not on the critical path
 
-- **`GET /api/v1/config/navigation` is still a TODO** and 404s on every page load. The sidenav's
-  hardcoded fallback masks it; this is the one standing console error and it is expected.
-- **Inter is not shipped** (`public/fonts/` holds only `.gitkeep`), so the app renders in the Segoe
-  UI fallback. The `@font-face` contract is in `styles.scss`.
-- **The Material icon font is not self-hosted**, so every icon must be an SVG in `public/icons/`
-  registered in `sec-icons.ts`. A `<mat-icon>ligature</mat-icon>` renders as raw text.
-- **`GET /items/{ref}/traces` never fills `moduleName`**, though the row payload does — the traces
-  endpoints skip the per-page module-name lookup. Nothing consumes it yet (the References column
-  reads the row), so it is an inconsistency rather than a bug. Fix when the detail panel starts
-  showing links.
-- **`docs/features/attribute-policy-checks.md` is not implemented** —
-  `GET /modules/{ref}/checks/attribute-policy` does not exist. Its spec is complete.
-- **No backend static analysis** (ktlint/detekt); `BACKEND_REVIEW.md` §5 flags it as its own call.
-- **O5:** `incomingComplete` is hard-coded `false`. Making it real needs import-coverage tracking
+- **`GET /items/{ref}/traces` never fills `moduleName`**, though the row payload does. Nothing
+  consumes it yet (the References column reads the row). Fix when the detail panel links out.
+- **`incomingComplete` is hard-coded `false`** (O5). Making it real needs import-coverage tracking
   and no wire change.
+- **A module node missing `__id` or `__name` would 500 the whole modules list** — those two are read
+  with no fallback while `lastModified` and `path` have defaults, and Community cannot enforce
+  property existence (§7). Two-line defensive fix, not yet done.
+- **Inter is not shipped** (`public/fonts/` holds only `.gitkeep`); the app renders in Segoe UI.
+- **The Material icon font is not self-hosted**, so every icon must be an SVG in `public/icons/`
+  registered in `core/icons/sec-icons.ts`. A `<mat-icon>ligature</mat-icon>` renders as raw text.
+- **No backend static analysis** (ktlint/detekt); `BACKEND_REVIEW.md` §5 flags it as its own call.
 - `SE_ITEM_SCHEMA.md` and `DOORS_TO_NEO4J_IMPORTER_SPEC.md` are still stubs, and the DOORS importer
-  is still `NotImplementedError`. The live data was loaded by some other means.
+  in this repo is still `NotImplementedError` — the live data is loaded by other means.
 
 ---
 
-## Decisions taken, and where they live
+## Decisions
 
 `docs/adr/` — 0002 errors and log format, 0003 the paper visual style, 0004 the frontend quality
 gate, 0005 the Req review backend. Not to be re-litigated without changing the ADR.
 
-No architectural decisions are pending. The Req review view introduced no new ones: the layout
-choice above is a technique, not a rule, and is documented where it lives.
+**One decision is pending and it is the user's: ag-grid Community for the tables, or hand-rolled
+pinning, resize and sorting.** Everything needed to decide it is in "Resume here" §1. If ag-grid is
+chosen it deserves an ADR 0006, because it is the first UI dependency outside Angular Material and
+the reasoning (pinned columns and column virtualization at 78 attributes, not "grids are nice")
+should survive the choice.
