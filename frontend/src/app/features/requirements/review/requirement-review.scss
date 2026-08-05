@@ -68,9 +68,10 @@
   color: var(--sec-highlight-meta);
 }
 
+// Deliberately *not* the Tier-2 accent, though it is a checkbox in the same bar as the ones in the
+// settings dialog. That accent means "the application wrote this, DOORS did not"; a filter writes
+// nothing. Spending it here would weaken it where it matters (CLAUDE.md §8).
 .sec-review__filter {
-  @include sec.meta-checkbox;
-
   font-size: var(--sec-text-xs);
 }
 

@@ -12,6 +12,11 @@
         (selectionChange)="selectModule($event.value)"
         panelWidth="auto"
       >
+        <!-- Without an explicit trigger the closed control renders the whole option, path and
+             all, as one run-on string. The path disambiguates two modules of the same name in
+             the list; it is noise once one is chosen. -->
+        <mat-select-trigger>{{ selectedModuleName() }}</mat-select-trigger>
+
         @for (module of modulesApi.modules.value()?.rows ?? []; track module.ref) {
           <mat-option [value]="module.ref">
             <span class="sec-review__module-name">{{ module.name }}</span>
@@ -156,31 +161,30 @@
                 @if (entry.row.references.outgoing.length) {
                   <span class="sec-review__refs">
                     <span class="sec-review__refs-label">Out</span>
-                    @for (reference of entry.row.references.outgoing; track reference.ref) {
-                      <button
-                        type="button"
-                        class="sec-review__ref"
-                        [class.sec-review__ref--unresolved]="!reference.resolved"
-                        [matTooltip]="reference.resolved ? '' : 'Not yet imported' + (reference.moduleName ? ' (module ' + reference.moduleName + ')' : '')"
-                        (click)="openReference(reference)"
-                      >
-                        {{ reference.resolved ? reference.id : 'Not yet imported' }}
+                    @for (reference of entry.outgoing.resolved; track reference.ref) {
+                      <button type="button" class="sec-review__ref" (click)="openDetail(reference.ref)">
+                        {{ reference.id }}
                       </button>
+                    }
+                    @if (entry.outgoing.unresolvedCount; as count) {
+                      <span class="sec-review__ref--unresolved" [matTooltip]="entry.outgoing.unresolvedTooltip">
+                        {{ count }} not yet imported
+                      </span>
                     }
                   </span>
                 }
                 @if (entry.row.references.incoming.length) {
                   <span class="sec-review__refs">
                     <span class="sec-review__refs-label">In</span>
-                    @for (reference of entry.row.references.incoming; track reference.ref) {
-                      <button
-                        type="button"
-                        class="sec-review__ref"
-                        [class.sec-review__ref--unresolved]="!reference.resolved"
-                        (click)="openReference(reference)"
-                      >
-                        {{ reference.resolved ? reference.id : 'Not yet imported' }}
+                    @for (reference of entry.incoming.resolved; track reference.ref) {
+                      <button type="button" class="sec-review__ref" (click)="openDetail(reference.ref)">
+                        {{ reference.id }}
                       </button>
+                    }
+                    @if (entry.incoming.unresolvedCount; as count) {
+                      <span class="sec-review__ref--unresolved" [matTooltip]="entry.incoming.unresolvedTooltip">
+                        {{ count }} not yet imported
+                      </span>
                     }
                   </span>
                 }

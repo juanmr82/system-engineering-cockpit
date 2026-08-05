@@ -28,6 +28,38 @@ interface TableRow {
   readonly row: ReviewRow;
   readonly cells: string[];
   readonly searchText: string;
+  readonly outgoing: RefGroup;
+  readonly incoming: RefGroup;
+}
+
+/**
+ * One direction of the References cell, split at load.
+ *
+ * Unresolved targets are counted rather than listed. Each one would otherwise render the same
+ * sentence — "Not yet imported", with no id to tell them apart, because a placeholder has none —
+ * and against the reference module that is three identical phrases in a 46px row, clipped. The
+ * count says the same thing in the space available, and the tooltip names the modules to import.
+ */
+interface RefGroup {
+  readonly resolved: Reference[];
+  readonly unresolvedCount: number;
+  readonly unresolvedTooltip: string;
+}
+
+function refGroup(references: Reference[]): RefGroup {
+  const resolved = references.filter((reference) => reference.resolved);
+  const unresolved = references.filter((reference) => !reference.resolved);
+  const modules = [
+    ...new Set(unresolved.map((reference) => reference.moduleName).filter((name) => !!name)),
+  ];
+
+  return {
+    resolved,
+    unresolvedCount: unresolved.length,
+    unresolvedTooltip: modules.length
+      ? `Not yet imported. Import ${modules.join(', ')} to see ${unresolved.length === 1 ? 'it' : 'them'}.`
+      : 'Not yet imported, and neither is the module these objects belong to.',
+  };
 }
 
 // Case- and accent-insensitive, the same contract the Modules search follows: what the user sees
@@ -160,6 +192,8 @@ export class RequirementReview {
         searchText: normalize(
           [row.id, row.type ?? '', row.name, ...cells, row.comment?.text ?? ''].join(' '),
         ),
+        outgoing: refGroup(row.references.outgoing),
+        incoming: refGroup(row.references.incoming),
       };
     });
   });
@@ -313,21 +347,9 @@ export class RequirementReview {
     this.selectedItem.set(ref);
   }
 
-  // An unresolved target has nothing to show: the object it stands for has not been imported, so
-  // the message names the module that has to be (§7).
-  protected openReference(reference: Reference): void {
-    if (reference.resolved) {
-      this.selectedItem.set(reference.ref);
-      return;
-    }
-    this.snackBar.open(
-      reference.moduleName
-        ? `This object has not been imported yet. Import ${reference.moduleName} to see it.`
-        : 'This object has not been imported yet, and neither has the module it belongs to.',
-      'Dismiss',
-      { duration: 6000 },
-    );
-  }
+  // §7 asks for a message when an unresolved target is clicked. It is a tooltip on a plain span
+  // instead of a snackbar on a button: the same wording, naming the same module, but the target
+  // never looks clickable in the first place — which is what §5.1 asks for.
 
   protected closeDetail(): void {
     this.selectedItem.set(null);

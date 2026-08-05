@@ -11,37 +11,51 @@ Branch `master`, nothing pushed. `master` is **not** the repo's main branch.
 - plus the Req review Angular view, committed on top of it.
 
 Session 3's open item — "prove the Req review backend works, then build its Angular view" — is
-done on both halves, with one gap: **the view has never been seen in a browser.**
+done on both halves, and the view has now been driven in a browser against the live 984-object
+module.
 
 ---
 
 ## Resume here
 
-**Look at `/requirements/review` in a browser against the live module.** The Chrome extension was
-not connected this session, so every claim below about the view comes from the compiler, ESLint
-and 7 component tests — not from eyes. Everything else in this file has been executed.
+Nothing is half-done. The largest unbuilt things, in the order they were specified:
 
-```
-SEC_NEO4J_USER=neo4j SEC_NEO4J_PASSWORD=admin123 ./gradlew :backend:run   # :8080
-cd frontend && npm start                                                  # :4200
-```
+1. **`docs/features/attribute-policy-checks.md`** — the spec is complete and
+   `GET /modules/{ref}/checks/attribute-policy` does not exist. It is the natural next feature: the
+   Mandatory flag the review dialog now writes has no consumer until it ships.
+2. **`GET /api/v1/config/navigation`** — still a TODO that 404s on every page load.
+3. The remaining views are still empty states (Statistics, Windchill, SOI views, Functions).
 
-Then open `http://localhost:4200/requirements/review` and select **SRD**. What to look at, in
-the order that would expose the most:
+**What could not be exercised, and needs an unsanitised DOORS export:** the whole
+attribute-dependent half of the review view. The live export is sanitised, so
+`GET /modules/{ref}/attributes` legitimately returns `[]`, nothing can be marked Visible,
+Mandatory or Verification, and the table shows only its five fixed columns. The component tests
+cover that logic against a fixture that has attributes; the browser cannot, on this data.
 
-| Check | Why it is the risky one |
-|---|---|
-| 984 rows scroll smoothly, header stays put | CDK virtual scroll with a hand-built grid, not `mat-table` — see the layout note below |
-| the header stays aligned with the columns when scrolling **sideways** | the whole point of the layout; nothing syncs them in JS |
-| References cells fit in a 46px row | fixed row height is what virtual scroll needs; a row with many links may clip |
-| the comment box keeps its text while scrolling fast | `*cdkVirtualFor` recycles views; the buffer is keyed by `ref` and `trackByRef` is what holds it together |
-| typing, then changing module | should ask before discarding (§9.1); cancelling must put the selector back on the old module |
-| the gear dialog | this module has no attributes, so it should say so and offer only the five fixed columns |
+### What was checked in the browser, and what it cost
 
-The attribute-dependent half of the view **cannot be exercised against this data**: the live export
-is sanitised, so `GET /modules/{ref}/attributes` legitimately returns `[]`, no attribute can be
-marked Visible, and the table shows only its five fixed columns. Proving dynamic columns needs an
-unsanitised export. The component test covers the logic with a fixture that has attributes.
+Driven against the live module: the empty state, the module selector, 984 rows in document order,
+virtual scrolling, search (`1 shown / 984 in module`), the requirements-only filter (**487 shown**,
+matching the backend's `requirementLike` count exactly), the detail panel from a row id and from an
+incoming reference, a comment typed → saved → verified in the graph → cleared → verified gone, the
+exit guard with its singular wording and Keep editing, and the settings dialog. The graph was left
+with exactly the one `:__Classification` it started with.
+
+Three defects were found and fixed:
+
+- The module selector's closed control rendered the option's secondary path text too, as one
+  run-on string (`SRD/XXX-/Level 1 - System/SRD`). Needs an explicit `mat-select-trigger`.
+- A row with several unresolved references repeated "Not yet imported" once per target — three
+  identical phrases, clipped, in a 46px row. Unresolved targets are now counted
+  (`3 not yet imported`) with the modules named in the tooltip. A placeholder has no id to tell
+  one from another anyway, which is why listing them individually was never going to work.
+- The requirements-only checkbox wore the Tier-2 accent. That accent means "the application wrote
+  this, DOORS did not"; a filter writes nothing, and spending the signal there weakens it.
+
+One trap for the next session: **`Page.captureScreenshot` times out on this app** roughly one call
+in five, reporting "the renderer may be frozen". It is not — a frame-gap measurement across the
+same interaction showed a worst frame of 18ms. Re-take the screenshot rather than debugging the
+app.
 
 ---
 
@@ -118,7 +132,7 @@ Other decisions:
 | `./gradlew :backend:integrationTest` | **green** — 14 container tests |
 | Review endpoints against the live 984-object graph | **green** — reads, comment write, comment delete |
 | `npm run lint` / `npm test` / `npm run build` | **green** — 14 tests, 7 of them new |
-| The Req review view in a browser | **never seen** — Chrome extension not connected |
+| The Req review view in a browser, against the live module | **driven end to end** — see above |
 | Dynamic attribute columns, mandatory/visible/verification end to end | **not exercisable** on the sanitised export |
 
 ---
