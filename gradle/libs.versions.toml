@@ -9,7 +9,10 @@ kotlin-logging = "7.0.3"
 logback = "1.5.13"
 kotlinx-serialization = "1.8.0"
 kotlinx-coroutines = "1.10.1"
-testcontainers = "1.20.4"
+# 1.21+ is required by Docker Engine 29, which rejects Docker API versions below 1.40. The
+# docker-java shipped with 1.20.4 negotiates 1.32 and every container test dies at start() with an
+# opaque "Could not find a valid Docker environment" — the daemon is fine, the API version is not.
+testcontainers = "1.21.3"
 junit = "5.11.4"
 
 [libraries]

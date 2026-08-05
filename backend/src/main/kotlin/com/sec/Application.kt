@@ -48,7 +48,12 @@ public fun Application.module() {
 // routing — can be exercised in a test without Docker. module() adds the startup steps that do.
 internal fun Application.configureApp(graphDriver: GraphDriver) {
     install(ContentNegotiation) {
-        json(Json { ignoreUnknownKeys = true })
+        // encodeDefaults: a field whose value equals its declared default is still part of the
+        // contract, and kotlinx omits it unless told otherwise. That silently dropped
+        // `incomingComplete: false` — the one field REQ_REVIEW.md §5.1 requires to travel *with*
+        // the data so no consumer can read an empty incoming list as "orphan requirement" — and
+        // turned every empty list into an absent key the client would have to defend against.
+        json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
     }
     install(CallId) {
         generate { UUID.randomUUID().toString() }

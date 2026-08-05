@@ -56,5 +56,14 @@ tasks.register<Test>("integrationTest") {
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { includeTags("docker") }
     systemProperty("sec.test.neo4jImage", libs.versions.neo4j.image.get())
+
+    // Testcontainers' docker-java still negotiates Docker API 1.32 by default, and Docker Engine 29
+    // rejects everything below 1.40 with a bodyless 400. Testcontainers reports that as "Could not
+    // find a valid Docker environment", which reads as "no daemon" and sends you looking in the
+    // wrong place — the daemon is up and `docker info` works. 1.41 is the version every engine we
+    // target speaks: Docker 20.10 and later on RHEL, Docker Desktop on Windows. Overridable from
+    // the command line for an engine that ever needs something else.
+    systemProperty("api.version", providers.systemProperty("api.version").getOrElse("1.41"))
+
     shouldRunAfter(tasks.test)
 }

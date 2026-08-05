@@ -9,10 +9,16 @@ import kotlinx.serialization.json.JsonElement
 // One linked object in the References column. `resolved` false means the target is a placeholder
 // the importer created for an object that has not been imported: the UI renders it as
 // "Not yet imported", names the owning module, and does not link it (§5.1).
+//
+// `id` is null for an unresolved target, and that is deliberate rather than incidental. A
+// placeholder has no DOORS id — the importer names it `<unresolved doors://…>`, which is its
+// __id spelled out — so sending it would put a raw __id in the field the References column
+// displays (R5). There is no display id for something that has not been imported; the wording
+// and the module name are the whole of what the UI can honestly show.
 @Serializable
 public data class ReferenceDto(
     public val ref: String,
-    public val id: String,
+    public val id: String? = null,
     public val resolved: Boolean,
     public val moduleRef: String? = null,
     public val moduleName: String? = null,

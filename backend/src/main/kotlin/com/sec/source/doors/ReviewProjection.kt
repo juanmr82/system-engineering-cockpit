@@ -194,7 +194,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
     private fun Record.toReference(): ReferenceDto =
         ReferenceDto(
             ref = Ref.encode(get("ref").asString("")),
-            id = get("id").asString(""),
+            id = get("id").takeUnless { it.isNull() }?.asString(),
             resolved = get("resolved").asBoolean(true),
             moduleRef = get("moduleUrl").takeUnless { it.isNull() }?.asString()?.let(Ref::encode),
             moduleName = null,
@@ -207,7 +207,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             val map = entry.asMap()
             ReferenceDto(
                 ref = Ref.encode(map["ref"]?.toString().orEmpty()),
-                id = map["id"]?.toString().orEmpty(),
+                id = map["id"]?.toString(),
                 resolved = map["resolved"] as? Boolean ?: true,
                 moduleRef = (map["moduleUrl"] as? String)?.let(Ref::encode),
                 moduleName = null,

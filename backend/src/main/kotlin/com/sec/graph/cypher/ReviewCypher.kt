@@ -29,13 +29,13 @@ public object ReviewCypher {
         WITH o,
              [(o)-[:refersTo]->(out:SEItem) | {
                  ref: out.__id,
-                 id: coalesce(out.id, out.__name),
+                 id: CASE WHEN out:__UNDEFINED THEN null ELSE coalesce(out.id, out.__name) END,
                  resolved: NOT out:__UNDEFINED,
                  moduleUrl: out.__moduleUrl
              }] AS outgoing,
              [(o)<-[:refersTo]-(inc:SEItem) | {
                  ref: inc.__id,
-                 id: coalesce(inc.id, inc.__name),
+                 id: CASE WHEN inc:__UNDEFINED THEN null ELSE coalesce(inc.id, inc.__name) END,
                  resolved: NOT inc:__UNDEFINED,
                  moduleUrl: inc.__moduleUrl
              }] AS incoming
@@ -85,7 +85,7 @@ public object ReviewCypher {
         CYPHER 25
         MATCH (:SEItem {__id: ${'$'}itemId})-[:refersTo]->(t:SEItem)
         RETURN t.__id       AS ref,
-               coalesce(t.id, t.__name) AS id,
+               CASE WHEN t:__UNDEFINED THEN null ELSE coalesce(t.id, t.__name) END AS id,
                NOT t:__UNDEFINED        AS resolved,
                t.__moduleUrl            AS moduleUrl
         ORDER BY id
@@ -96,7 +96,7 @@ public object ReviewCypher {
         CYPHER 25
         MATCH (:SEItem {__id: ${'$'}itemId})<-[:refersTo]-(t:SEItem)
         RETURN t.__id       AS ref,
-               coalesce(t.id, t.__name) AS id,
+               CASE WHEN t:__UNDEFINED THEN null ELSE coalesce(t.id, t.__name) END AS id,
                NOT t:__UNDEFINED        AS resolved,
                t.__moduleUrl            AS moduleUrl
         ORDER BY id

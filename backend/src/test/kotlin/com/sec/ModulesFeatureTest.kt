@@ -154,8 +154,21 @@ class ModulesFeatureTest {
 
         val indexes = graphDriver.executeRead(
             Query("CYPHER 25 SHOW INDEXES YIELD name, labelsOrTypes RETURN name, labelsOrTypes"),
-        ) { records -> records.associate { it.get("name").asString() to it.get("labelsOrTypes").asList { v -> v.asString() } } }
+        ) { records ->
+            records.associate { record ->
+                // Every database ships two token-lookup indexes that are bound to no label at all,
+                // so labelsOrTypes is NULL for them and coercing it to a list throws.
+                val labels = record.get("labelsOrTypes")
+                    .takeUnless { it.isNull() }
+                    ?.asList { value -> value.asString() }
+                    .orEmpty()
+                record.get("name").asString() to labels
+            }
+        }
         assertEquals(listOf("__Policy"), indexes["meta_policy_attribute"])
+        // The second Shape-B kind's index (REQ_REVIEW.md §9.2) — added with :__AttributeSetting and
+        // asserted here so the two meta indexes cannot drift apart.
+        assertEquals(listOf("__AttributeSetting"), indexes["meta_attribute_setting"])
 
         // Imported-label schema belongs to the importers; nothing here may have created it.
         assertTrue(names.none { it.startsWith("doors") || it.startsWith("seitem") }, "constraints: $names")

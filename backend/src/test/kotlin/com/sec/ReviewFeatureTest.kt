@@ -23,6 +23,7 @@ import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -175,11 +176,17 @@ class ReviewFeatureTest {
     @Test
     fun `references separate resolved from not-yet-imported, and declare incoming incomplete`() = runBlocking {
         val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
-        val outgoing = rows.getValue("SRD-1").references.outgoing.associateBy { it.id }
+        val outgoing = rows.getValue("SRD-1").references.outgoing
 
-        assertEquals(setOf("SRD-2", "<unresolved missing-1>"), outgoing.keys)
-        assertTrue(outgoing.getValue("SRD-2").resolved)
-        assertFalse(outgoing.getValue("<unresolved missing-1>").resolved)
+        assertEquals(2, outgoing.size)
+        assertTrue(outgoing.single { it.id == "SRD-2" }.resolved)
+
+        // R5: a placeholder's __name is its __id spelled out, so it must not arrive as the `id`
+        // the References column displays. An unresolved target has no display id at all — the
+        // wording and the module name are all the UI can honestly show.
+        val unresolved = outgoing.single { !it.resolved }
+        assertNull(unresolved.id)
+        assertEquals(Ref.encode("missing-1"), unresolved.ref)
 
         assertFalse(rows.getValue("SRD-1").references.incomingComplete)
         assertEquals(listOf("SRD-1"), rows.getValue("SRD-2").references.incoming.map { it.id })
@@ -201,8 +208,8 @@ class ReviewFeatureTest {
                 MetaWriter.CommentEditInput("obj-2", "Agreed at review"),
             ),
         )
-        assertTrue(outcome is SaveCommentsOutcome.Saved)
-        assertEquals(2, (outcome as SaveCommentsOutcome.Saved).comments.count { it.metaId != null })
+        val saved = assertIs<SaveCommentsOutcome.Saved>(outcome)
+        assertEquals(2, saved.comments.count { it.metaId != null })
 
         assertEquals(before, rawProperties("obj-1"))
 
@@ -240,8 +247,7 @@ class ReviewFeatureTest {
 
         val outcome = metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "   ")))
 
-        assertTrue(outcome is SaveCommentsOutcome.Saved)
-        assertNull((outcome as SaveCommentsOutcome.Saved).comments.single().metaId)
+        assertNull(assertIs<SaveCommentsOutcome.Saved>(outcome).comments.single().metaId)
         assertNull(reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-4" }.comment)
     }
 
