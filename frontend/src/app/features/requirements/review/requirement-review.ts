@@ -15,6 +15,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import type { ProblemDetails } from '../../../core/error/problem-details';
 import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
+import { normalize } from '../../../shared/text/normalize';
 import { ModulesApiService } from '../modules/modules-api.service';
 import { ItemDetailPanel } from './item-detail-panel';
 import { ReviewApiService } from './review-api.service';
@@ -60,15 +61,6 @@ function refGroup(references: Reference[]): RefGroup {
       ? `Not yet imported. Import ${modules.join(', ')} to see ${unresolved.length === 1 ? 'it' : 'them'}.`
       : 'Not yet imported, and neither is the module these objects belong to.',
   };
-}
-
-// Case- and accent-insensitive, the same contract the Modules search follows: what the user sees
-// is what gets searched.
-function normalize(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase();
 }
 
 function renderValue(value: unknown): string {

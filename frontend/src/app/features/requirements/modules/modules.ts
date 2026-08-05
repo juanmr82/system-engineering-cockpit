@@ -11,17 +11,9 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import { ModuleSettingsDialog } from './module-settings-dialog';
+import { normalize } from '../../../shared/text/normalize';
 import { ModulesApiService } from './modules-api.service';
 import type { ModuleRow, SearchableModuleRow } from './modules.model';
-
-// Case- and accent-insensitive, matching requirements-modules.md §3's "what the user sees is what
-// gets searched" contract.
-function normalize(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase();
-}
 
 @Component({
   selector: 'sec-modules',

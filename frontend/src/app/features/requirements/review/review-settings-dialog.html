@@ -12,66 +12,95 @@
     <p class="sec-review-settings__error">Couldn't load this module's attributes. Close and try again.</p>
   } @else {
     <p class="sec-review-settings__hint">
-      Mandatory attributes are checked on the requirements of this module. Shown attributes become
-      columns of the review table, for everyone. Verification attributes are read by the analytics
-      and consistency views.
+      Mandatory attributes are checked on this module's requirements, shown attributes become table
+      columns for everyone, and verification attributes feed the analytics views.
     </p>
 
-    <div class="sec-review-settings__scroll">
-      <table mat-table [dataSource]="fixedColumns" class="sec-review-settings__fixed">
-        <ng-container matColumnDef="name">
-          <th mat-header-cell *matHeaderCellDef>Column</th>
-          <td mat-cell *matCellDef="let column">{{ column.label }}</td>
-        </ng-container>
-        <ng-container matColumnDef="mandatory">
-          <th mat-header-cell *matHeaderCellDef>Mandatory</th>
-          <td mat-cell *matCellDef="let column">
-            <mat-checkbox [checked]="column.mandatory" [disabled]="true" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="visible">
-          <th mat-header-cell *matHeaderCellDef>Shown in table</th>
-          <td mat-cell *matCellDef="let column">
-            <mat-checkbox [checked]="true" [disabled]="true" />
-          </td>
-        </ng-container>
-        <ng-container matColumnDef="verification">
-          <th mat-header-cell *matHeaderCellDef>Verification attribute</th>
-          <td mat-cell *matCellDef="let column">
-            <mat-checkbox [checked]="false" [disabled]="true" />
-          </td>
-        </ng-container>
-        <tr mat-header-row *matHeaderRowDef="attributeColumns; sticky: true"></tr>
-        <tr mat-row *matRowDef="let row; columns: attributeColumns"></tr>
-      </table>
+    <div class="sec-review-settings__bar">
+      <mat-form-field appearance="outline" class="sec-review-settings__search" subscriptSizing="dynamic">
+        <mat-icon matPrefix svgIcon="search" />
+        <input
+          matInput
+          type="text"
+          placeholder="Search attributes"
+          aria-label="Search attributes"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
+        @if (search()) {
+          <button mat-icon-button matSuffix type="button" aria-label="Clear search" (click)="search.set('')">
+            <mat-icon svgIcon="close" />
+          </button>
+        }
+      </mat-form-field>
 
-      @if (attributeCount() === 0) {
-        <p class="sec-review-settings__empty">
-          This module's objects carry no attributes of their own, so there is nothing more to
-          configure.
-        </p>
-      } @else {
-        <table mat-table [dataSource]="attributeFields()" class="sec-review-settings__attributes">
-          <ng-container matColumnDef="name">
-            <th mat-header-cell *matHeaderCellDef>Attribute</th>
-            <td mat-cell *matCellDef="let attr">{{ attr().value().name }}</td>
-          </ng-container>
-          <ng-container matColumnDef="mandatory">
-            <th mat-header-cell *matHeaderCellDef>Mandatory</th>
-            <td mat-cell *matCellDef="let attr"><mat-checkbox [formField]="attr.mandatory" /></td>
-          </ng-container>
-          <ng-container matColumnDef="visible">
-            <th mat-header-cell *matHeaderCellDef>Shown in table</th>
-            <td mat-cell *matCellDef="let attr"><mat-checkbox [formField]="attr.visible" /></td>
-          </ng-container>
-          <ng-container matColumnDef="verification">
-            <th mat-header-cell *matHeaderCellDef>Verification attribute</th>
-            <td mat-cell *matCellDef="let attr"><mat-checkbox [formField]="attr.verification" /></td>
-          </ng-container>
-          <tr mat-header-row *matHeaderRowDef="attributeColumns; sticky: true"></tr>
-          <tr mat-row *matRowDef="let row; columns: attributeColumns"></tr>
-        </table>
-      }
+      <p class="sec-review-settings__count">
+        @if (filtering()) {
+          <span><b>{{ filtered().length }}</b> of <b>{{ total() }}</b> attributes</span>
+        } @else {
+          <span><b>{{ total() }}</b> attributes</span>
+        }
+      </p>
+    </div>
+
+    <div class="sec-review-settings__table">
+      <div class="sec-review-settings__head" role="row">
+        <span role="columnheader">Attribute</span>
+        @for (flag of ['mandatory', 'visible', 'verification']; track flag) {
+          <span role="columnheader" class="sec-review-settings__flag-head">
+            <span class="sec-review-settings__flag-label">
+              @switch (flag) {
+                @case ('mandatory') { Mandatory }
+                @case ('visible') { Shown in table }
+                @default { Verification attribute }
+              }
+            </span>
+            <!-- Bulk actions apply to the rows currently listed, which is what makes them useful
+                 next to the search box: filter to "Verification", then tick all of them. -->
+            <span class="sec-review-settings__bulk">
+              <button type="button" (click)="setAll($any(flag), true)">All</button>
+              <span aria-hidden="true">·</span>
+              <button type="button" (click)="setAll($any(flag), false)">None</button>
+            </span>
+          </span>
+        }
+      </div>
+
+      <div class="sec-review-settings__scroll">
+        <!-- The view's own columns are hidden while searching: they are not attributes, and a
+             search that still shows five unrelated rows reads as a broken filter. -->
+        @if (!filtering()) {
+          @for (column of fixedColumns; track column.label) {
+            <div class="sec-review-settings__row sec-review-settings__row--fixed" role="row">
+              <span class="sec-review-settings__cell-name">
+                {{ column.label }}
+                <span class="sec-review-settings__always">always shown</span>
+              </span>
+              <span><mat-checkbox [checked]="column.mandatory" [disabled]="true" /></span>
+              <span><mat-checkbox [checked]="true" [disabled]="true" /></span>
+              <span><mat-checkbox [checked]="false" [disabled]="true" /></span>
+            </div>
+          }
+        }
+
+        @for (attribute of filtered(); track attribute().value().name) {
+          <div class="sec-review-settings__row" role="row">
+            <span class="sec-review-settings__cell-name">{{ attribute().value().name }}</span>
+            <span><mat-checkbox [formField]="attribute.mandatory" /></span>
+            <span><mat-checkbox [formField]="attribute.visible" /></span>
+            <span><mat-checkbox [formField]="attribute.verification" /></span>
+          </div>
+        } @empty {
+          <p class="sec-review-settings__empty">
+            @if (filtering()) {
+              No attribute matches "{{ search() }}".
+            } @else {
+              This module's objects carry no attributes of their own, so there is nothing more to
+              configure.
+            }
+          </p>
+        }
+      </div>
     </div>
   }
 
