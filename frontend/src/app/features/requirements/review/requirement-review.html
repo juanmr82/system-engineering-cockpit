@@ -128,7 +128,17 @@
             <span role="columnheader">Comment</span>
           </div>
 
-          <cdk-virtual-scroll-viewport [itemSize]="rowHeight" class="sec-review__viewport">
+          <!-- The buffers are set explicitly and are not decoration. CDK defaults to 100px/200px,
+               which at a 46px row is three spare rows: a trackpad flick travels a thousand pixels
+               while the compositor scrolls instantly and Angular re-renders on the next task, so
+               everything past those three rows is white until it lands. One screen of buffer,
+               two at most, keeps a fast scroll covered and still renders under 45 rows. -->
+          <cdk-virtual-scroll-viewport
+            [itemSize]="rowHeight"
+            [minBufferPx]="rowHeight * 15"
+            [maxBufferPx]="rowHeight * 30"
+            class="sec-review__viewport"
+          >
             <div
               *cdkVirtualFor="let entry of filtered(); trackBy: trackByRef"
               class="sec-review__row"
