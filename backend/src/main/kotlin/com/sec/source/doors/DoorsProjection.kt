@@ -35,13 +35,18 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
             records.isNotEmpty()
         }
 
-    // Sample rather than read one object (DOORS_TO_NEO4J_IMPORTER_SPEC: the importer omits
-    // `Absolute Number` when unparseable, so a single unlucky object under-reports).
-    public suspend fun discoverAttributeNames(moduleId: String, sampleSize: Int = 25): List<String> =
+    /**
+     * Every attribute name any object of this module carries.
+     *
+     * The whole module is read, not a sample: attribute sets are *not* uniform within a module, and
+     * a missed name is an attribute the settings dialog cannot offer and the table therefore cannot
+     * show. See ModuleCypher.DISCOVER_ATTRIBUTES for the measurement behind that.
+     */
+    public suspend fun discoverAttributeNames(moduleId: String): List<String> =
         graphDriver.executeRead(
             Query(
                 ModuleCypher.DISCOVER_ATTRIBUTES,
-                mapOf("moduleUrl" to moduleId, "sampleSize" to sampleSize),
+                mapOf("moduleUrl" to moduleId, "limit" to MAX_ATTRIBUTES),
             ),
         ) { records -> records.map { it.get("name").asString() } }
 
@@ -70,8 +75,8 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
      * Attributes never configured default to all-false rather than being absent, so the dialog
      * shows every discovered attribute whether or not anyone has touched it.
      */
-    public suspend fun getModuleAttributes(moduleId: String, sampleSize: Int = 25): List<ModuleAttributeDto> {
-        val discovered = discoverAttributeNames(moduleId, sampleSize)
+    public suspend fun getModuleAttributes(moduleId: String): List<ModuleAttributeDto> {
+        val discovered = discoverAttributeNames(moduleId)
         val mandatory = getExistingMandatoryAttributes(moduleId)
         val settings = getExistingAttributeSettings(moduleId)
         return discovered.map { name ->
@@ -131,5 +136,11 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
             systemLevel = levelCode,
             properties = ordered,
         )
+    }
+
+    private companion object {
+        // A cap on distinct attribute names, not on objects read. The reference modules carry 53
+        // and 78; this is the "Community has no query governor" safety net, not a working limit.
+        const val MAX_ATTRIBUTES = 500
     }
 }

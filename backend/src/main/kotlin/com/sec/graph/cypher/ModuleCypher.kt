@@ -29,16 +29,27 @@ public object ModuleCypher {
     // __moduleUrl is what a module's own objects store to point back at it; a module's plain
     // `url` property carries the same value as its __id (requirements-modules.md §4.1), so the
     // module's own __id is the value to bind here.
+    // Every object of the module is read, not a sample of them.
+    //
+    // This used to take the first 25 objects on the theory that attribute sets are uniform within a
+    // module. They are not: in the reference SRD module 774 of 977 objects carry `Object Text` and
+    // 203 do not, and the 25 the planner happened to return were among the 203 — so the module's
+    // most important attribute was missing from the settings dialog entirely, with no way to show
+    // it in the table. The sample also bought nothing: measured through the driver, sampling 25 and
+    // scanning all 977 both answer in ~17ms, because the cost is the index seek, not the rows.
+    //
+    // The LIMIT is on the distinct attribute names rather than on the objects scanned, which is
+    // what makes it a safety net (CLAUDE.md §7, no query governor) instead of a correctness hole.
     public const val DISCOVER_ATTRIBUTES: String = """
         CYPHER 25
         MATCH (o:DOORSObject {__moduleUrl: ${'$'}moduleUrl})
-        WITH o LIMIT ${'$'}sampleSize
         UNWIND keys(o) AS k
         WITH DISTINCT k
         WHERE NOT k STARTS WITH '__'
           AND NOT k IN ['id', 'objectNumber', 'objectLevel']
         RETURN k AS name
         ORDER BY k
+        LIMIT ${'$'}limit
     """
 
     public const val EXISTING_MANDATORY_POLICIES: String = """

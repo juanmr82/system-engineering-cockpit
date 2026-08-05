@@ -174,6 +174,40 @@ class ModulesFeatureTest {
         assertTrue(names.none { it.startsWith("doors") || it.startsWith("seitem") }, "constraints: $names")
     }
 
+    /**
+     * Attribute sets are not uniform within a module, so discovery reads every object.
+     *
+     * This is a regression test with a real story behind it: discovery used to take the first 25
+     * objects, and in the reference SRD module the 25 the planner returned were among the 203 (of
+     * 977) that carry no `Object Text` — so the module's most important attribute could not be
+     * shown in the table at all. 60 objects here is enough that any re-introduced sample of 25
+     * would miss the one that matters.
+     */
+    @Test
+    fun `attribute discovery reads the whole module, not a sample of it`() = runBlocking {
+        val moduleId = "module-wide"
+        val objects = (1..60).map { index ->
+            mapOf(
+                "id" to "$moduleId-o$index",
+                // Only the last object carries it, exactly like an attribute filled in late in a
+                // module — the case a sample silently loses.
+                "attrs" to if (index == 60) {
+                    mapOf("Object Text" to "Shall do X", "Late Attribute" to "only here")
+                } else {
+                    mapOf("Object Text" to "Shall do X")
+                },
+            )
+        }
+        seedModule(moduleId, objects)
+
+        val discovered = doorsProjection.discoverAttributeNames(moduleId)
+
+        assertTrue(discovered.contains("Late Attribute"), "discovered: $discovered")
+        assertTrue(discovered.contains("Object Text"), "discovered: $discovered")
+        // R5: the namespace never reaches the dialog, and the dedicated columns are not attributes.
+        assertTrue(discovered.none { it.startsWith("__") || it in setOf("id", "objectNumber", "objectLevel") })
+    }
+
     @Test
     fun `save rejects an unknown module, level or attribute without writing anything`() = runBlocking {
         val moduleId = "module-validation"
