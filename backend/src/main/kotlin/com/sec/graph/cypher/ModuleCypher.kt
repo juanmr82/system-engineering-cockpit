@@ -1,7 +1,9 @@
 package com.sec.graph.cypher
 
-// Cypher for docs/features/requirements-modules.md §5.3. Every statement is CYPHER 25-prefixed,
-// parameterised, and reads carry a LIMIT + transaction timeout (CLAUDE.md §5, §7).
+// Cypher for docs/features/requirements-modules.md §5.3. Every statement is CYPHER 25-prefixed
+// and parameterised, and every read carries a LIMIT. The transaction timeout that the other half
+// of CLAUDE.md §7 asks for is not here — it is applied to every session in graph/Read.kt and
+// graph/Write.kt, from GraphDriver, so no statement in this file can be issued without one.
 public object ModuleCypher {
     public const val LIST_MODULES: String = """
         CYPHER 25

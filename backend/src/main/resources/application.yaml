@@ -8,8 +8,13 @@ ktor:
 neo4j:
   uri: "bolt://localhost:7687"
   database: "neo4j"
-  # user/password are supplied via environment variables (SEC_NEO4J_USER / SEC_NEO4J_PASSWORD),
-  # never committed here.
+  # Ktor resolves "$VAR" from the environment, so the credentials are still never committed —
+  # and config has exactly one source. An unset variable fails at startup, which is what we want.
+  user: "$SEC_NEO4J_USER"
+  password: "$SEC_NEO4J_PASSWORD"
+  # Community has no query governor (CLAUDE.md §7); these are the only limit on a runaway query.
+  readTimeoutSeconds: 10
+  writeTimeoutSeconds: 30
 
 # Sidenav structure — order is config, not graph data (CLAUDE.md §2, "Where a given piece of state lives").
 # Served read-only at GET /api/v1/config/navigation.

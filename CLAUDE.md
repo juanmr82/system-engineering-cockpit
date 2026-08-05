@@ -436,7 +436,12 @@ com.sec
 ├── source/                     ← per-source projections (doors/, windchill/, cameo/)
 ├── meta/                       ← R2 write path, guarded
 ├── domain/Aliases.kt           ← R5 alias map, single source of truth
-├── api/                        ← routes, DTOs, serialization
+├── meta/MetaSchema.kt          ← :__Meta constraints/indexes, applied at startup (§7)
+├── api/
+│   ├── Routes.kt               ← table of contents: registers the files below, nothing else
+│   ├── routes/                 ← one file per feature — ModuleRoutes.kt, ConfigRoutes.kt, ...
+│   ├── ProblemPages.kt         ← StatusPages → RFC 9457, the only error-to-wire mapping
+│   └── dto/                    ← @Serializable wire types
 └── security/                   ← auth, the ad-hoc Cypher guard
 ```
 
@@ -470,6 +475,8 @@ com.sec
 ### API shape
 
 ```
+GET  /api/v1/health                     ← liveness: the process is up, touches no database
+GET  /api/v1/ready                      ← readiness: pings the graph, 503 when it is unreachable
 GET  /api/v1/tree                       ← root of the knowledge tree, lazy children
 GET  /api/v1/items/{ref}                ← one SEItem, source-agnostic envelope
 GET  /api/v1/items/{ref}/children
@@ -489,7 +496,16 @@ POST /api/v1/cypher/run
 ```
 
 `{ref}` is the base64url encoding of `__id` (R5). Decode it in one place — a route
-parameter converter — never inline in a handler.
+parameter converter — never inline in a handler. **Decoding is total**: a hand-edited address bar
+is a `400`, not an uncaught `IllegalArgumentException` reported as a `500` (`Ref.decodeOrNull`).
+
+Liveness and readiness are separate endpoints on purpose. An orchestrator restarts on a failed
+liveness probe but only withholds traffic on a failed readiness probe, so a slow or briefly
+unreachable database must not be able to trigger a restart loop. Only `/ready` opens a session.
+
+Every failure — including an unmatched path and an unhandled exception — leaves the service as an
+RFC 9457 problem detail carrying the `CallId` in `instance`. Exception messages are logged, never
+echoed: they contain internal type names and JDK text that R5 keeps off the wire.
 
 Feature-shaped write endpoints such as `POST /modules/{ref}/settings` exist because a
 dialog is one transaction, not N annotation calls. They **route through the same guarded
@@ -916,6 +932,12 @@ inside the shell, not a bare page.
 - `./gradlew check` and `npm --prefix frontend run lint && npm --prefix frontend test` pass.
 - New graph behaviour has a Testcontainers test against a real Neo4j **Community** image.
   Never test against Enterprise; the constraint differences are the whole point.
+- **Container tests are tagged `docker` and are not part of `check`.** Not every machine that
+  builds this has Docker, and a gate that cannot pass locally is a gate that gets skipped —
+  taking the tests that *could* have run with it. Run them with
+  `./gradlew :backend:integrationTest`; CI must run both tasks. The image tag is pinned in
+  `gradle/libs.versions.toml` (`neo4j-image`) and passed to the test as a system property, so it
+  sits next to every other version rather than inside a test file.
 - Any feature that writes Tier 2 has the byte-identical-anchor test from R2.
 - Any decision that took real thought gets a short ADR in `docs/adr/`.
 - Update this file if you changed something it describes.

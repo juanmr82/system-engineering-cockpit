@@ -1,8 +1,13 @@
 package com.sec
 
+import com.sec.api.configureProblemDetails
 import com.sec.api.configureRouting
 import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
+import com.sec.meta.MetaSchema
+import com.sec.meta.MetaWriter
+import com.sec.source.doors.DoorsProjection
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
@@ -12,9 +17,11 @@ import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.statuspages.StatusPages
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.UUID
+
+private val logger = KotlinLogging.logger {}
 
 // EngineMain reads ktor.application.modules / ktor.deployment.* from application.yaml,
 // which is what makes environment.config see neo4j.* and navigation.* below.
@@ -24,7 +31,21 @@ public fun main(args: Array<String>): Unit = EngineMain.main(args)
 public fun Application.module() {
     val appConfig = loadAppConfig(environment.config)
     val graphDriver = GraphDriver(appConfig.neo4j)
+    monitor.subscribe(ApplicationStopping) { graphDriver.close() }
 
+    // Fail fast: a deployment pointed at an unreachable database should die at startup with a
+    // clear cause, not start, report healthy, and serve 500s.
+    graphDriver.verifyConnectivity()
+    logger.info { "Connected to ${appConfig.neo4j.uri}, database '${appConfig.neo4j.database}'" }
+
+    runBlocking { MetaSchema.apply(graphDriver) }
+
+    configureApp(graphDriver)
+}
+
+// Everything that does not need a live database, so the HTTP surface — plugins, error mapping,
+// routing — can be exercised in a test without Docker. module() adds the startup steps that do.
+internal fun Application.configureApp(graphDriver: GraphDriver) {
     install(ContentNegotiation) {
         json(Json { ignoreUnknownKeys = true })
     }
@@ -35,14 +56,12 @@ public fun Application.module() {
     install(CallLogging) {
         callIdMdc("callId")
     }
-    install(StatusPages) {
-        // Domain exceptions -> RFC 9457 problem details. No stack traces to the client, ever.
-        // The ad-hoc Cypher endpoint has its own error shapes; see docs/CYPHER_API_DESIGN.md.
-    }
+    configureProblemDetails()
 
-    configureRouting(graphDriver)
+    // Collaborators are constructed once here, not inside routing, so routing owns no object
+    // lifecycles and a test can substitute its own.
+    val doorsProjection = DoorsProjection(graphDriver)
+    val metaWriter = MetaWriter(graphDriver, doorsProjection)
 
-    monitor.subscribe(ApplicationStopping) {
-        graphDriver.close()
-    }
+    configureRouting(graphDriver, doorsProjection, metaWriter)
 }

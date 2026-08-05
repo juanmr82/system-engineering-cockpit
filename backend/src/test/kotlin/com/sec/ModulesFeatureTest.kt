@@ -7,15 +7,15 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.DoorsProjection
+import com.sec.meta.MetaSchema
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -23,12 +23,21 @@ import kotlin.test.assertTrue
 // Acceptance criteria from docs/features/requirements-modules.md §8, exercised against a real
 // Neo4j Community image (CLAUDE.md §7: never Enterprise, the constraint differences are the
 // whole point).
-@Testcontainers
+//
+// The container's lifecycle is owned explicitly rather than by @Testcontainers/@Container. That
+// extension starts *static* container fields in beforeAll and *instance* fields in beforeEach —
+// so an instance field under PER_CLASS starts after @BeforeAll has already asked it for a mapped
+// port, and would restart between test methods under a driver built once. Owning start/stop here
+// is shorter than remembering that rule.
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Tag("docker")
 class ModulesFeatureTest {
 
-    @Container
-    private val neo4j = Neo4jContainer("neo4j:2026.01-community").withoutAuthentication()
+    // Tag comes from libs.versions.toml via the test task, so it is pinned next to every other
+    // version rather than buried in a test file.
+    private val neo4j = Neo4jContainer(
+        "neo4j:" + System.getProperty("sec.test.neo4jImage", "2026.06.0-community"),
+    ).withoutAuthentication()
 
     private lateinit var graphDriver: GraphDriver
     private lateinit var doorsProjection: DoorsProjection
@@ -36,7 +45,10 @@ class ModulesFeatureTest {
 
     @BeforeAll
     fun setUp() {
+        neo4j.start()
         graphDriver = GraphDriver(Neo4jSettings(neo4j.boltUrl, "neo4j", "neo4j", "ignored"))
+        graphDriver.verifyConnectivity()
+        runBlocking { MetaSchema.apply(graphDriver) }
         doorsProjection = DoorsProjection(graphDriver)
         metaWriter = MetaWriter(graphDriver, doorsProjection)
     }
@@ -44,6 +56,7 @@ class ModulesFeatureTest {
     @AfterAll
     fun tearDown() {
         graphDriver.close()
+        neo4j.stop()
     }
 
     private fun seedModule(moduleId: String, objects: List<Map<String, Any>>): Unit = runBlocking {
@@ -125,6 +138,26 @@ class ModulesFeatureTest {
         // nothing else — the module node must still be present afterwards.
         graphDriver.executeWrite(Query("CYPHER 25 MATCH (m:__Meta) DETACH DELETE m", emptyMap())) { }
         assertEquals(before, rawModuleProperties(moduleId))
+    }
+
+    // The backend owns :__Meta schema and only that (CLAUDE.md §10). Without the constraint,
+    // every meta node written so far carried no uniqueness guarantee at all.
+    @Test
+    fun `applying the meta schema is idempotent and creates only __Meta schema`() = runBlocking {
+        MetaSchema.apply(graphDriver)
+
+        val names = graphDriver.executeRead(
+            Query("CYPHER 25 SHOW CONSTRAINTS YIELD name RETURN name"),
+        ) { records -> records.map { it.get("name").asString() } }
+        assertTrue(names.contains("meta_id_unique"), "constraints: $names")
+
+        val indexes = graphDriver.executeRead(
+            Query("CYPHER 25 SHOW INDEXES YIELD name, labelsOrTypes RETURN name, labelsOrTypes"),
+        ) { records -> records.associate { it.get("name").asString() to it.get("labelsOrTypes").asList { v -> v.asString() } } }
+        assertEquals(listOf("__Policy"), indexes["meta_policy_attribute"])
+
+        // Imported-label schema belongs to the importers; nothing here may have created it.
+        assertTrue(names.none { it.startsWith("doors") || it.startsWith("seitem") }, "constraints: $names")
     }
 
     @Test

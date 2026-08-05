@@ -67,10 +67,12 @@ public data class ModuleSettingsRequestDto(
     public val mandatoryAttributes: MandatoryAttributesDiffDto = MandatoryAttributesDiffDto(),
 )
 
+// RFC 9457. `instance` is the request's CallId, so a reported failure can be found in the logs.
 @Serializable
 public data class ProblemDetailDto(
     public val type: String,
     public val title: String,
     public val status: Int,
     public val detail: String,
+    public val instance: String? = null,
 )

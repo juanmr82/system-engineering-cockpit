@@ -40,10 +40,21 @@ dependencies {
     testImplementation(libs.testcontainers.junit.jupiter)
 }
 
+// Tests that need a container are tagged "docker" and are not part of `check`. Not every machine
+// that builds this has Docker — the DOORS importer's own target is a Windows workstation — and a
+// `check` that cannot pass locally is a `check` that gets skipped, taking the other tests with it.
 tasks.test {
-    useJUnitPlatform()
-    // module() requires these unconditionally (config/AppConfig.kt); tests never touch real
-    // credentials, and Testcontainers tests point GraphDriver at their own container instead.
-    environment("SEC_NEO4J_USER", "test")
-    environment("SEC_NEO4J_PASSWORD", "test")
+    useJUnitPlatform { excludeTags("docker") }
+    // The Neo4j image the container tests pull, pinned next to every other version.
+    systemProperty("sec.test.neo4jImage", libs.versions.neo4j.image.get())
+}
+
+tasks.register<Test>("integrationTest") {
+    description = "Runs the tests that require Docker (Testcontainers against Neo4j Community)."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("docker") }
+    systemProperty("sec.test.neo4jImage", libs.versions.neo4j.image.get())
+    shouldRunAfter(tasks.test)
 }

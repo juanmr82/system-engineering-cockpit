@@ -2,6 +2,9 @@
 kotlin = "2.4.0"
 ktor = "3.5.1"
 neo4j-driver = "6.0.0"
+# Container image for the Testcontainers tests. Pin it to the series that is deployed — testing
+# against a different major than production defeats the point of testing against Community.
+neo4j-image = "2026.06.0-community"
 kotlin-logging = "7.0.3"
 logback = "1.5.13"
 kotlinx-serialization = "1.8.0"

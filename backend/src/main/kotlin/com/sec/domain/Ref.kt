@@ -10,5 +10,11 @@ public object Ref {
 
     public fun encode(id: String): String = encoder.encodeToString(id.toByteArray(Charsets.UTF_8))
 
-    public fun decode(ref: String): String = String(decoder.decode(ref), Charsets.UTF_8)
+    // A :ref arrives from the address bar, so malformed input is an expected failure, not an
+    // exception — the decoder throws IllegalArgumentException on anything that is not base64url
+    // and an uncaught throw here would report a client error as a 500.
+    public fun decodeOrNull(ref: String): String? =
+        runCatching { String(decoder.decode(ref), Charsets.UTF_8) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
 }
