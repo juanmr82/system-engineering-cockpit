@@ -7,6 +7,7 @@ import com.sec.api.dto.ModuleSettingsRequestDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
 import com.sec.domain.SaveModuleSettingsOutcome
+import com.sec.domain.SystemLevelChange
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.DoorsProjection
 import io.ktor.http.HttpStatusCode
@@ -47,12 +48,28 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
             val moduleId = call.decodeRef() ?: return@post call.respondInvalidRef()
             val body = call.receive<ModuleSettingsRequestDto>()
 
+            // A non-string, non-null systemLevel is a malformed request, not a silent no-op.
+            val systemLevel = SystemLevelChange.from(body.systemLevel)
+                ?: return@post call.respondProblem(
+                    HttpStatusCode.BadRequest,
+                    "Malformed request",
+                    "System level must be a level code or empty.",
+                )
+
             when (
                 val outcome = metaWriter.saveModuleSettings(
                     moduleId = moduleId,
-                    systemLevelCode = body.systemLevel,
+                    systemLevel = systemLevel,
                     addAttributes = body.mandatoryAttributes.add,
                     removeAttributes = body.mandatoryAttributes.remove,
+                    attributeSettings = body.attributeSettings?.map {
+                        MetaWriter.AttributeSettingInput(
+                            name = it.name,
+                            mandatory = it.mandatory,
+                            visible = it.visible,
+                            verification = it.verification,
+                        )
+                    },
                 )
             ) {
                 is SaveModuleSettingsOutcome.ModuleNotFound ->

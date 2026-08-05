@@ -151,10 +151,18 @@ settings dialog.
 | `__metaKind` | Label | Relationship | Payload |
 |---|---|---|---|
 | `policy` | `:__Policy` | `__policyFor` | `attributeName`, `rule` (`mandatory` / `forbidden` / `pattern`), `appliesToLabels` |
+| `attributeSetting` | `:__AttributeSetting` | `__attributeSettingFor` | `attributeName`, `visible` (bool), `verification` (bool) |
 
 This is the "which attributes are mandatory" case. One node governs every object in the
 module. **Never model this per item** — 984 nodes that still cannot answer "what is the
 rule" is the failure mode.
+
+`attributeSetting` is deliberately **not** folded into `:__Policy` (`docs/REQ_REVIEW.md` §9.2).
+A policy models a *rule about a value* — `mandatory` / `forbidden` / `pattern`, scoped by
+`appliesToLabels`. `visible` and `verification` are *roles for an attribute*: no value
+semantics, no label scope. Widening `rule` to carry them would make
+`attribute-policy-checks.md` mean two things at once. One node per `(module, attributeName)`,
+enforced by the write query since Community cannot constrain it.
 
 `appliesToLabels` is **always stored, never implied**. A policy that applies to everything
 is a policy nobody can reason about, and a default living in query code is a default that
@@ -260,7 +268,12 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `:__UNDEFINED` | the *Not yet imported* state, with the owning module named |
 | `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; drive table layout |
 | `refersTo` | **References** (outgoing) |
-| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification** |
+| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting** |
+| `:__Note` in the review table | **Comment** — one per object, never a thread |
+| `__noteOn` | never shown; the comment's attachment |
+| `:__AttributeSetting` `visible` | **Shown in table** |
+| `:__AttributeSetting` `verification` | **Verification attribute** |
+| `__attributeSettingFor` | never shown |
 | `__schemaVersion`, `__metaKind` | never shown |
 | `__metaId`, `__metaKind` | never shown |
 | `__createdBy` / `__createdAt` | **Added by** / **Added on** |
@@ -300,9 +313,13 @@ Save has written nothing.
 
 Consequences:
 
-- Dirty state is local to the open dialog or table and dies with it. No shared store.
-- No unsaved-changes route guard is needed, because nothing can be unsaved outside a modal
-  that cannot be navigated away from.
+- Dirty state is local to the open dialog, or to one editable table inside one view, and dies
+  with it. No shared store, no cross-view state.
+- A view that owns an editable table guards its own exit: changing module, changing route or
+  closing the tab with pending edits asks first. This is the only place a guard exists, and it
+  is scoped to the view that owns the buffer — never a router-wide guard reading a global
+  store. (Amended for the batch comment save in `docs/REQ_REVIEW.md` §9.1: a table with pending
+  comments *can* be navigated away from, which the original wording assumed impossible.)
 - A save that spans two tabs of one dialog is still **one** request and one transaction.
 - On failure, the dialog stays open with the user's input intact and shows the error
   inline. Never close a dialog on a failed write; without a staging layer there is no
@@ -492,13 +509,15 @@ GET  /api/v1/ready                      ← readiness: pings the graph, 503 when
 GET  /api/v1/tree                       ← root of the knowledge tree, lazy children
 GET  /api/v1/items/{ref}                ← one SEItem, source-agnostic envelope
 GET  /api/v1/items/{ref}/children
-GET  /api/v1/items/{ref}/traces         ← refersTo, out only (see schema doc §8.2)
+GET  /api/v1/items/{ref}/traces         ← refersTo out; ?direction=in for incoming (schema §8.2)
 GET  /api/v1/items/{ref}/annotations    ← Tier-2 data attached to an item
 POST /api/v1/items/{ref}/annotations    ← R2 write path
 PATCH/DELETE /api/v1/annotations/{ref}
 GET  /api/v1/modules                    ← DOORS-specific projection
 GET  /api/v1/modules/{ref}              ← module detail for the settings dialog
-POST /api/v1/modules/{ref}/settings     ← system level + mandatory-attribute diff, one txn
+GET  /api/v1/modules/{ref}/objects      ← review table rows, document order, paged + capped
+POST /api/v1/modules/{ref}/settings     ← system level + mandatory diff + attribute flags, one txn
+POST /api/v1/modules/{ref}/comments     ← every dirty comment for one module, one txn
 GET  /api/v1/modules/{ref}/attributes   ← runtime attribute discovery, namespace filtered
 GET  /api/v1/modules/{ref}/checks/attribute-policy
 GET  /api/v1/config/navigation          ← sidenav structure, read-only

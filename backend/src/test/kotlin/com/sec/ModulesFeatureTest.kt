@@ -2,6 +2,7 @@ package com.sec
 
 import com.sec.config.Neo4jSettings
 import com.sec.domain.SaveModuleSettingsOutcome
+import com.sec.domain.SystemLevelChange
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
@@ -104,7 +105,7 @@ class ModulesFeatureTest {
 
         val saved = metaWriter.saveModuleSettings(
             moduleId = moduleId,
-            systemLevelCode = "L2",
+            systemLevel = SystemLevelChange.Set("L2"),
             addAttributes = listOf("Object Text"),
             removeAttributes = emptyList(),
         )
@@ -126,7 +127,7 @@ class ModulesFeatureTest {
         // Selecting Empty removes the classification node (criterion 15).
         val cleared = metaWriter.saveModuleSettings(
             moduleId = moduleId,
-            systemLevelCode = null,
+            systemLevel = SystemLevelChange.Clear,
             addAttributes = emptyList(),
             removeAttributes = listOf("Object Text"),
         )
@@ -167,15 +168,19 @@ class ModulesFeatureTest {
 
         assertEquals(
             SaveModuleSettingsOutcome.ModuleNotFound,
-            metaWriter.saveModuleSettings("does-not-exist", null, emptyList(), emptyList()),
+            metaWriter.saveModuleSettings("does-not-exist", SystemLevelChange.Unchanged),
         )
         assertEquals(
             SaveModuleSettingsOutcome.InvalidSystemLevel("L9"),
-            metaWriter.saveModuleSettings(moduleId, "L9", emptyList(), emptyList()),
+            metaWriter.saveModuleSettings(moduleId, SystemLevelChange.Set("L9")),
         )
         assertEquals(
             SaveModuleSettingsOutcome.UnknownAttributes(listOf("Not A Real Attribute")),
-            metaWriter.saveModuleSettings(moduleId, null, listOf("Not A Real Attribute"), emptyList()),
+            metaWriter.saveModuleSettings(
+                moduleId,
+                SystemLevelChange.Unchanged,
+                addAttributes = listOf("Not A Real Attribute"),
+            ),
         )
         assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
     }

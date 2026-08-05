@@ -7,6 +7,7 @@ import com.sec.graph.GraphDriver
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.DoorsProjection
+import com.sec.source.doors.ReviewProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -61,7 +62,8 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     // Collaborators are constructed once here, not inside routing, so routing owns no object
     // lifecycles and a test can substitute its own.
     val doorsProjection = DoorsProjection(graphDriver)
+    val reviewProjection = ReviewProjection(graphDriver)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
 
-    configureRouting(graphDriver, doorsProjection, metaWriter)
+    configureRouting(graphDriver, doorsProjection, reviewProjection, metaWriter)
 }

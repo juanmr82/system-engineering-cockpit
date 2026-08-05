@@ -23,6 +23,7 @@ public object Aliases {
         "policy" to "Rule",
         "link" to "Link",
         "classification" to "Classification",
+        "attributeSetting" to "Attribute setting",
     )
 
     // Scheme- and rule-scoped labels (docs/features/requirements-modules.md §4.1, §4.2).
@@ -32,6 +33,32 @@ public object Aliases {
 
     public val policyRuleLabels: Map<String, String> = mapOf(
         "mandatory" to "Mandatory attribute",
+    )
+
+    // The three per-module attribute flags of the Req review settings dialog (REQ_REVIEW.md §6).
+    // `mandatory` is the :__Policy rule above under its dialog-column wording; the other two are
+    // :__AttributeSetting payload fields (§9.2).
+    public val attributeSettingLabels: Map<String, String> = mapOf(
+        "mandatory" to "Mandatory",
+        "visible" to "Shown in table",
+        "verification" to "Verification attribute",
+    )
+
+    // Type labels the importer derives, rendered as language rather than as label strings. The
+    // API still ships raw `labels` as a state channel (CLAUDE.md §5) — this is what the *text*
+    // must say when a label is all we have. A type absent from here has no wording of its own
+    // and falls back to __typeRaw, which is source content and always preferred when present.
+    public val typeLabels: Map<String, String> = mapOf(
+        "DOORSRequirement" to "Requirement",
+        "DOORSHeading" to "Heading",
+        "DOORSInformation" to "Information",
+        "DOORSAppMatrix" to "Applicability matrix",
+        "DOORSAppMatrixHeading" to "Applicability matrix heading",
+        "DOORSTable" to "Table",
+        "DOORSTableRow" to "Table row",
+        "DOORSTableCell" to "Table cell",
+        "DOORSTBD" to "TBD",
+        "__UNDEFINED" to "Not yet imported",
     )
 
     // `DOORSModule` property labels for the settings dialog's tab 1 (requirements-modules.md
@@ -57,4 +84,37 @@ public object Aliases {
     // __version's value, not its name, is content the user needs (R5): "current" reads as
     // "Current"; any other baseline value is already human-readable and passes through.
     public fun renderVersionValue(raw: String): String = if (raw == "current") "Current" else raw
+
+    // Which label answers "what kind of object is this". Neo4j returns labels in no defined
+    // order, so this cannot be "the first one that maps" — an object labelled both DOORSTBD and
+    // DOORSTableCell would render differently between two reads of the same node.
+    //
+    // The order encodes a real distinction: the first group is the Object Type enum the importer
+    // derives, the second is structural markers a node carries *in addition* to its type. A table
+    // cell's type is still its Object Type; being inside a table is not a type. __UNDEFINED is
+    // last because a placeholder has no type at all, and that is what the wording says.
+    private val TYPE_LABEL_PRIORITY: List<String> = listOf(
+        "DOORSRequirement",
+        "DOORSHeading",
+        "DOORSAppMatrixHeading",
+        "DOORSAppMatrix",
+        "DOORSInformation",
+        "DOORSTBD",
+        "DOORSTable",
+        "DOORSTableRow",
+        "DOORSTableCell",
+        "__UNDEFINED",
+    )
+
+    // The wording for an object's Type column (REQ_REVIEW.md §5). __typeRaw is source content and
+    // wins whenever the importer captured it; otherwise the type label is mapped through
+    // `typeLabels`. Returns null when neither is available — the caller renders nothing rather
+    // than inventing a word.
+    public fun renderType(typeRaw: String?, labels: List<String>): String? {
+        if (!typeRaw.isNullOrBlank()) {
+            return typeRaw
+        }
+        val present = labels.toSet()
+        return TYPE_LABEL_PRIORITY.firstOrNull { it in present }?.let(typeLabels::get)
+    }
 }

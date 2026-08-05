@@ -3,9 +3,11 @@ package com.sec.api
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.moduleRoutes
+import com.sec.api.routes.reviewRoutes
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.DoorsProjection
+import com.sec.source.doors.ReviewProjection
 import io.ktor.server.application.Application
 import io.ktor.server.routing.routing
 
@@ -15,7 +17,7 @@ import io.ktor.server.routing.routing
 //
 // Still to come (CLAUDE.md §5 "API shape"):
 //   GET  /api/v1/tree
-//   GET  /api/v1/items/{ref}, /children, /traces, /annotations
+//   GET  /api/v1/items/{ref}/children, /annotations
 //   POST /api/v1/items/{ref}/annotations, PATCH|DELETE /api/v1/annotations/{ref}
 //   GET  /api/v1/config/navigation
 //   GET  /api/v1/modules/{ref}/checks/attribute-policy
@@ -23,11 +25,13 @@ import io.ktor.server.routing.routing
 public fun Application.configureRouting(
     graphDriver: GraphDriver,
     doorsProjection: DoorsProjection,
+    reviewProjection: ReviewProjection,
     metaWriter: MetaWriter,
 ) {
     routing {
         healthRoutes(graphDriver)
         moduleRoutes(doorsProjection, metaWriter)
+        reviewRoutes(doorsProjection, reviewProjection, metaWriter)
         configRoutes()
 
         // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.

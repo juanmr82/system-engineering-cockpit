@@ -48,6 +48,16 @@ public object ModuleCypher {
         RETURN p.attributeName AS name
     """
 
+    // Which of these ids are actually objects of this module. The comment write path uses it to
+    // refuse an arbitrary __id in a request body — without it, a crafted payload could attach a
+    // note to any node in the graph, which is not what "comment on a row you loaded" means.
+    public const val MODULE_OBJECT_IDS: String = """
+        CYPHER 25
+        MATCH (o:DOORSObject {__moduleUrl: ${'$'}moduleUrl})
+        WHERE o.__id IN ${'$'}itemIds AND NOT o:DOORSModule
+        RETURN o.__id AS id
+    """
+
     public const val MODULE_EXISTS: String = """
         CYPHER 25
         MATCH (m:DOORSModule {__id: ${'$'}moduleId})

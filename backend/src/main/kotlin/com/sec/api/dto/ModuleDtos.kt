@@ -1,6 +1,7 @@
 package com.sec.api.dto
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 // Wire shapes for docs/features/requirements-modules.md §6. `ref` is always the base64url
 // encoding of __id (R5, com.sec.domain.Ref) — never __id itself.
@@ -44,10 +45,20 @@ public data class ModuleDetailDto(
     public val properties: List<ModulePropertyDto>,
 )
 
+// The three per-module attribute flags (REQ_REVIEW.md §6). `mandatory` is the :__Policy rule the
+// Modules dialog already writes — the same stored value, read through the same path, so setting it
+// in either dialog shows in the other. `visible` and `verification` are :__AttributeSetting.
+//
+// `fixed` marks a column the review table always shows: its Visible checkbox renders checked and
+// disabled. It is derived per request, never stored — which column set is fixed is a decision in
+// code, not data (CLAUDE.md §2, "anything derivable" is not :__Meta).
 @Serializable
 public data class ModuleAttributeDto(
     public val name: String,
     public val mandatory: Boolean,
+    public val visible: Boolean = false,
+    public val verification: Boolean = false,
+    public val fixed: Boolean = false,
 )
 
 @Serializable
@@ -61,10 +72,34 @@ public data class MandatoryAttributesDiffDto(
     public val remove: List<String> = emptyList(),
 )
 
+// One attribute's three flags as the Req review settings dialog submits them (REQ_REVIEW.md §6).
+// Absolute, not a diff: the dialog holds the module's whole attribute list on screen, so sending
+// the state of every row it showed is both simpler and unambiguous about what was unticked.
+@Serializable
+public data class AttributeSettingDto(
+    public val name: String,
+    public val mandatory: Boolean = false,
+    public val visible: Boolean = false,
+    public val verification: Boolean = false,
+)
+
+// Two shapes reach this endpoint, and both are one request and one transaction (R7):
+//   - the Modules dialog sends `systemLevel` + `mandatoryAttributes` (a diff over one tab);
+//   - the Req review dialog sends `attributeSettings` (the absolute state of every row).
+// A request may carry either or both. `attributeSettings` also carries `mandatory`, so a review
+// dialog save writes :__Policy and :__AttributeSetting in the same transaction (§9.2).
+//
+// `systemLevel` is JsonElement? and not String? on purpose. The Modules dialog clears a
+// classification by sending an explicit `"systemLevel": null`, while the review dialog does not
+// show system level at all and omits the field — and with String? those two are the same value,
+// so the review dialog would silently wipe the classification on every save. JsonNull is an
+// object rather than Kotlin null, so absent (null) and explicit null (JsonNull) stay
+// distinguishable. Read it through SystemLevelChange.from(), never directly.
 @Serializable
 public data class ModuleSettingsRequestDto(
-    public val systemLevel: String? = null,
+    public val systemLevel: JsonElement? = null,
     public val mandatoryAttributes: MandatoryAttributesDiffDto = MandatoryAttributesDiffDto(),
+    public val attributeSettings: List<AttributeSettingDto>? = null,
 )
 
 // RFC 9457. `instance` is the request's CallId, so a reported failure can be found in the logs.

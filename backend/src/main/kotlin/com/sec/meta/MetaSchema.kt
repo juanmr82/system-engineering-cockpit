@@ -34,6 +34,13 @@ public object MetaSchema {
         CREATE INDEX meta_policy_attribute IF NOT EXISTS
         FOR (p:__Policy) ON (p.attributeName)
         """,
+        // The same inverse question for the other Shape-B kind: "which modules show this
+        // attribute", asked by the summary views in REQ_REVIEW.md §9.3.
+        """
+        CYPHER 25
+        CREATE INDEX meta_attribute_setting IF NOT EXISTS
+        FOR (s:__AttributeSetting) ON (s.attributeName)
+        """,
     )
 
     public suspend fun apply(graphDriver: GraphDriver) {
