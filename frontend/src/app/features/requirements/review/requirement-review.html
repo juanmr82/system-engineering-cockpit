@@ -1,0 +1,222 @@
+<div class="sec-review">
+  <header class="sec-review__header">
+    <p class="sec-review__eyebrow">Requirements</p>
+    <h1 class="sec-review__title">Req review</h1>
+  </header>
+
+  <div class="sec-review__bar">
+    <mat-form-field appearance="outline" class="sec-review__module" subscriptSizing="dynamic">
+      <mat-label>Module</mat-label>
+      <mat-select
+        [value]="moduleRef()"
+        (selectionChange)="selectModule($event.value)"
+        panelWidth="auto"
+      >
+        @for (module of modulesApi.modules.value()?.rows ?? []; track module.ref) {
+          <mat-option [value]="module.ref">
+            <span class="sec-review__module-name">{{ module.name }}</span>
+            <span class="sec-review__module-path">{{ module.path }}</span>
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <button
+      mat-icon-button
+      type="button"
+      class="sec-review__action"
+      matTooltip="Attribute settings"
+      aria-label="Attribute settings"
+      [disabled]="!moduleRef()"
+      (click)="openSettings()"
+    >
+      <mat-icon svgIcon="gearbox" />
+    </button>
+
+    <button
+      mat-icon-button
+      type="button"
+      class="sec-review__action sec-review__action--save"
+      [matTooltip]="dirtyCount() === 1 ? 'Save 1 comment' : 'Save ' + dirtyCount() + ' comments'"
+      aria-label="Save comments"
+      [disabled]="!canSave()"
+      (click)="saveComments()"
+    >
+      <mat-icon svgIcon="save" />
+      @if (dirtyCount() > 0) {
+        <span class="sec-review__badge" aria-hidden="true">{{ dirtyCount() }}</span>
+      }
+    </button>
+
+    <mat-form-field appearance="outline" class="sec-review__search" subscriptSizing="dynamic">
+      <mat-icon matPrefix svgIcon="search" />
+      <input
+        matInput
+        type="text"
+        placeholder="Search"
+        aria-label="Search this module"
+        [value]="search()"
+        (input)="search.set($any($event.target).value)"
+      />
+      @if (search()) {
+        <button
+          mat-icon-button
+          matSuffix
+          type="button"
+          aria-label="Clear search"
+          (click)="search.set('')"
+        >
+          <mat-icon svgIcon="close" />
+        </button>
+      }
+    </mat-form-field>
+
+    <mat-checkbox class="sec-review__filter" [checked]="requirementsOnly()" (change)="requirementsOnly.set($event.checked)">
+      Requirements only
+    </mat-checkbox>
+
+    <p class="sec-review__stats">
+      <span><b>{{ filtered().length }}</b> shown</span>
+      <span><b>{{ total() }}</b> in module</span>
+    </p>
+  </div>
+
+  @if (saveError(); as message) {
+    <p class="sec-review__error" role="alert">{{ message }}</p>
+  }
+
+  @if (!moduleRef()) {
+    <sec-empty-state
+      title="Choose a module"
+      description="Pick a module above to review its objects, their traceability and their comments."
+    />
+  } @else if (objects.isLoading() && !objects.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (objects.error()) {
+    <div class="sec-review__load-error" role="alert">
+      <p>Couldn't load this module's objects.</p>
+      <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else {
+    <div class="sec-review__body">
+      <div class="sec-review__table-scroll">
+        <div class="sec-review__grid">
+          <div class="sec-review__head" role="row" [style.grid-template-columns]="columnTemplate()">
+            <span role="columnheader">ID</span>
+            <span role="columnheader">Type</span>
+            <span role="columnheader">Name</span>
+            @for (column of attributeColumns(); track column) {
+              <span role="columnheader">{{ column }}</span>
+            }
+            <span role="columnheader" class="sec-review__head-references">
+              References
+              <button
+                mat-icon-button
+                type="button"
+                class="sec-review__info"
+                aria-label="About incoming references"
+                matTooltip="Incoming references are only known for modules that have been imported. An empty list does not mean an object is unreferenced."
+              >
+                <mat-icon svgIcon="info" />
+              </button>
+            </span>
+            <span role="columnheader">Comment</span>
+          </div>
+
+          <cdk-virtual-scroll-viewport [itemSize]="rowHeight" class="sec-review__viewport">
+            <div
+              *cdkVirtualFor="let entry of filtered(); trackBy: trackByRef"
+              class="sec-review__row"
+              role="row"
+              [class.sec-review__row--context]="!entry.row.requirementLike"
+              [style.grid-template-columns]="columnTemplate()"
+              [style.height.px]="rowHeight"
+            >
+              <span class="sec-review__cell sec-review__cell--id">
+                <button type="button" class="sec-review__id" (click)="openDetail(entry.row.ref)">
+                  {{ entry.row.id }}
+                </button>
+              </span>
+
+              <span class="sec-review__cell sec-review__cell--type">{{ entry.row.type }}</span>
+
+              <span
+                class="sec-review__cell sec-review__cell--name"
+                [style.padding-left.px]="(entry.row.level - 1) * 12"
+                [matTooltip]="entry.row.name"
+              >
+                {{ entry.row.name }}
+              </span>
+
+              @for (cell of entry.cells; track $index) {
+                <span class="sec-review__cell" [matTooltip]="cell">{{ cell }}</span>
+              }
+
+              <span class="sec-review__cell sec-review__cell--references">
+                @if (entry.row.references.outgoing.length) {
+                  <span class="sec-review__refs">
+                    <span class="sec-review__refs-label">Out</span>
+                    @for (reference of entry.row.references.outgoing; track reference.ref) {
+                      <button
+                        type="button"
+                        class="sec-review__ref"
+                        [class.sec-review__ref--unresolved]="!reference.resolved"
+                        [matTooltip]="reference.resolved ? '' : 'Not yet imported' + (reference.moduleName ? ' (module ' + reference.moduleName + ')' : '')"
+                        (click)="openReference(reference)"
+                      >
+                        {{ reference.resolved ? reference.id : 'Not yet imported' }}
+                      </button>
+                    }
+                  </span>
+                }
+                @if (entry.row.references.incoming.length) {
+                  <span class="sec-review__refs">
+                    <span class="sec-review__refs-label">In</span>
+                    @for (reference of entry.row.references.incoming; track reference.ref) {
+                      <button
+                        type="button"
+                        class="sec-review__ref"
+                        [class.sec-review__ref--unresolved]="!reference.resolved"
+                        (click)="openReference(reference)"
+                      >
+                        {{ reference.resolved ? reference.id : 'Not yet imported' }}
+                      </button>
+                    }
+                  </span>
+                }
+              </span>
+
+              <span class="sec-review__cell sec-review__cell--comment">
+                <input
+                  type="text"
+                  class="sec-review__comment"
+                  [class.sec-review__comment--dirty]="isDirty(entry.row)"
+                  [attr.aria-label]="'Comment on ' + entry.row.id"
+                  placeholder="Add a comment"
+                  [value]="commentText(entry.row)"
+                  (input)="editComment(entry.row, $any($event.target).value)"
+                />
+              </span>
+            </div>
+          </cdk-virtual-scroll-viewport>
+        </div>
+      </div>
+
+      @if (selectedItem(); as itemRef) {
+        <sec-item-detail-panel
+          class="sec-review__panel"
+          [itemRef]="itemRef"
+          (closed)="closeDetail()"
+          (moduleSelected)="selectModule($event)"
+        />
+      }
+    </div>
+
+    @if (truncated()) {
+      <p class="sec-review__truncated">
+        This module has more objects than one page holds. Only the first {{ filtered().length }} are
+        shown.
+      </p>
+    }
+  }
+</div>

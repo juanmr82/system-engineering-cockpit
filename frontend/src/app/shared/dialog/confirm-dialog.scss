@@ -1,0 +1,14 @@
+@use 'mixins' as sec;
+
+.sec-confirm__title {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-confirm__message {
+  margin: 0;
+  font-size: var(--sec-text-body);
+  line-height: var(--sec-leading);
+  color: var(--sec-ink);
+}

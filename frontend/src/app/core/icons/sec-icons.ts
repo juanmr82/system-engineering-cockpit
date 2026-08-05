@@ -15,6 +15,10 @@ import { MatIconRegistry } from '@angular/material/icon';
 const SEC_ICONS = {
   gearbox: '/icons/gearbox.svg',
   'account-circle': '/icons/account-circle.svg',
+  close: '/icons/close.svg',
+  info: '/icons/info.svg',
+  save: '/icons/save.svg',
+  search: '/icons/search.svg',
 } as const;
 
 // Use this in a template as <mat-icon svgIcon="gearbox" /> — the name is checked against the map.

@@ -1,0 +1,61 @@
+@use 'mixins' as sec;
+
+.sec-field-readout {
+  @include sec.field-readout;
+}
+
+.sec-review-settings__name {
+  padding: 0 22px 10px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+  margin-bottom: 4px;
+}
+
+// A concrete height, not flex alone: the sticky header needs a bounded scroll container to stick
+// to (CLAUDE.md §6).
+.sec-review-settings__content {
+  height: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 0;
+}
+
+.sec-review-settings__hint {
+  @include sec.absent-text;
+
+  color: var(--sec-ink-2);
+  max-width: 78ch;
+  margin: 14px 0 0;
+}
+
+.sec-review-settings__scroll {
+  @include sec.table-well;
+}
+
+table {
+  @include sec.data-table($row-height: 34px, $header-height: 34px);
+}
+
+// The view's own columns are shown for orientation but decided in code, so they read as fixed:
+// quieter ink, and every control disabled.
+.sec-review-settings__fixed {
+  color: var(--sec-ink-2);
+}
+
+// Ticking these writes Tier-2 data, so they wear the application accent, never a neutral control.
+.sec-review-settings__attributes mat-checkbox {
+  @include sec.meta-checkbox;
+}
+
+.sec-review-settings__error {
+  @include sec.error-panel;
+
+  margin: 12px 0 0;
+}
+
+// No attributes at all is the sanitised-export case and a normal state, not a failure.
+.sec-review-settings__empty {
+  @include sec.absent-text;
+
+  padding: 16px;
+}

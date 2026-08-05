@@ -1,0 +1,74 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.sec-detail {
+  @include sec.sheet(18px 20px 22px);
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  overflow: auto;
+}
+
+.sec-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sec-detail__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-detail__title {
+  margin: 4px 0 0;
+  font-size: var(--sec-text-lead);
+  font-weight: 600;
+  color: var(--sec-blue);
+  overflow-wrap: anywhere;
+}
+
+.sec-detail__close {
+  @include sec.compact-icon-button;
+}
+
+.sec-detail__facts {
+  @include sec.fact-rows(150px);
+}
+
+// The DOORS attribute bag, kept visually distinct from the identity facts above it: same rows,
+// separated by a hairline rather than by a heading nobody needs.
+.sec-detail__facts--attributes {
+  padding-top: 12px;
+  border-top: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+// A link that is a button, because following it loads a module rather than navigating a URL.
+.sec-detail__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--sec-blue-mid);
+  text-decoration: underline;
+  cursor: pointer;
+
+  &:focus-visible {
+    @include sec.focus-ring;
+  }
+}
+
+.sec-detail__empty {
+  @include sec.absent-text;
+}
+
+.sec-detail__error {
+  @include sec.error-panel;
+}

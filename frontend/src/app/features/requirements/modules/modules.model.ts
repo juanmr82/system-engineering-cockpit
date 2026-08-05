@@ -34,9 +34,15 @@ export interface ModuleDetail {
   readonly properties: ModuleProperty[];
 }
 
+// The three per-module attribute flags (REQ_REVIEW.md §6). `fixed` marks a column the review
+// table always shows: its Visible checkbox renders checked and disabled. It is derived per
+// request, never stored.
 export interface ModuleAttribute {
   readonly name: string;
   readonly mandatory: boolean;
+  readonly visible: boolean;
+  readonly verification: boolean;
+  readonly fixed: boolean;
 }
 
 export interface ModuleAttributesResponse {
@@ -48,9 +54,21 @@ export interface MandatoryAttributesDiff {
   readonly remove: string[];
 }
 
+export interface AttributeSetting {
+  readonly name: string;
+  readonly mandatory: boolean;
+  readonly visible: boolean;
+  readonly verification: boolean;
+}
+
+// Two dialogs post this, and both are one request in one transaction (R7): the Modules dialog
+// sends `systemLevel` plus a mandatory diff, the Req review dialog sends the absolute state of
+// every attribute row it showed. `systemLevel` is optional and must stay so — the review dialog
+// does not show system level, and sending an explicit null would clear the classification.
 export interface ModuleSettingsRequest {
-  readonly systemLevel: string | null;
-  readonly mandatoryAttributes: MandatoryAttributesDiff;
+  readonly systemLevel?: string | null;
+  readonly mandatoryAttributes?: MandatoryAttributesDiff;
+  readonly attributeSettings?: AttributeSetting[];
 }
 
 // Row model carries a lowercase, accent-stripped, pre-joined copy of every rendered column so

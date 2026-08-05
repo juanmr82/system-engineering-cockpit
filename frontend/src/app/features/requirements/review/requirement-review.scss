@@ -1,0 +1,266 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-review {
+  @include sec.page-shell;
+}
+
+.sec-review__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-review__title {
+  @include sec.view-title;
+}
+
+.sec-review__bar {
+  @include sec.sticky-bar;
+}
+
+.sec-review__module {
+  width: 300px;
+}
+
+.sec-review__module-name {
+  font-weight: 600;
+}
+
+// Module names repeat across folders, so the path is what tells two apart (§2). Quiet, because it
+// is orientation rather than content.
+.sec-review__module-path {
+  margin-left: 10px;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+.sec-review__search {
+  width: 260px;
+}
+
+.sec-review__action {
+  @include sec.compact-icon-button(20px, 34px);
+
+  position: relative;
+}
+
+// The dirty count sits on the save icon rather than beside it: the number and the action it
+// applies to are one thing, and the bar has no room for a second control.
+.sec-review__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: var(--sec-radius);
+  background: var(--sec-highlight-meta);
+  color: var(--sec-paper);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-review__action--save:not(:disabled) {
+  color: var(--sec-highlight-meta);
+}
+
+.sec-review__filter {
+  @include sec.meta-checkbox;
+
+  font-size: var(--sec-text-xs);
+}
+
+.sec-review__stats {
+  @include sec.stat-readout;
+}
+
+// Table on the left, detail panel on the right. The panel is a sibling of the scroll container,
+// never inside it, so opening it changes neither scroll position nor row layout (§7).
+.sec-review__body {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+}
+
+// Horizontal scrolling lives here and vertical scrolling lives in the viewport below, which is
+// what keeps the header row aligned with the columns without a scroll listener: the header is
+// inside this box, so it moves with X and never with Y.
+.sec-review__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+}
+
+.sec-review__grid {
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+  width: 100%;
+}
+
+.sec-review__head {
+  @include sec.field-label;
+
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  height: 38px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line);
+  background: var(--sec-paper);
+  white-space: nowrap;
+}
+
+.sec-review__head-references {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.sec-review__info {
+  @include sec.compact-icon-button(13px, 22px);
+
+  color: var(--sec-ink-3);
+}
+
+.sec-review__viewport {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.sec-review__row {
+  display: grid;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+  font-size: var(--sec-text-sm);
+  font-variant-numeric: tabular-nums;
+
+  &:hover {
+    background: var(--sec-wash);
+  }
+}
+
+// Headings, information objects and table structure are context, not requirements: muted so they
+// are not read as one (§5).
+.sec-review__row--context {
+  color: var(--sec-ink-2);
+}
+
+.sec-review__cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sec-review__cell--type {
+  color: var(--sec-ink-2);
+}
+
+.sec-review__id,
+.sec-review__ref {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--sec-blue-mid);
+  cursor: pointer;
+
+  &:focus-visible {
+    @include sec.focus-ring(1px);
+  }
+}
+
+.sec-review__id {
+  @include sec.mono;
+
+  font-weight: 600;
+}
+
+.sec-review__cell--references {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--sec-text-xs);
+}
+
+.sec-review__refs {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sec-review__refs-label {
+  @include sec.field-label;
+
+  flex: none;
+}
+
+// An unresolved target is a placeholder for something no import has reached. It is marked, not
+// hidden, and it is not a link — there is nothing to open (§5.1).
+.sec-review__ref--unresolved {
+  color: var(--sec-highlight-undefined);
+  cursor: default;
+}
+
+// A comment is application data, so its box wears the Tier-2 accent and can never be mistaken for
+// something DOORS said (CLAUDE.md §8).
+.sec-review__comment {
+  width: 100%;
+  padding: 4px 6px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+  font: inherit;
+  color: var(--sec-ink);
+
+  &::placeholder {
+    color: var(--sec-ink-3);
+  }
+
+  &:focus-visible {
+    @include sec.focus-ring(0);
+
+    border-color: var(--sec-highlight-meta);
+  }
+}
+
+.sec-review__comment--dirty {
+  border-color: var(--sec-highlight-meta);
+  border-left-width: 2px;
+  background: color-mix(in srgb, var(--sec-highlight-meta) 6%, white);
+}
+
+.sec-review__truncated,
+.sec-review__load-error {
+  @include sec.absent-text;
+}
+
+.sec-review__load-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sec-review__error {
+  @include sec.error-panel;
+}
+
+.sec-review__panel {
+  width: 380px;
+  flex: none;
+}
