@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Source importers for the System Engineering Cockpit knowledge graph"
 requires-python = ">=3.11"
 dependencies = [
-    "neo4j>=5.24,<6",
+    # Both driver majors work: the importer uses only GraphDatabase.driver, session,
+    # execute_write and ManagedTransaction, none of which changed in 6.0. Left open at the
+    # top so a company mirror that carries only one of the two can still resolve it.
+    "neo4j>=5.24",
 ]
 
 [project.optional-dependencies]
@@ -26,4 +29,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# The DOORS importer keeps its tests next to the code it tests, which is where they arrived
+# from the standalone project. Both roots are listed so `pytest` with no arguments runs
+# everything — a test suite you have to remember a path to is a test suite that stops running.
+testpaths = ["tests", "src/sec_import/doors/tests"]
