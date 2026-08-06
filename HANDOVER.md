@@ -134,11 +134,12 @@ The graph was left exactly as found. Nothing was written this session.
 
 ## Environment
 
-- Backend `:8080` (`SEC_NEO4J_USER=neo4j SEC_NEO4J_PASSWORD=admin123 ./gradlew :backend:run`);
-  frontend `npm start` → `:4200`; Neo4j native from
-  `C:\Users\juanm\neo4j\neo4j-community-2026.06.0` (`./bin/neo4j.bat console`), creds
-  `neo4j` / `admin123`. **All three were left running**, backend restarted after the `id` field
-  was added.
+- Backend `:8080`, frontend `npm start` → `:4200`, Neo4j native from
+  `C:\Users\juanm\neo4j\neo4j-community-2026.06.0` (`./bin/neo4j.bat console`). **All three were
+  left running**, backend restarted after the `id` field was added.
+- **Credentials are not written down here.** `scripts\win\sec-env.local.ps1` holds them, is
+  git-ignored, and is what `sec-env.ps1` reads — see `docs/RUNNING.md` §1.1. Dot-source that and
+  the three scripts beside it start everything with the environment already set.
 - **Restart the backend after any backend change** — `./gradlew :backend:run` serves the code it
   started with. `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process`.
 
