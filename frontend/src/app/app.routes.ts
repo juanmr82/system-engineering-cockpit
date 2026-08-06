@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { canLeaveModules } from './features/requirements/modules/modules.guard';
 import { canLeaveReview } from './features/requirements/review/review.guard';
 
 // Every route is lazy (loadComponent) and renders inside the shell. Unknown paths render a
@@ -20,6 +21,10 @@ export const routes: Routes = [
         path: 'requirements/modules',
         loadComponent: () =>
           import('./features/requirements/modules/modules').then((m) => m.Modules),
+        // The System level column is editable, so this view owns a buffer that can be navigated
+        // away from — the same situation the review table's comments created (R7). The guard file
+        // imports the component as a type only, so this does not un-lazy the route.
+        canDeactivate: [canLeaveModules],
       },
       {
         path: 'requirements/review',

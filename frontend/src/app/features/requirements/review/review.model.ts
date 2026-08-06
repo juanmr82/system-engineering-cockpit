@@ -35,10 +35,20 @@ export interface ReviewRow {
   readonly ref: string;
   readonly id: string;
   readonly name: string;
+  // DOORS's outline number, e.g. "4.3.2-1". Display data — it is the first half of a heading's
+  // Description (§5). Never a sort key: it does not order correctly as a string, which is why rows
+  // arrive in document order and the table keeps that order.
+  readonly objectNumber: string;
   readonly type: string | null;
   readonly labels: string[];
   readonly level: number;
   readonly requirementLike: boolean;
+  // Everything the consistency checks found wrong with this object, as the text to show (§5.3):
+  // fixed rules that always run ("Object Type shall not be TBD") followed by the names of
+  // mandatory attributes carrying no value. Computed on read by the server, never stored — the
+  // mandatory half depends on user-editable configuration, so it is not a property of the
+  // import (R2).
+  readonly issues: string[];
   readonly attributes: Record<string, unknown>;
   readonly references: References;
   readonly comment: ReviewComment | null;

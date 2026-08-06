@@ -1,0 +1,13 @@
+<span class="sec-module-name-cell">
+  <span class="sec-module-name-cell__name">{{ name() }}</span>
+  <button
+    mat-icon-button
+    type="button"
+    class="sec-module-name-cell__settings"
+    [attr.aria-label]="'Settings for ' + name()"
+    matTooltip="Module settings"
+    (click)="openSettings()"
+  >
+    <mat-icon svgIcon="gearbox" />
+  </button>
+</span>

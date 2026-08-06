@@ -227,8 +227,14 @@ GET /api/v1/modules/{ref}/checks/attribute-policy
   }
 ```
 
-- **`/requirements/review`** — the primary consumer. Lists violations, grouped by attribute
-  or listed in document order (`__sortKey`), each row linking to the requirement.
+- **`/requirements/review`** — the primary consumer, and it does **not** use this endpoint.
+  **Implemented**: the check is evaluated per row inside `GET /modules/{ref}/objects`, which
+  already returns every property of every object, and arrives as `issues: string[]` on each row —
+  a list shared with the **fixed** checks that view also runs, which are not policy-driven and are
+  specified in `REQ_REVIEW.md` §5.3. The table needs the verdict *per row*, and joining two
+  separately paged responses in the client to get it would be fragile for no gain — the
+  server-side cost is one extra small query for the policies, once per page.
+  This endpoint remains the right shape for the aggregate report and is still unimplemented.
 - **`/requirements/statistics`** — the aggregate only: compliance per module, per attribute.
 - **Modules list** — optionally a compliance figure per row later. Do not add it in the first
   pass; it turns a cheap list query into one check per module.

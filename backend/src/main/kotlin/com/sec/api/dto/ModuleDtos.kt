@@ -102,6 +102,39 @@ public data class ModuleSettingsRequestDto(
     public val attributeSettings: List<AttributeSettingDto>? = null,
 )
 
+/**
+ * The Modules table's batch system-level save.
+ *
+ * `code` is a plain nullable string here, unlike `ModuleSettingsRequestDto.systemLevel`, and the
+ * difference is deliberate: there, absent and explicit-null had to stay distinguishable because
+ * two dialogs post to that endpoint and one of them does not show system level at all. Here every
+ * entry in the list *is* a change the user made, so a null unambiguously means "cleared".
+ */
+@Serializable
+public data class SystemLevelEditDto(
+    public val ref: String,
+    public val code: String? = null,
+)
+
+@Serializable
+public data class SaveSystemLevelsRequestDto(
+    public val levels: List<SystemLevelEditDto> = emptyList(),
+)
+
+// Echoed back so the table can clear its dirty marks without reloading — the server decides what
+// was stored, exactly as with comments (REQ_REVIEW.md §5.2). The label is resolved here so the
+// client never maps a code to wording of its own (R5).
+@Serializable
+public data class SavedSystemLevelDto(
+    public val ref: String,
+    public val systemLevel: SystemLevelOptionDto?,
+)
+
+@Serializable
+public data class SaveSystemLevelsResponseDto(
+    public val saved: List<SavedSystemLevelDto>,
+)
+
 // RFC 9457. `instance` is the request's CallId, so a reported failure can be found in the logs.
 @Serializable
 public data class ProblemDetailDto(

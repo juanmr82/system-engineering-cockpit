@@ -1,0 +1,31 @@
+@use 'mixins' as sec;
+
+// A cell renderer's host element defaults to `display: inline`, which cannot be aligned and
+// collapses to its text box. Every renderer in this app states its own box.
+:host {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+// Name and gear share a baseline: the button is a peer of the text, not a floating overlay.
+.sec-module-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sec-module-name-cell__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--sec-blue);
+}
+
+.sec-module-name-cell__settings {
+  @include sec.compact-icon-button;
+
+  flex: none;
+}

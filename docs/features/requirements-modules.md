@@ -75,10 +75,39 @@ Behaviour:
   **rendered** values of all four columns, so what the user sees is what gets searched.
   Normalise each row once (`toLocaleLowerCase()` + NFD accent strip) and memoise it on the
   row model — do not re-normalise on every keystroke.
-- **Table** — `mat-table`, compact density (`-2`), sticky header, `matSort` on all four
-  columns, `tabular-nums`. Default sort: `Module` ascending.
-- **Level cell** — a small chip in `#0077C8` (the Tier-2 accent, §8 of `CLAUDE.md`) so a
-  user can never mistake an application classification for something DOORS said.
+- **Table** — **ag-grid Community** (`../adr/0006-ag-grid-community-for-tables.md`), compact
+  density (`-2`), sortable and resizable on all four columns, `tabular-nums`. Default sort:
+  `Module` ascending. This view does not need pinning or column virtualization; it is on the grid
+  so that the application has **one** table system, and so a reviewer moving between here and Req
+  review meets one set of column behaviours. `Last modified` sorts as the string DOORS gave us —
+  it is free text, not ISO-8601, and is never parsed into a `Date`.
+- **Level cell** — a filled chip, so a user can never mistake an application classification for
+  something DOORS said. **It is also the control that changes it**, and it is coloured by level:
+
+  - **Editable in place.** A real `<select>` inside a cell renderer, writing to the view's own
+    `ref`-keyed buffer — *not* an ag-grid cell editor, which would be a second staging concept
+    beside the buffer when R7 allows exactly one (`CLAUDE.md` §6). The same shape as the review
+    table's comment box, and the settings dialog's dropdown still writes the identical
+    `:__Meta:__Classification`; there is one stored shape, reachable from two places.
+  - **Saved in a batch**, behind a save icon carrying the count of pending changes, exactly like
+    the review table's comments: one gesture, one request, one transaction, and the server's
+    response — not the request — clears the dirty marks, so the list is never refetched. On
+    failure nothing is written, the edits stay on screen and the error shows inline.
+    `POST /api/v1/modules/system-levels`, which is **not** module-scoped because the batch spans
+    modules; that is the only structural difference from `/{ref}/comments`.
+  - **The view guards its own exit** (`modules.guard.ts`), because a table with pending edits can
+    be navigated away from — the amendment R7 already carries for the review table.
+  - **Coloured by level**, `--sec-level-0` … `--sec-level-4`: green → teal → blue → purple →
+    magenta, L0 at the top of the hierarchy to L4 at the bottom. Two of those stops are colours
+    the semantic palette had already spent; `CLAUDE.md` §8 records why that reuse is bounded and
+    why it must not be extended. *Not set* is a quiet outline rather than a colour, so an
+    unclassified module does not compete with the classified ones.
+  - A pending change is marked with a dashed Tier-2 ring, not a colour change — the fill is
+    already carrying the level, and the level is what the user is reading.
+
+  **Sorting is on the label, not the code** (R5: the code never reaches the user, so ordering by
+  it would be ordering by something invisible). The labels are worded `L0 – …` through `L4 – …`,
+  so the hierarchy sorts in order as a consequence of the wording rather than by accident.
 - **Settings button** — `mat-icon-button`, `settings` icon, always visible (not
   hover-only), `aria-label="Settings for {{ row.name }}"`.
 - **Empty state** — a titled invitation, not an apology: "No modules imported yet" plus one
@@ -428,12 +457,14 @@ frontend/src/app/features/requirements/modules/
 - `modules-api.service.ts`: `readonly modules = httpResource<ModuleListResponse>(() => '/api/v1/modules')`.
   After a successful save call `modules.reload()` — do not hand-patch the row and hope it
   matches what the server stored.
-- `ModulesComponent`: `search = signal('')`, `filtered = computed(...)`. Drive
-  `MatTableDataSource.data` from `filtered` in one `effect`, keep `matSort` bound. Do not
-  use `MatTableDataSource.filter` — filtering stays in the computed so it is testable.
+- `ModulesComponent`: `search = signal('')`, `filtered = computed(...)`, bound straight to the
+  grid's `[rowData]`. Filtering stays in the computed rather than moving to the grid's own quick
+  filter — `normalize()` strips accents, and a user typing `hohenruder` must still find
+  *Höhenruder*.
 - Dialog form: **Signal Forms**. No `FormGroup`. Dirty state lives in the dialog component
   and nowhere else (§2) — no shared store, no service-level pending state.
-- `@for (row of filtered(); track row.ref)`.
+- Row identity is `getRowId: row.ref`, which is what ag-grid tracks by — never the row's index,
+  so filtering and sorting move rows without a cell following the wrong module.
 - No `changeDetection` declaration (OnPush is the v22 default).
 
 Two Material gotchas that will bite:

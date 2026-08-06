@@ -1,0 +1,217 @@
+// ag-grid in the paper style (ADR 0006, ADR 0003).
+//
+// This file is **global**, emitted once from styles.scss, and that is not a shortcut. ag-grid
+// builds its own DOM outside Angular's template compiler, so none of it carries the _ngcontent
+// attribute a component stylesheet is scoped by — a scoped rule would simply never match. Grid
+// styling therefore lives here, and a component's own .scss styles only the wrapper and any
+// cell-renderer component it owns.
+//
+// How the override works: ag-grid emits every theme parameter as
+//
+//   :where(.ag-theme-<hash>) { --ag-background-color: var(--ag-inherited-background-color, #fff) }
+//
+// `:where()` has zero specificity, and the `--ag-inherited-*` indirection exists precisely so a
+// value set on an ancestor wins. So the whole theme is a block of custom properties on a wrapper
+// element, taking its values from the --sec-* ramp. **No colour, size or radius for the grid is
+// ever written in TypeScript, and no rule here targets an .ag-* internal class.**
+//
+// The class goes on a wrapper div, never on <ag-grid-angular> itself: ag-grid assigns
+// `element.className = …` to the three elements it manages, which would wipe a class of ours off
+// the grid element the moment the theme is applied.
+
+.sec-grid {
+  // The scroll container. `position: sticky` — which is what pins a column — needs a bounded box,
+  // the same as a sticky header does; `flex: 1` alone is not enough (CLAUDE.md §6).
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+
+  // --- Surfaces ---------------------------------------------------------------------------
+  --ag-background-color: var(--sec-paper);
+  --ag-foreground-color: var(--sec-ink);
+  --ag-text-color: var(--sec-ink);
+  --ag-subtle-text-color: var(--sec-ink-3);
+  --ag-accent-color: var(--sec-blue-mid);
+
+  // Zebra striping is a fill, and this style separates with a hairline instead (ADR 0003).
+  --ag-odd-row-background-color: transparent;
+  // Translucent, not opaque: hover has to read *over* a heading row's tint rather than replace it,
+  // and an opaque wash lighter than the tint would make a hovered heading look like a body row.
+  // This is the sanctioned way to fix it — the alternative was a rule targeting `.ag-row-hover`,
+  // and no rule here touches an ag-grid internal class.
+  --ag-row-hover-color: color-mix(in srgb, var(--sec-blue-mid) 7%, transparent);
+  --ag-selected-row-background-color: color-mix(in srgb, var(--sec-blue-mid) 8%, white);
+  --ag-column-hover-color: transparent;
+  --ag-modal-overlay-background-color: color-mix(in srgb, var(--sec-paper) 70%, transparent);
+
+  // --- Rules, not shadows -------------------------------------------------------------------
+  --ag-border-color: var(--sec-line);
+  --ag-border-radius: var(--sec-radius);
+  --ag-wrapper-border-radius: 0; // the sheet around the grid draws the edge, not the grid
+  --ag-wrapper-border: none;
+  --ag-row-border: solid var(--sec-hairline) var(--sec-line-soft);
+  --ag-header-row-border: solid var(--sec-hairline) var(--sec-line);
+  --ag-footer-row-border: solid var(--sec-hairline) var(--sec-line);
+
+  // Vertical rules between columns. The paper style separates with a hairline rather than a fill,
+  // and once cells wrap to several lines the horizontal gap alone stops saying where one column
+  // ends — a wrapped requirement statement otherwise runs visually into the attribute beside it.
+  --ag-column-border: solid var(--sec-hairline) var(--sec-line-soft);
+  --ag-header-column-border: solid var(--sec-hairline) var(--sec-line-soft);
+
+  // The one place a vertical rule earns its keep: it is the visible seam between a pinned column
+  // and the columns scrolling underneath it, so a reviewer can see *why* ID stays put.
+  --ag-pinned-column-border: solid var(--sec-hairline) var(--sec-line);
+  --ag-pinned-row-border: solid var(--sec-hairline) var(--sec-line);
+
+  // --- Type ---------------------------------------------------------------------------------
+  --ag-font-family: var(--sec-font);
+  --ag-font-size: var(--sec-text-sm);
+  --ag-cell-font-family: var(--sec-font);
+  --ag-cell-font-size: var(--sec-text-sm);
+  --ag-data-font-size: var(--sec-text-sm);
+
+  // Non-content text: 10px, letter-spaced, quiet (CLAUDE.md §8, rule 4). Casing and tracking are
+  // not theme parameters, so they are set on .sec-grid__header-cell below.
+  --ag-header-font-family: var(--sec-font);
+  --ag-header-font-size: var(--sec-text-label);
+  --ag-header-font-weight: 600;
+  --ag-header-text-color: var(--sec-ink-3);
+  --ag-header-background-color: var(--sec-paper);
+  --ag-header-cell-hover-background-color: var(--sec-wash);
+  --ag-header-cell-moving-background-color: var(--sec-wash);
+
+  // --- Geometry -----------------------------------------------------------------------------
+  // Compact density (CLAUDE.md §8): this is a data tool, and 46px is the row height the review
+  // table was measured at.
+  --ag-row-height: 46px;
+  --ag-header-height: 38px;
+  --ag-cell-horizontal-padding: 12px;
+  --ag-spacing: 6px;
+  --ag-icon-size: 14px;
+  --ag-icon-color: var(--sec-ink-3);
+
+  // --- Interaction --------------------------------------------------------------------------
+  --ag-header-column-resize-handle-color: var(--sec-line);
+  --ag-header-column-resize-handle-width: 2px;
+  --ag-header-column-resize-handle-height: 100%;
+  --ag-range-selection-border-color: var(--sec-blue-mid);
+  --ag-input-focus-border: solid var(--sec-hairline) var(--sec-blue-mid);
+  --ag-input-border: solid var(--sec-hairline) var(--sec-line);
+  --ag-input-border-radius: var(--sec-radius);
+  --ag-input-background-color: var(--sec-paper);
+  --ag-input-text-color: var(--sec-ink);
+  --ag-input-placeholder-text-color: var(--sec-ink-3);
+  --ag-invalid-color: var(--sec-highlight-error);
+
+  // Popups (the column menu, the sort indicator's tooltip) keep the single shadow token; every
+  // other separation in the system is a hairline.
+  --ag-menu-background-color: var(--sec-paper);
+  --ag-menu-text-color: var(--sec-ink);
+  --ag-menu-border: solid var(--sec-hairline) var(--sec-line);
+  --ag-menu-shadow: var(--sec-shadow-raised);
+  --ag-popup-shadow: var(--sec-shadow-raised);
+  --ag-dropdown-shadow: var(--sec-shadow-raised);
+  --ag-card-shadow: var(--sec-shadow-raised);
+  --ag-focus-shadow: none; // the app has one focus ring, declared once in styles.scss
+}
+
+// Applied by ag-grid from `SEC_GRID_DEFAULT_COL_DEF.headerClass` — our class name, reached through
+// the public column API rather than by styling an internal.
+.sec-grid__header-cell {
+  text-transform: uppercase;
+  letter-spacing: var(--sec-tracking-label);
+}
+
+// Every cell, via `SEC_GRID_DEFAULT_COL_DEF.cellClass`.
+//
+// **`line-height` is the load-bearing declaration.** ag-grid centres a single line of text by
+// setting the cell's line-height to the row height, and that inherits — so wrapped text would set
+// its lines 43px apart, and a chip with `padding: 3px 8px` computed to 49px inside a 46px row and
+// visibly overflowed. With cells wrapping, the row grows to its content and normal leading is what
+// makes a paragraph read as a paragraph.
+.sec-grid__cell {
+  line-height: var(--sec-leading);
+  padding-block: 9px;
+  white-space: normal;
+  // A DOORS attribute value can be one unbroken 200-character token — a path, a DXL fragment, an
+  // id list. Without this it forces the column wider than the width the user set.
+  overflow-wrap: anywhere;
+
+  // Requirement tables read as data, not prose (CLAUDE.md §8).
+  font-variant-numeric: tabular-nums;
+}
+
+// A cell holding our own markup — a chip, a control, a stack of links — rather than the text
+// ag-grid lays out itself. Put this on any column with a `cellRenderer`.
+//
+// Content sits at the top, not the middle: rows are as tall as their tallest cell now, so a short
+// References list centred against a six-line requirement would float in the middle of nothing.
+.sec-grid__cell--custom {
+  display: flex;
+  align-items: flex-start;
+}
+
+// A cell whose renderer *is* the control, filling it edge to edge. The cell contributes no padding
+// at all — the editor inside supplies its own, so the text starts where the cell starts.
+//
+// Written as a descendant of `.sec-grid` purely for specificity. ag-grid's own `.ag-cell` rule
+// sets `padding-inline` at one class, and its stylesheet is injected into the document head at
+// runtime — after our linked stylesheet — so at equal specificity ag-grid wins and the horizontal
+// padding survived. Two of our own classes outrank it. This is still not a rule targeting an
+// `.ag-*` internal: both selectors here are ours.
+.sec-grid .sec-grid__cell--editor {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+
+  // **Never set `position` on a cell.** ag-grid lays every cell out with `position: absolute` and
+  // an inline `left`/`right` offset, so overriding it to `relative` silently discards that offset:
+  // the cell renders at its static position instead. That is invisible while a column is the only
+  // one pinned to its side — the offset is 0 — and puts the cell on top of its neighbour the
+  // moment a second one joins it, which is what happened when Issues was added beside Comment.
+  //
+  // No override is needed anyway: an absolutely-positioned element is already a containing block,
+  // so the editor's `position: absolute; inset: 0` resolves against this cell exactly as intended.
+  // That is what lets it escape the content-sized wrappers ag-grid nests cell content in, which
+  // otherwise collapse a textarea to its intrinsic 20-column width whatever `width: 100%` says.
+}
+
+// Information objects are context, not requirements: muted so they are not read as one (§5).
+.sec-grid__row--context {
+  color: var(--sec-ink-2);
+}
+
+// --- Heading rows -----------------------------------------------------------------------------
+//
+// A DOORS heading is the document's structure, and in a flat list it is the only thing that says
+// where you are. It is styled as a heading across the **whole row**, at a weight and size set by
+// its outline level, on a light blue ground that deepens towards level 1 (REQ_REVIEW.md §5).
+//
+// This replaced an indent-by-level that was drawing a tree in a table that is a flat list — and
+// that survived neither sorting nor filtering, both of which reorder the rows it measured depth
+// against. A style says the same thing and keeps saying it in any order.
+
+.sec-grid__row--heading .sec-grid__cell {
+  font-weight: 700;
+  color: var(--sec-blue);
+}
+
+@each $level, $tint, $size in (1 var(--sec-heading-1) var(--sec-text-lead)),
+  (2 var(--sec-heading-2) 15px), (3 var(--sec-heading-3) var(--sec-text-body)),
+  (4 var(--sec-heading-4) var(--sec-text-body)), (5 var(--sec-heading-5) var(--sec-text-sm)),
+  (6 var(--sec-heading-6) var(--sec-text-sm))
+{
+  .sec-grid__row--h#{$level} {
+    background: $tint;
+
+    .sec-grid__cell {
+      font-size: $size;
+    }
+  }
+}
+
+// No left rail on a heading row, deliberately: a row is three sibling elements when columns are
+// pinned — left, centre, right — so a `:first-child` rule would draw the rail three times, once
+// inside each container. The tint and the weight carry the level on their own.

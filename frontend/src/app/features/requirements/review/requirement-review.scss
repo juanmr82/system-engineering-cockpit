@@ -1,5 +1,10 @@
 @use 'mixins' as sec;
 
+// The table itself is styled in styles/_grid.scss, globally: ag-grid builds its own DOM outside
+// Angular's template compiler, so it carries no _ngcontent attribute and nothing scoped to this
+// component could ever reach it (ADR 0006). What is left here is the view around the table —
+// the bar, the panel and the wrapper that gives the grid its bounded box.
+
 :host {
   display: block;
   height: 100%;
@@ -68,10 +73,41 @@
   color: var(--sec-highlight-meta);
 }
 
+// A finding about imported data, so it wears the error red rather than the Tier-2 blue: the app
+// did not write this, it noticed it (CLAUDE.md §8).
+.sec-review__action--issues {
+  color: var(--sec-highlight-error);
+}
+
+.sec-review__badge--issues {
+  background: var(--sec-highlight-error);
+}
+
+// Quiet on purpose. "Nothing is configured" is a fact worth stating, not a fault worth alarming
+// about — the red is reserved for a check that ran and found something.
+.sec-review__no-policy {
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+
+  --mat-button-text-with-icon-horizontal-padding: 8px;
+
+  mat-icon {
+    width: 15px;
+    height: 15px;
+    font-size: 15px;
+  }
+}
+
 // Deliberately *not* the Tier-2 accent, though it is a checkbox in the same bar as the ones in the
 // settings dialog. That accent means "the application wrote this, DOORS did not"; a filter writes
 // nothing. Spending it here would weaken it where it matters (CLAUDE.md §8).
 .sec-review__filter {
+  font-size: var(--sec-text-xs);
+}
+
+// Shown only while a sort is applied: a control that resets nothing is a control that has to be
+// read before it can be ignored.
+.sec-review__reset-sort {
   font-size: var(--sec-text-xs);
 }
 
@@ -88,162 +124,23 @@
   min-height: 0;
 }
 
-// Horizontal scrolling lives here and vertical scrolling lives in the viewport below, which is
-// what keeps the header row aligned with the columns without a scroll listener: the header is
-// inside this box, so it moves with X and never with Y.
+// The sheet the grid sits on. ag-grid owns the scrolling in both directions now — the header stays
+// aligned with its columns because the grid moves them together, which is what the hand-rolled
+// table needed a separate horizontal scroll box to achieve.
 .sec-review__table-scroll {
   @include sec.sheet(0);
 
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  min-height: 0;
   display: flex;
+  overflow: hidden;
 }
 
 .sec-review__grid {
-  display: flex;
-  flex-direction: column;
-  min-width: max-content;
-  width: 100%;
-}
-
-.sec-review__head {
-  @include sec.field-label;
-
-  display: grid;
-  align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  height: 38px;
-  border-bottom: var(--sec-hairline) solid var(--sec-line);
-  background: var(--sec-paper);
-  white-space: nowrap;
-}
-
-.sec-review__head-references {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.sec-review__info {
-  @include sec.compact-icon-button(13px, 22px);
-
-  color: var(--sec-ink-3);
-}
-
-.sec-review__viewport {
   flex: 1;
-  min-height: 0;
-  width: 100%;
-}
-
-.sec-review__row {
-  display: grid;
-  align-items: center;
-  gap: 12px;
-  padding: 0 14px;
-  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
-  font-size: var(--sec-text-sm);
-  font-variant-numeric: tabular-nums;
-
-  &:hover {
-    background: var(--sec-wash);
-  }
-}
-
-// Headings, information objects and table structure are context, not requirements: muted so they
-// are not read as one (§5).
-.sec-review__row--context {
-  color: var(--sec-ink-2);
-}
-
-.sec-review__cell {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sec-review__cell--type {
-  color: var(--sec-ink-2);
-}
-
-.sec-review__id,
-.sec-review__ref {
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--sec-blue-mid);
-  cursor: pointer;
-
-  &:focus-visible {
-    @include sec.focus-ring(1px);
-  }
-}
-
-.sec-review__id {
-  @include sec.mono;
-
-  font-weight: 600;
-}
-
-.sec-review__cell--references {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--sec-text-xs);
-}
-
-.sec-review__refs {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.sec-review__refs-label {
-  @include sec.field-label;
-
-  flex: none;
-}
-
-// An unresolved target is a placeholder for something no import has reached. It is marked, not
-// hidden, and it is not a link — there is nothing to open (§5.1).
-.sec-review__ref--unresolved {
-  color: var(--sec-highlight-undefined);
-  cursor: default;
-}
-
-// A comment is application data, so its box wears the Tier-2 accent and can never be mistaken for
-// something DOORS said (CLAUDE.md §8).
-.sec-review__comment {
-  width: 100%;
-  padding: 4px 6px;
-  border: var(--sec-hairline) solid var(--sec-line);
-  border-radius: var(--sec-radius);
-  background: var(--sec-paper);
-  font: inherit;
-  color: var(--sec-ink);
-
-  &::placeholder {
-    color: var(--sec-ink-3);
-  }
-
-  &:focus-visible {
-    @include sec.focus-ring(0);
-
-    border-color: var(--sec-highlight-meta);
-  }
-}
-
-.sec-review__comment--dirty {
-  border-color: var(--sec-highlight-meta);
-  border-left-width: 2px;
-  background: color-mix(in srgb, var(--sec-highlight-meta) 6%, white);
+  height: 100%;
 }
 
 .sec-review__truncated,

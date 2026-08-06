@@ -38,6 +38,45 @@
       <mat-icon svgIcon="gearbox" />
     </button>
 
+    <!-- Shown only when there is something to report. A permanent "0 issues" badge is a claim the
+         view cannot always honestly make: a module with no mandatory policy, and a module whose
+         objects all fall outside the policy's scope, both produce zero too (§5.3). -->
+    @if (issueCount(); as count) {
+      <button
+        mat-icon-button
+        type="button"
+        class="sec-review__action sec-review__action--issues"
+        [matTooltip]="
+          count === 1
+            ? 'One object in this module is missing a value for an attribute marked mandatory.'
+            : count + ' objects in this module are missing a value for an attribute marked mandatory.'
+        "
+        [attr.aria-label]="count + ' objects with missing mandatory values'"
+        (click)="issuesOnly.set(!issuesOnly())"
+      >
+        <mat-icon svgIcon="alert" />
+        <span class="sec-review__badge sec-review__badge--issues" aria-hidden="true">{{ count }}</span>
+      </button>
+    }
+
+    <!-- The fixed checks always run, so this no longer says "nothing checked" — that would now be
+         untrue. It says only that the *configurable* half is unconfigured, which still matters: a
+         module with no mandatory attributes reports no attribute findings, and that must not be
+         read as every attribute being filled. Shown once the attribute list has loaded, otherwise
+         it flashes on every module change. -->
+    @if (moduleRef() && attributes.hasValue() && !hasMandatoryPolicy()) {
+      <button
+        mat-button
+        type="button"
+        class="sec-review__no-policy"
+        matTooltip="No attribute of this module is marked mandatory, so no attribute is checked for a missing value. Fixed checks still run. Open the attribute settings to mark some."
+        (click)="openSettings()"
+      >
+        <mat-icon svgIcon="info" />
+        No mandatory attributes
+      </button>
+    }
+
     <button
       mat-icon-button
       type="button"
@@ -80,6 +119,22 @@
       Requirements only
     </mat-checkbox>
 
+    <!-- Unconditional. It used to be offered only when the module had a mandatory policy, because
+         without one the filter could do nothing but empty the table and that reads as "all clear"
+         when the truth is "nothing was checked". A fixed check now runs on every module whatever
+         its configuration, so an empty result honestly means no issues were found. -->
+    <mat-checkbox class="sec-review__filter" [checked]="issuesOnly()" (change)="issuesOnly.set($event.checked)">
+      Objects with issues
+    </mat-checkbox>
+
+    <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded
+         in, so this clears every column's sort rather than sorting by anything (§5). -->
+    @if (sorted()) {
+      <button mat-stroked-button type="button" class="sec-review__reset-sort" (click)="resetSort()">
+        Document order
+      </button>
+    }
+
     <p class="sec-review__stats">
       <span><b>{{ filtered().length }}</b> shown</span>
       <span><b>{{ total() }}</b> in module</span>
@@ -104,116 +159,21 @@
     </div>
   } @else {
     <div class="sec-review__body">
-      <div class="sec-review__table-scroll">
-        <div class="sec-review__grid">
-          <div class="sec-review__head" role="row" [style.grid-template-columns]="columnTemplate()">
-            <span role="columnheader">ID</span>
-            <span role="columnheader">Type</span>
-            <span role="columnheader">Name</span>
-            @for (column of attributeColumns(); track column) {
-              <span role="columnheader">{{ column }}</span>
-            }
-            <span role="columnheader" class="sec-review__head-references">
-              References
-              <button
-                mat-icon-button
-                type="button"
-                class="sec-review__info"
-                aria-label="About incoming references"
-                matTooltip="Incoming references are only known for modules that have been imported. An empty list does not mean an object is unreferenced."
-              >
-                <mat-icon svgIcon="info" />
-              </button>
-            </span>
-            <span role="columnheader">Comment</span>
-          </div>
-
-          <!-- The buffers are set explicitly and are not decoration. CDK defaults to 100px/200px,
-               which at a 46px row is three spare rows: a trackpad flick travels a thousand pixels
-               while the compositor scrolls instantly and Angular re-renders on the next task, so
-               everything past those three rows is white until it lands. One screen of buffer,
-               two at most, keeps a fast scroll covered and still renders under 45 rows. -->
-          <cdk-virtual-scroll-viewport
-            [itemSize]="rowHeight"
-            [minBufferPx]="rowHeight * 15"
-            [maxBufferPx]="rowHeight * 30"
-            class="sec-review__viewport"
-          >
-            <div
-              *cdkVirtualFor="let entry of filtered(); trackBy: trackByRef"
-              class="sec-review__row"
-              role="row"
-              [class.sec-review__row--context]="!entry.row.requirementLike"
-              [style.grid-template-columns]="columnTemplate()"
-              [style.height.px]="rowHeight"
-            >
-              <span class="sec-review__cell sec-review__cell--id">
-                <button type="button" class="sec-review__id" (click)="openDetail(entry.row.ref)">
-                  {{ entry.row.id }}
-                </button>
-              </span>
-
-              <span class="sec-review__cell sec-review__cell--type">{{ entry.row.type }}</span>
-
-              <span
-                class="sec-review__cell sec-review__cell--name"
-                [style.padding-left.px]="(entry.row.level - 1) * 12"
-                [matTooltip]="entry.row.name"
-              >
-                {{ entry.row.name }}
-              </span>
-
-              @for (cell of entry.cells; track $index) {
-                <span class="sec-review__cell" [matTooltip]="cell">{{ cell }}</span>
-              }
-
-              <span class="sec-review__cell sec-review__cell--references">
-                @if (entry.row.references.outgoing.length) {
-                  <span class="sec-review__refs">
-                    <span class="sec-review__refs-label">Out</span>
-                    @for (reference of entry.outgoing.resolved; track reference.ref) {
-                      <button type="button" class="sec-review__ref" (click)="openDetail(reference.ref)">
-                        {{ reference.id }}
-                      </button>
-                    }
-                    @if (entry.outgoing.unresolvedCount; as count) {
-                      <span class="sec-review__ref--unresolved" [matTooltip]="entry.outgoing.unresolvedTooltip">
-                        {{ count }} not yet imported
-                      </span>
-                    }
-                  </span>
-                }
-                @if (entry.row.references.incoming.length) {
-                  <span class="sec-review__refs">
-                    <span class="sec-review__refs-label">In</span>
-                    @for (reference of entry.incoming.resolved; track reference.ref) {
-                      <button type="button" class="sec-review__ref" (click)="openDetail(reference.ref)">
-                        {{ reference.id }}
-                      </button>
-                    }
-                    @if (entry.incoming.unresolvedCount; as count) {
-                      <span class="sec-review__ref--unresolved" [matTooltip]="entry.incoming.unresolvedTooltip">
-                        {{ count }} not yet imported
-                      </span>
-                    }
-                  </span>
-                }
-              </span>
-
-              <span class="sec-review__cell sec-review__cell--comment">
-                <input
-                  type="text"
-                  class="sec-review__comment"
-                  [class.sec-review__comment--dirty]="isDirty(entry.row)"
-                  [attr.aria-label]="'Comment on ' + entry.row.id"
-                  placeholder="Add a comment"
-                  [value]="commentText(entry.row)"
-                  (input)="editComment(entry.row, $any($event.target).value)"
-                />
-              </span>
-            </div>
-          </cdk-virtual-scroll-viewport>
-        </div>
+      <!-- The theme class goes on this wrapper, never on <ag-grid-angular>: ag-grid assigns
+           element.className on the three elements it manages, which would wipe it off the grid
+           element itself (styles/_grid.scss). -->
+      <div class="sec-review__table-scroll sec-grid">
+        <ag-grid-angular
+          class="sec-review__grid"
+          [gridOptions]="gridOptions"
+          [columnDefs]="columnDefs()"
+          [rowData]="filtered()"
+          [context]="cellContext"
+          [getRowId]="getRowId"
+          [getRowClass]="getRowClass"
+          (gridReady)="onGridReady($event)"
+          (sortChanged)="onSortChanged()"
+        />
       </div>
 
       @if (selectedItem(); as itemRef) {

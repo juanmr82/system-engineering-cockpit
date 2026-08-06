@@ -27,6 +27,21 @@
   --sec-highlight-error: #e4002b; // import error, dangling link
   --sec-highlight-meta: #0077c8; // Tier-2 application data (R2)
 
+  // --- System level scale (docs/features/requirements-modules.md) ----------------------------
+  // A *sequential* ramp across one controlled vocabulary, L0 at the top of the system hierarchy
+  // down to L4 at the bottom: green → teal → blue → purple → magenta. Every stop is an Airbus
+  // highlight colour, so the scale stays inside the brand palette rather than inventing one.
+  //
+  // Two of these hues are also semantic elsewhere — #009F4D means "verified" and #0077C8 means
+  // Tier-2 — and that reuse is bounded deliberately: see the note in CLAUDE.md §8. These tokens
+  // are only ever the fill of a system-level chip, and a level is a position in a hierarchy, not
+  // a status. Do not reach for them to signal anything.
+  --sec-level-0: #009f4d;
+  --sec-level-1: #008eaa;
+  --sec-level-2: #0077c8;
+  --sec-level-3: #a51890;
+  --sec-level-4: #da1884;
+
   // --- Surfaces -----------------------------------------------------------------------------
   // The shell is the desk, paper is the sheet on it. Airbus permits percentages of black for
   // neutrals; this ramp is cooled towards the blue so white sheets read as paper, not as holes.
@@ -36,6 +51,21 @@
   --sec-wash-cool: #f7fafb; // secondary panel tint, one step further back
   --sec-line: #d5dee5; // structural hairline: sheet edges, table grid
   --sec-line-soft: #e8edf1; // internal hairline: row separators, dividers
+
+  // --- Heading rows in a requirements table -------------------------------------------------
+  // A DOORS heading is the structure of the document, and in a flat table it is the only thing
+  // that says where you are. It gets a light blue ground, deepening towards level 1, so the shape
+  // of the specification is readable while scrolling past hundreds of requirements.
+  //
+  // This is the third deliberate exception to "colour is a rail or a rule, never a background"
+  // (CLAUDE.md §8) — see the note there. The tints stay in near-white territory: they are paper
+  // with a wash over it, never a saturated fill competing with the Tier-2 chip.
+  --sec-heading-1: #d3e6ef;
+  --sec-heading-2: #dceaf2;
+  --sec-heading-3: #e3eff5;
+  --sec-heading-4: #e9f3f7;
+  --sec-heading-5: #eff6f9;
+  --sec-heading-6: #f4f9fb;
 
   // --- Ink ----------------------------------------------------------------------------------
   --sec-ink: #12212e; // body copy and data

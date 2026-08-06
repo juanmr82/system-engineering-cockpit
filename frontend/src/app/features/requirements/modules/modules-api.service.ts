@@ -6,6 +6,8 @@ import type {
   ModuleDetail,
   ModuleListResponse,
   ModuleSettingsRequest,
+  SaveSystemLevelsRequest,
+  SaveSystemLevelsResponse,
   SystemLevelsResponse,
 } from './modules.model';
 
@@ -34,5 +36,13 @@ export class ModulesApiService {
 
   saveSettings(ref: string, body: ModuleSettingsRequest): Promise<ModuleDetail> {
     return firstValueFrom(this.http.post<ModuleDetail>(`/api/v1/modules/${ref}/settings`, body));
+  }
+
+  // Not module-scoped, because the batch spans modules — that is the only structural difference
+  // from the review table's per-module comment save.
+  saveSystemLevels(body: SaveSystemLevelsRequest): Promise<SaveSystemLevelsResponse> {
+    return firstValueFrom(
+      this.http.post<SaveSystemLevelsResponse>('/api/v1/modules/system-levels', body),
+    );
   }
 }

@@ -77,3 +77,41 @@ export interface ModuleSettingsRequest {
 export interface SearchableModuleRow extends ModuleRow {
   readonly searchText: string;
 }
+
+/**
+ * What a Modules cell renderer is allowed to ask the view for, passed as the grid's `context`.
+ *
+ * One function, because one is all a cell needs. Handing the component to ag-grid would work and
+ * would put the search box, the reload and the snackbar within reach of a table cell.
+ */
+export interface ModulesCellContext {
+  readonly openSettings: (row: ModuleRow) => void;
+  /** The controlled vocabulary, so a cell never invents an option or its wording (R5). */
+  readonly systemLevels: () => readonly SystemLevelOption[];
+  /** What the level select shows: the pending edit if there is one, else what was stored. */
+  readonly levelCode: (row: ModuleRow) => string | null;
+  readonly isLevelDirty: (row: ModuleRow) => boolean;
+  /** `null` is the "Not set" option — clear the classification, not "leave it alone". */
+  readonly editLevel: (row: ModuleRow, code: string | null) => void;
+}
+
+// The Modules table's batch save (requirements-modules.md). Same shape as the review table's
+// comment save: every changed row in one request, one transaction, and the server echoes back
+// what it stored so the table clears its dirty marks without reloading.
+export interface SystemLevelEdit {
+  readonly ref: string;
+  readonly code: string | null;
+}
+
+export interface SaveSystemLevelsRequest {
+  readonly levels: SystemLevelEdit[];
+}
+
+export interface SavedSystemLevel {
+  readonly ref: string;
+  readonly systemLevel: SystemLevelOption | null;
+}
+
+export interface SaveSystemLevelsResponse {
+  readonly saved: SavedSystemLevel[];
+}

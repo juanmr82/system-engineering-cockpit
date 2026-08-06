@@ -1,6 +1,10 @@
 @use './styles/tokens';
 @use './styles/theme';
 
+// ag-grid's own DOM is built outside Angular's template compiler, so it carries no _ngcontent
+// attribute and a component-scoped rule can never reach it. Its theme is global by necessity.
+@use './styles/grid';
+
 // Inter, self-hosted (Airbus GDPR guidance forbids the Google Fonts CDN). Ship the woff2 files
 // in frontend/public/fonts/ — CLAUDE.md §8. Not yet added; this @font-face is the contract, and
 // --sec-font falls back to Segoe UI until it is, which is what Windows 11 actually has.

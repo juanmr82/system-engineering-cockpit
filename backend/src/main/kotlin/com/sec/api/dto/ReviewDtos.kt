@@ -55,10 +55,30 @@ public data class ReviewRowDto(
     public val ref: String,
     public val id: String,
     public val name: String,
+    // DOORS's outline number, e.g. "4.3.2-1". Display data: it is the first half of a heading's
+    // Description (REQ_REVIEW.md §5). It is *not* a sort key — it does not order correctly as a
+    // string, which is why rows arrive in `__sortKey` order and the client keeps that order
+    // (CLAUDE.md §11, R3).
+    public val objectNumber: String,
     public val type: String?,
     public val labels: List<String>,
     public val level: Int,
     public val requirementLike: Boolean,
+    /**
+     * Everything the consistency checks found wrong with this object, as the text to show
+     * (`REQ_REVIEW.md` §5.3). Two kinds arrive in one list, most fundamental first:
+     *
+     *  - **fixed rules**, which always run and cannot be turned off — currently "Object Type shall
+     *    not be TBD";
+     *  - **mandatory attributes** with no value, named individually. These are raw DOORS attribute
+     *    names, which is correct under R5: they are *content*, the names the user chose in DOORS
+     *    and ticked in the dialog, not internal identifiers.
+     *
+     * Computed on read, never stored. The mandatory half depends on user-editable configuration,
+     * so the verdict is not a property of the import (R2) — and the fixed half is free anyway,
+     * being a test over labels already in hand.
+     */
+    public val issues: List<String> = emptyList(),
     public val attributes: Map<String, JsonElement>,
     public val references: ReferencesDto,
     public val comment: CommentDto? = null,

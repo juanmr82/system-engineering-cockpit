@@ -1,0 +1,18 @@
+// A vertical list of the attribute names that have no value. Nothing at all when there is
+// nothing wrong — an empty cell is the correct rendering of "this object is fine", and a tick or
+// an "OK" in nine hundred rows would be noise competing with the rows that need attention.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  width: 100%;
+  font-size: var(--sec-text-xs);
+  line-height: var(--sec-leading);
+}
+
+.sec-issues-cell__item {
+  display: block;
+  color: var(--sec-highlight-error);
+  overflow-wrap: anywhere;
+}

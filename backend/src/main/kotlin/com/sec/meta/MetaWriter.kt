@@ -2,7 +2,9 @@ package com.sec.meta
 
 import com.sec.domain.SaveCommentsOutcome
 import com.sec.domain.SaveModuleSettingsOutcome
+import com.sec.domain.SaveSystemLevelsOutcome
 import com.sec.domain.SavedComment
+import com.sec.domain.SavedSystemLevel
 import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
 import com.sec.domain.UuidV7
@@ -75,6 +77,48 @@ public class MetaWriter(
 
         graphDriver.executeWrite(queries)
         return SaveModuleSettingsOutcome.Saved
+    }
+
+    /**
+     * The Modules table's save icon: every changed system level, one transaction
+     * (`docs/features/requirements-modules.md`).
+     *
+     * Spans modules rather than the objects of one module, which is the only structural difference
+     * from `saveComments`. Everything else matches deliberately: one gesture, one request, one
+     * transaction, and the stored values echoed back so the table clears its dirty marks without a
+     * reload.
+     *
+     * A client may only classify a module the list actually returned. Without that check an
+     * arbitrary `__id` in the body would attach a classification to any node in the graph — the
+     * same hole `saveComments` closes for items.
+     */
+    public suspend fun saveSystemLevels(
+        edits: List<SystemLevelEditInput>,
+        user: String = CurrentUser.PLACEHOLDER,
+    ): SaveSystemLevelsOutcome {
+        val invalid = edits.mapNotNull { it.code }.firstOrNull { SystemLevel.fromCode(it) == null }
+        if (invalid != null) {
+            return SaveSystemLevelsOutcome.InvalidSystemLevel(invalid)
+        }
+
+        val unknown = edits.map { it.moduleId }.distinct().filterNot { doorsProjection.moduleExists(it) }
+        if (unknown.isNotEmpty()) {
+            return SaveSystemLevelsOutcome.UnknownModules(unknown)
+        }
+
+        val now = Instant.now().toString()
+        val queries = edits.map { edit ->
+            val change = edit.code?.let(SystemLevelChange::Set) ?: SystemLevelChange.Clear
+            // Reuses the *same* per-module query the settings dialog writes, so a level set from
+            // the table and one set from the dialog are one stored shape, not two.
+            systemLevelQuery(edit.moduleId, change, user, now)
+                ?: error("A system-level edit always changes something")
+        }
+
+        graphDriver.executeWrite(queries)
+        return SaveSystemLevelsOutcome.Saved(
+            edits.map { SavedSystemLevel(moduleId = it.moduleId, code = it.code) },
+        )
     }
 
     /**
@@ -253,5 +297,11 @@ public class MetaWriter(
     public data class CommentEditInput(
         public val itemId: String,
         public val text: String,
+    )
+
+    /** One system-level change. A null `code` means the user chose "Not set": delete the node. */
+    public data class SystemLevelEditInput(
+        public val moduleId: String,
+        public val code: String?,
     )
 }

@@ -29,6 +29,32 @@ public sealed interface SaveCommentsOutcome {
     public data class Saved(public val comments: List<SavedComment>) : SaveCommentsOutcome
 }
 
+/**
+ * The batch system-level save behind the Modules table's save icon
+ * (`docs/features/requirements-modules.md`).
+ *
+ * Same shape and same reasoning as the comment batch: one transaction for every changed row, so
+ * partial success is impossible and the outcome is one value for the whole batch. This one spans
+ * *modules* rather than the objects of one module, which is why it is not a module-scoped route.
+ */
+public sealed interface SaveSystemLevelsOutcome {
+    /** Refs that are not modules. A client may only classify what the list actually returned. */
+    public data class UnknownModules(public val refs: List<String>) : SaveSystemLevelsOutcome
+
+    /** Refs that could not be decoded from base64url — a malformed request, not a missing module. */
+    public data class MalformedRefs(public val refs: List<String>) : SaveSystemLevelsOutcome
+
+    public data class InvalidSystemLevel(public val code: String) : SaveSystemLevelsOutcome
+
+    public data class Saved(public val levels: List<SavedSystemLevel>) : SaveSystemLevelsOutcome
+}
+
+/** What was stored for one module. A cleared classification comes back with a null `code`. */
+public data class SavedSystemLevel(
+    public val moduleId: String,
+    public val code: String?,
+)
+
 // What the server actually stored, echoed back so the table can clear its dirty marks without a
 // reload (REQ_REVIEW.md §8). A deleted comment comes back with a null `comment`.
 public data class SavedComment(

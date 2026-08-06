@@ -1,0 +1,15 @@
+<!-- The selection is bound on the options, not as `[value]` on the select. A select's value can
+     only be one of its options, and Angular applies the select's own bindings before the @for has
+     produced them — so `[value]` silently fell back to the first option and every row rendered as
+     "Not set". -->
+<select
+  [class]="'sec-module-level-cell__select sec-level--' + (selected() || 'none')"
+  [class.sec-module-level-cell__select--dirty]="dirty()"
+  [attr.aria-label]="label()"
+  (change)="onChange($any($event.target).value)"
+>
+  <option value="" [selected]="selected() === ''">Not set</option>
+  @for (option of options(); track option.code) {
+    <option [value]="option.code" [selected]="option.code === selected()">{{ option.label }}</option>
+  }
+</select>

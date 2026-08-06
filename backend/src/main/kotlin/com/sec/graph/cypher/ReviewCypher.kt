@@ -49,6 +49,29 @@ public object ReviewCypher {
                n.__updatedAt    AS commentUpdatedAt
     """
 
+    /**
+     * The module's mandatory-attribute policies (`attribute-policy-checks.md` §4, step 1).
+     *
+     * Read once per request and evaluated against each row's property map in Kotlin — the row
+     * query above already returns every property of every object, so checking them costs a map
+     * lookup per (object × mandatory attribute) and no second scan of the module.
+     *
+     * **The result is never stored.** A violation is a function of (imported data × policy), and
+     * the policy is Tier-2 configuration a user changes from the settings dialog at any moment —
+     * so it is not a property of the import and cannot be computed at import time without going
+     * stale on the next checkbox. R2 excludes derived data from `:__Meta` for exactly this reason.
+     *
+     * `appliesToLabels` is read, never assumed: a policy that applies to everything is a policy
+     * nobody can reason about (CLAUDE.md R2). The default matches the one the write path stores.
+     */
+    public const val MANDATORY_POLICIES: String = """
+        CYPHER 25
+        MATCH (:DOORSModule {__id: ${'$'}moduleId})-[:__policyFor]->(p:__Meta:__Policy)
+        WHERE p.rule = 'mandatory'
+        RETURN p.attributeName                                AS attributeName,
+               coalesce(p.appliesToLabels, ['DOORSRequirement']) AS appliesToLabels
+    """
+
     // Names for the modules a page's references point into, fetched once for the whole page rather
     // than joined per reference. An unresolved target names a module that has usually *not* been
     // imported, in which case there is no name to find and the UI says "Not yet imported" without

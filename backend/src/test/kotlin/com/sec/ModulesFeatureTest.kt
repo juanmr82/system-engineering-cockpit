@@ -2,6 +2,7 @@ package com.sec
 
 import com.sec.config.Neo4jSettings
 import com.sec.domain.SaveModuleSettingsOutcome
+import com.sec.domain.SaveSystemLevelsOutcome
 import com.sec.domain.SystemLevelChange
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeRead
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.TestInstance
 import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -229,6 +231,80 @@ class ModulesFeatureTest {
                 addAttributes = listOf("Not A Real Attribute"),
             ),
         )
+        assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
+    }
+
+    /**
+     * The Modules table's batch system-level save
+     * (`docs/features/requirements-modules.md`) — several modules in one transaction.
+     *
+     * Writes the **same** `:__Meta:__Classification` the settings dialog writes, so a level set
+     * from the table and one set from the dialog are one stored shape and each is visible from the
+     * other. `null` means the user chose *Not set* and clears the classification.
+     */
+    @Test
+    fun `a batch save classifies several modules at once, and clears one`() = runBlocking {
+        val first = "module-batch-a"
+        val second = "module-batch-b"
+        seedModule(first, listOf(mapOf("id" to "$first-o1", "attrs" to mapOf("Object Text" to "X"))))
+        seedModule(second, listOf(mapOf("id" to "$second-o1", "attrs" to mapOf("Object Text" to "Y"))))
+
+        val saved = metaWriter.saveSystemLevels(
+            listOf(
+                MetaWriter.SystemLevelEditInput(first, "L1"),
+                MetaWriter.SystemLevelEditInput(second, "L3"),
+            ),
+        )
+        assertIs<SaveSystemLevelsOutcome.Saved>(saved)
+        assertEquals("L1", doorsProjection.getModuleDetail(first)?.systemLevel)
+        assertEquals("L3", doorsProjection.getModuleDetail(second)?.systemLevel)
+
+        // Not set clears the classification; the other module in the same batch is untouched.
+        metaWriter.saveSystemLevels(
+            listOf(
+                MetaWriter.SystemLevelEditInput(first, null),
+                MetaWriter.SystemLevelEditInput(second, "L4"),
+            ),
+        )
+        assertNull(doorsProjection.getModuleDetail(first)?.systemLevel)
+        assertEquals("L4", doorsProjection.getModuleDetail(second)?.systemLevel)
+
+        // R1: classifying a module never writes to the module node the importer created.
+        assertTrue(rawModuleProperties(first).keys.none { it.startsWith("__meta") })
+        assertEquals("A description", rawModuleProperties(first)["description"])
+    }
+
+    /**
+     * A rejected batch writes **nothing** — not even the entries that were fine.
+     *
+     * Partial success is the failure mode a batch save exists to prevent: a table showing nine
+     * rows saved and one not, with no way to tell which.
+     */
+    @Test
+    fun `a batch save rejects an unknown module or level without writing anything`() = runBlocking {
+        val moduleId = "module-batch-validation"
+        seedModule(moduleId, listOf(mapOf("id" to "$moduleId-o1", "attrs" to mapOf("Object Text" to "X"))))
+
+        assertEquals(
+            SaveSystemLevelsOutcome.UnknownModules(listOf("does-not-exist")),
+            metaWriter.saveSystemLevels(
+                listOf(
+                    MetaWriter.SystemLevelEditInput(moduleId, "L1"),
+                    MetaWriter.SystemLevelEditInput("does-not-exist", "L2"),
+                ),
+            ),
+        )
+        assertEquals(
+            SaveSystemLevelsOutcome.InvalidSystemLevel("L9"),
+            metaWriter.saveSystemLevels(
+                listOf(
+                    MetaWriter.SystemLevelEditInput(moduleId, "L1"),
+                    MetaWriter.SystemLevelEditInput(moduleId, "L9"),
+                ),
+            ),
+        )
+
+        // The valid half of each rejected batch was not written.
         assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
     }
 }

@@ -1,0 +1,51 @@
+@use 'mixins' as sec;
+
+// A vertical list: one linked object per line, under a small label for its direction. Laid out in
+// a row they wrapped into an unreadable run of ids that a reviewer had to parse rather than read,
+// and rows grow to their content now, so the space is there.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  font-size: var(--sec-text-xs);
+  line-height: var(--sec-leading);
+}
+
+.sec-references-cell__group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sec-references-cell__label {
+  @include sec.field-label;
+
+  margin-bottom: 1px;
+}
+
+.sec-references-cell__ref {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--sec-blue-mid);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+
+  &:focus-visible {
+    @include sec.focus-ring(1px);
+  }
+}
+
+// An unresolved target is a placeholder for something no import has reached. It is marked, not
+// hidden, and it is not a link — there is nothing to open (§5.1).
+.sec-references-cell__unresolved {
+  display: block;
+  color: var(--sec-highlight-undefined);
+  cursor: default;
+}

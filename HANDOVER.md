@@ -3,123 +3,107 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-06 (end of session 5)
+## State as of 2026-08-06 (end of session 6)
 
-Branch `master`, working tree clean, nothing pushed. `master` is **not** the repo's main branch.
+Branch `master` (**not** the repo's main branch). This session's work is committed; see the
+warning in "Resume here §1" before trusting the settings dialog.
 
-```
-c693c09 Rework the attribute settings dialog for modules with 78 attributes
-4aeffb8 Discover attributes from the whole module, not the first 25 objects
-58bcce2 Give the review table enough scroll buffer to survive a flick
-77b6542 Fix three things the Req review view only showed in a browser
-7092eba Build the Req review view
-b7c1e78 Verify the Req review backend against Neo4j, and unblock the container tests
-```
+**There is uncommitted, staged work in `importers/` that belongs to someone else** — a DOORS
+importer refactor (`derivations.py`, `parser.py`, `validator.py`, `importer.py`, `schema.py`,
+`reporter.py`, `exceptions.py`, `tests/`) plus `docs/DOORS_IMPORTER_INFO`. It was left staged and
+untouched, deliberately excluded from this session's commit.
 
-The Req review view (`docs/REQ_REVIEW.md` §1–§7) is built, driven in a browser against real data,
-and works. **Two real DOORS modules are now imported**, which changed what "works" means — see the
-next section.
+---
+
+## What was built
+
+### 1. Both tables moved to ag-grid Community (ADR 0006)
+
+`ag-grid-angular` + `ag-grid-community` **36.1.0, pinned exactly**, MIT. It answered the five
+defects the previous session logged: ID pinned left, Comment pinned right, resize, sort with a
+*Document order* reset, and row **and column** virtualization.
+
+| File | What it is |
+|---|---|
+| `core/grid/sec-grid.ts` | module registration + `secGridOptions()` + shared column defaults |
+| `core/grid/grid-testing.ts` | `flushGridFrames()`, test-only |
+| `styles/_grid.scss` | the whole grid theme, global |
+| `review/cells/`, `modules/cells/` | the cell renderers |
+
+### 2. The Req review table, reworked against real data
+
+Description replaced Name; flat list with headings styled H1–H6 by `objectLevel` on a light blue
+ground; table structure hidden; wrapping cells; column rules; a spreadsheet-style comment editor;
+References as a vertical list.
+
+### 3. Consistency checks, surfaced in an Issues column
+
+Two kinds in one list (`REQ_REVIEW.md` §5.3):
+
+- **fixed** — always run, not configurable. Currently "Object Type shall not be TBD", excluding
+  table structure and `__UNDEFINED`.
+- **configured** — the module's mandatory-attribute policies.
+
+Computed **on read**, never stored, in the query that already loads the rows. The decisive reason
+is written up in §5.3 and is worth reading before anyone proposes caching it: the verdict depends
+on user-editable policy, not just on the import, so there is nothing to backfill and nothing to go
+stale.
+
+### 4. System level is editable from the Modules table
+
+A `<select>` in the cell writing to a `ref`-keyed buffer, batch-saved behind a save icon —
+the same shape as the review table's comments. New endpoint
+`POST /api/v1/modules/system-levels` (not `{ref}`-scoped: the batch spans modules). Coloured
+`--sec-level-0` … `--sec-level-4`, green → teal → blue → purple → magenta.
 
 ---
 
 ## Resume here
 
-### 1. The table is the open problem, and it needs a decision first
+### 1. ⚠ The review settings dialog lost data once, and it was never explained
 
-With real data the review table has three defects that share one cause — it was designed against a
-module with five columns and now has fourteen:
+**Symptom, observed once:** opening the Req review attribute dialog, un-ticking a single
+*Mandatory* checkbox and saving deleted **all 9 mandatory policies and 8 of the 10 visible flags**
+on Segment. The data was restored by hand and verified.
 
-| Defect | Why it matters |
-|---|---|
-| **ID scrolls out of view** — by column 6 you cannot tell which requirement a row is | Fatal for review work |
-| **Comment is ~9 columns off-screen** — the point of the view is unreachable without scrolling right | Fatal |
-| **No column resize** — `Object Text` is a full requirement statement truncated to one line | Severe |
-| **No sorting** — `REQ_REVIEW.md` §5 asks for it; it was never built | Owed |
-| **No column virtualization** — tick 40 attributes and every rendered row holds 45 cells | Degrades as it is used |
+**It could not be reproduced afterwards**, and everything checked came back clean:
 
-Pinned columns + resize + sort + column virtualization is exactly ag-grid Community's (MIT) feature
-list. **The decision is open and it is the user's:**
+- a container test posts the exact shape the dialog sends — every attribute's absolute state with
+  one flipped off — and the writer keeps the others (`turning one mandatory attribute off leaves
+  the others alone`);
+- the dialog's real payload was intercepted in the browser and was correct: 8 `mandatory:true`,
+  only the un-ticked one `false`.
 
-- **ag-grid Community** — ~10–12 h for the review table, +2 h to move the Modules view onto it so
-  there are not two table systems. Everything above arrives working. Costs: a second theming
-  system next to Material's M3 tokens (the user said they are flexible on ag-grid's styling, which
-  removes most of that), and a trap — ag-grid's `field` treats a dot as a property path, so
-  `REQ. Priorität` silently renders blank. Every column must use `colId` + `valueGetter`.
-- **By hand** — sticky pinned columns ~3 h, resize ~4 h, sorting ~2 h ≈ 9 h. Barely cheaper, no
-  column virtualization, and we own it forever.
-- **TanStack Table** was considered and is the weaker fit *for this complaint*: headless means the
-  scroll container and pinning land back on us. It would be the better answer if the objection were
-  the styling.
+So there is a **confirmed data loss with no identified cause**. Treat the dialog as suspect. The
+next lead worth pulling: whether the dialog can seed its Signal Forms model from a *stale*
+`moduleAttributes` resource — it is created per dialog open from `ModulesApiService`, and a
+mandatory list that arrived empty would produce exactly this payload while still displaying
+correctly if the display read a different source.
 
-Recommendation on the evidence: **ag-grid Community**. Do not start the table until this is settled,
-because the two paths share almost no work.
+**Do not verify dialogs against live modules.** Seed a scratch module first. That mistake is what
+caused the loss.
 
-### 2. The Modules settings dialog has the same problem the review dialog just had
+### 2. Not implemented
 
-`features/requirements/modules/module-settings-dialog.*` still has the pre-rework shape: a
-mandatory-only tab, no search, a small scroll window. Against SRD's 78 attributes it is as awkward
-as the review dialog was. The pattern to copy now exists in `review-settings-dialog.*` — one
-CSS-grid list, `shared/text/normalize.ts` for the search, per-column All/None with `markAsDirty()`.
-**~2 h, independent of the ag-grid decision.**
+- `GET /modules/{ref}/checks/attribute-policy` — the aggregate report endpoint. Still specified,
+  still unbuilt; the review table does not need it (it computes per row inside `/objects`).
+- `GET /api/v1/config/navigation` — still a TODO, still 404s on every page load. The sidenav's
+  hardcoded fallback masks it. **It is the one standing console error and it is expected.**
+- The Modules **settings dialog** still has the pre-rework shape (mandatory-only tab, no search).
+  The pattern to copy is `review-settings-dialog.*`. ~2 h.
+- Statistics, Windchill, SOI views, Functions are still empty states.
 
-### 3. Smaller, already specified
+### 3. Open questions the user raised and did not settle
 
-- **`docs/features/attribute-policy-checks.md` is not implemented.** The spec is complete and
-  `GET /modules/{ref}/checks/attribute-policy` does not exist. The Mandatory flag the dialog writes
-  has no consumer until it ships — and 8 policies are already stored on Segment.
-- **`GET /api/v1/config/navigation` is still a TODO** and 404s on every page load. The sidenav's
-  hardcoded fallback masks it; it is the one standing console error and it is expected.
-- Statistics, Windchill, SOI views and Functions are still empty states.
-
----
-
-## What was done this session
-
-### The two-module import went clean
-
-Checked after loading: **0 stale `:__UNDEFINED:DOORSObject`** — the risk that a placeholder keeps
-its `__UNDEFINED` label after the referenced module is imported did not materialise, so the loader
-clears it. **461 cross-module references now resolve**, which is the path that could never be
-exercised before. 318 placeholders remain, pointing at modules that are genuinely not imported.
-
-| Module | Objects | Attributes | Configured |
-|---|---|---|---|
-| SRD | 977 | 78 | system level L1 |
-| Segment | 903 | 53 | L2, 9 visible, 8 mandatory |
-
-### A silent data bug, found and fixed (`4aeffb8`)
-
-**Attribute discovery sampled the first 25 objects and lost `Object Text` on SRD.** 774 of 977
-objects carry it and 203 do not; the 25 the planner returned were among the 203. The module's most
-important attribute never reached the settings dialog and could not be shown in the table — it
-looked like a gap in the export, not a bug. Discovery now reads the whole module.
-
-The sample was never buying anything: through the driver, 25 objects and 977 both answer in
-**~17ms**. Beware measuring this with Neo4j's HTTP API on `:7474` — it charges ~2.1s for `RETURN 1`,
-which is how the full scan first looked like a 2-second regression.
-
-### The dialog rework (`c693c09`)
-
-Two stacked `mat-table`s became one CSS-grid list under one header; added search, per-column
-All/None over the filtered rows, and a taller dialog. Material caps dialog content at 65vh whatever
-the dialog's height is — overridden on our own class, not on a `.mat-mdc-*` internal.
-
-Two details worth keeping in mind:
-
-- **Bulk actions must call `markAsDirty()`.** Writing through a Signal Forms field's `value` signal
-  updates the model but does not mark the form dirty, and Save is gated on dirty — without it the
-  change is unsaveable.
-- **The search filters the view, never the payload.** Save sends the absolute state of all 78
-  attributes; sending only the visible rows would silently unset everything filtered out of sight.
-  That is what the last dialog test guards.
-
-### Scroll buffer (`58bcce2`) and three browser-found fixes (`77b6542`)
-
-The viewport had CDK's default 100px/200px buffers — three spare rows at 46px — so a flick showed
-blank bands until the re-render landed. Now one screen of buffer, two at most. Also fixed: the
-module selector leaked the option's path into the closed control, unresolved references repeated
-"Not yet imported" once per target and clipped, and the requirements-only checkbox wore the Tier-2
-accent (which means "the app wrote this", and a filter writes nothing).
+- **Should mandatory attributes be definable once and applied to every module?** Today the policy
+  is per module (R2, Shape B). The snag is that modules do not share an attribute schema — SRD has
+  78 attributes, Segment 53 — so a global rule would flag requirements in modules that simply do
+  not have that attribute. A middle option was offered and not taken up: keep per-module policies
+  but add "copy mandatory settings from another module" to the dialog.
+- **The system-level colour ramp reuses two semantic hues** (`#009F4D` "verified", `#0077C8`
+  Tier-2). `CLAUDE.md` §8 records the exception and its fence. The accepted risk, stated there: a
+  green chip can read as "good" and magenta as "bad", which is not what L0 and L4 mean. If that
+  reads wrong in use, a single-hue light-to-dark ramp keeps the ordering without the connotation.
 
 ---
 
@@ -127,70 +111,56 @@ accent (which means "the app wrote this", and a filter writes nothing).
 
 | | Status |
 |---|---|
-| `./gradlew :backend:check` | **green** |
-| `./gradlew :backend:integrationTest` | **green** — 15 container tests |
-| `npm run lint` / `npm test` / `npm run build` | **green** — 20 tests |
-| Review view in a browser: table, search, filter, detail panel, comment save/clear, exit guard | **driven end to end** against the live modules |
-| The **reworked** dialog rendered | **not seen** — the Chrome extension disconnected after the rework. Covered by 6 tests and DOM measurements |
-| Cross-module references rendering in the table | **not looked at** — 461 now resolve, so the References column finally has real ids and module names to show |
+| `./gradlew check` | **green** |
+| `./gradlew :backend:integrationTest` | **green** — including 5 new container tests |
+| `npm run lint` / `npm test` / `npm run build` | **green** — 33 tests, initial bundle 165 kB |
+| Review table: pinning at full scroll, sort, reset, comment save/clear, wrapping, heading styles | **driven end to end** |
+| Issues column: both check kinds | **driven** — Segment shows 86 mandatory + 79 TBD = 165 |
+| System level editing: edit → save → persisted → restored | **driven end to end**, ending in the original state |
+| The review **settings dialog** | **suspect** — see §1 |
+| Column resize by dragging | **simulated** via mouse events, not dragged by hand |
+
+The graph was left as found: SRD `L1`, Segment `L2`, Segment's 9 mandatory policies intact.
 
 ---
 
 ## Environment
 
 - Backend `:8080` (`SEC_NEO4J_USER=neo4j SEC_NEO4J_PASSWORD=admin123 ./gradlew :backend:run`);
-  frontend `npm start` → `:4200`. Both were left running.
-- Neo4j runs natively from `C:\Users\juanm\neo4j\neo4j-community-2026.06.0`, creds `neo4j` /
-  `admin123`, no Windows service: `./bin/neo4j.bat console`.
-- Docker Desktop 29.4.0, `neo4j:2026.06.0-community` pulled. Container tests need the
-  `api.version=1.41` pin already in `backend/build.gradle.kts` — Engine 29 rejects the 1.32 that
-  docker-java negotiates by default, and reports it as "Could not find a valid Docker environment".
+  frontend `npm start` → `:4200`; Neo4j native from
+  `C:\Users\juanm\neo4j\neo4j-community-2026.06.0` (`./bin/neo4j.bat console`), creds
+  `neo4j` / `admin123`. **All three were left running.**
+- **Restart the backend after any backend change** — `./gradlew :backend:run` serves the code it
+  started with. `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process`.
 
-### Traps that cost time this session
+### Traps that cost time, in rough order of how much
 
-1. **`./gradlew :backend:run` keeps serving the code it started with.** A backend left running from
-   an earlier session served the old attribute discovery for the whole browser pass, so the dialog
-   showed 76 attributes after the fix was committed. Restart it after any backend change:
-   `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process`.
-2. **Neo4j's HTTP API on `:7474` costs ~2.1s per request regardless of the query.** Fine for
-   inspecting the graph, useless for timing it. Time through the app's endpoints instead.
-3. **`Page.captureScreenshot` intermittently times out on this app** ("the renderer may be frozen")
-   and dialog screenshots come back looking translucent. Both are the capture pipeline: the surface
-   measures `rgb(255,255,255)` at opacity 1, and frame-gap sampling showed a worst frame of 18ms.
-   Re-take the screenshot; do not debug the app. Measure with `javascript_tool` when in doubt —
-   but note `requestAnimationFrame` does not fire in a non-focused tab, so rAF loops hang.
-4. **The `Write` tool mangles raw Unicode combining characters.** The accent range must read
-   `/[\u0300-\u036f]/g`; check with `grep | cat -A` after writing, and patch at byte level with
-   Python if needed. It is now in one place: `shared/text/normalize.ts`.
-5. **`git checkout -- <file>` reverts the whole file**, including uncommitted work meant to be kept.
-
----
-
-## Known gaps that are not on the critical path
-
-- **`GET /items/{ref}/traces` never fills `moduleName`**, though the row payload does. Nothing
-  consumes it yet (the References column reads the row). Fix when the detail panel links out.
-- **`incomingComplete` is hard-coded `false`** (O5). Making it real needs import-coverage tracking
-  and no wire change.
-- **A module node missing `__id` or `__name` would 500 the whole modules list** — those two are read
-  with no fallback while `lastModified` and `path` have defaults, and Community cannot enforce
-  property existence (§7). Two-line defensive fix, not yet done.
-- **Inter is not shipped** (`public/fonts/` holds only `.gitkeep`); the app renders in Segoe UI.
-- **The Material icon font is not self-hosted**, so every icon must be an SVG in `public/icons/`
-  registered in `core/icons/sec-icons.ts`. A `<mat-icon>ligature</mat-icon>` renders as raw text.
-- **No backend static analysis** (ktlint/detekt); `BACKEND_REVIEW.md` §5 flags it as its own call.
-- `SE_ITEM_SCHEMA.md` and `DOORS_TO_NEO4J_IMPORTER_SPEC.md` are still stubs, and the DOORS importer
-  in this repo is still `NotImplementedError` — the live data is loaded by other means.
+1. **A backgrounded Chrome tab measures the grid wrong.** `requestAnimationFrame` does not fire
+   and `ResizeObserver` goes quiet, so ag-grid reports `scrollWidth - clientWidth === 0` while the
+   scrollbar is plainly visible, and renderers appear not to instantiate. **Take a screenshot to
+   force a paint and trust the screenshot over the measurement.**
+2. **Column virtualization means an absent column proves nothing** — scroll first, confirm
+   `scrollLeft` actually moved, then assert.
+3. **Never set `position` on an ag-grid cell.** It lays cells out `position: absolute` with an
+   inline `left`/`right`; overriding to `relative` discards the offset. Invisible while a column
+   is the only one pinned to its side, and drops the cell onto its neighbour when a second joins.
+4. **ag-grid's stylesheet is injected after ours**, so at equal specificity it wins — overriding
+   one of its structural rules needs two of our own classes, never an `.ag-*` name.
+5. **`autoHeight` nests cell content in content-sized wrappers**, which collapses a textarea to
+   its intrinsic 20-column width whatever `width: 100%` says.
+6. **`<select>` with `[value]` and `@for` options** binds before the options exist and silently
+   falls back to the first one. Bind `[selected]` on the options instead.
+7. **In specs:** `whenStable()` never resolves with two `httpResource`s in flight (it times out
+   instead of failing), and `TestBed.resetTestingModule()` inside a test corrupts the rest of the
+   suite. `reload()` schedules a refetch rather than issuing it — let a macrotask pass first.
+8. **`Page.captureScreenshot` still times out intermittently.** Re-take it; do not debug the app.
+9. **Clicking a `mat-select` option by screenshot coordinates is unreliable** — navigate by the
+   `?module=<ref>` query parameter instead.
 
 ---
 
 ## Decisions
 
 `docs/adr/` — 0002 errors and log format, 0003 the paper visual style, 0004 the frontend quality
-gate, 0005 the Req review backend. Not to be re-litigated without changing the ADR.
-
-**One decision is pending and it is the user's: ag-grid Community for the tables, or hand-rolled
-pinning, resize and sorting.** Everything needed to decide it is in "Resume here" §1. If ag-grid is
-chosen it deserves an ADR 0006, because it is the first UI dependency outside Angular Material and
-the reasoning (pinned columns and column virtualization at 78 attributes, not "grids are nice")
-should survive the choice.
+gate, 0005 the Req review backend, 0006 ag-grid Community. Not to be re-litigated without changing
+the ADR.

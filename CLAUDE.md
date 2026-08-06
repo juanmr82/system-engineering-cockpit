@@ -258,7 +258,8 @@ Reference alias map — extend it here when you add a field, do not invent alias
 
 | Internal | Shown as |
 |---|---|
-| `__name` | **Name** (contextually *Title* for documents, *Element* for MBSE) |
+| `__name` | **Name** (contextually *Title* for documents, *Element* for MBSE). **Not shown at all in the Req review table** — that column is **Description**, built from source attributes, see below |
+| `objectNumber` + `Object Heading` (a heading) / `Object Text` (anything else) | **Description** — the Req review table's mandatory third column (`docs/REQ_REVIEW.md` §5). Source data, so it is displayed; the two attributes it consumes are marked `fixed` by the API and cannot also be chosen as columns of their own |
 | `__version` | **Baseline** — `"current"` renders as *Current* |
 | `__id`, `__objectUrl` | never shown; opaque `:ref` in routes |
 | `__sortKey` | never shown; silently drives default sort order |
@@ -270,6 +271,8 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `refersTo` | **References** (outgoing) |
 | `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting** |
 | `:__Note` in the review table | **Comment** — one per object, never a thread |
+| consistency-check findings on an object | **Issues** — the review table column, in error red. Fixed rules render as a sentence (*Object Type shall not be TBD*), configured ones as the unfilled attribute's name. Computed on read, never stored (R2) |
+| `DOORSTBD` in a check message | **TBD** — as in *Object Type shall not be TBD*; the label itself never reaches the user |
 | `__noteOn` | never shown; the comment's attachment |
 | `:__AttributeSetting` `visible` | **Shown in table** |
 | `:__AttributeSetting` `verification` | **Verification attribute** |
@@ -430,6 +433,7 @@ Pin these in `gradle/libs.versions.toml` and `package.json`. Do not float versio
 | Angular Material | **22** | matched major to Angular |
 | Node | **22+** | required by Angular 22 |
 | TypeScript | **6.x** | required by Angular 22 |
+| ag-grid Community | **36.1.0**, exact | `ag-grid-angular` + `ag-grid-community`, both MIT. The **only** table implementation — see ADR 0006 and §6. Pinned exactly, not `^`: ag-grid ships majors fast and an upgrade is a deliberate act. |
 | Python | **3.11+** | importers |
 
 Frontend quality gate — these exist so `npm run lint` and `npm test` are real (§11):
@@ -517,6 +521,7 @@ GET  /api/v1/modules                    ← DOORS-specific projection
 GET  /api/v1/modules/{ref}              ← module detail for the settings dialog
 GET  /api/v1/modules/{ref}/objects      ← review table rows, document order, paged + capped
 POST /api/v1/modules/{ref}/settings     ← system level + mandatory diff + attribute flags, one txn
+POST /api/v1/modules/system-levels      ← the Modules table's batch save; spans modules, so not {ref}-scoped
 POST /api/v1/modules/{ref}/comments     ← every dirty comment for one module, one txn
 GET  /api/v1/modules/{ref}/attributes   ← runtime attribute discovery, namespace filtered
 GET  /api/v1/modules/{ref}/checks/attribute-policy
@@ -685,6 +690,40 @@ This deliberately avoids the Material icon *font*, which §8 requires be self-ho
 Google Fonts CDN, GDPR) and which is not shipped yet — a ligature such as
 `<mat-icon>settings</mat-icon>` renders as the raw text "settings" until it is.
 
+### Tables — ag-grid Community (ADR 0006)
+
+**Every data table in the application is ag-grid.** Not `mat-table`, not a hand-rolled CSS grid.
+One table system is the point of the decision; a second one would mean a reviewer has to know
+which vocabulary a given view speaks. `mat-table` remains fine for a fixed, short, non-scrolling
+list inside a dialog — it is *data* tables this rule is about.
+
+- **Never `field`. Always `colId` + `valueGetter`.** ag-grid reads a dot in `field` as a property
+  path, so `field: 'REQ. Priorität'` looks up `row['REQ']['Priorität']` and renders **blank, with
+  no error**. Attribute names carry dots, spaces, slashes and umlauts, so this is not an edge case.
+  Synthetic ids (`attr-0`, `attr-1`, …) and a `valueGetter` are the only correct shape — the same
+  rule §11 already states, arriving through a different door.
+- **The grid is registered once**, `ModuleRegistry.registerModules([AllCommunityModule])` in
+  `core/grid/`. Never per component.
+- **Theming is `styles/_grid.scss` and nothing else.** ag-grid emits its parameters as `--ag-*`
+  custom properties inside a zero-specificity `:where(...)` rule, so a plain class selector setting
+  `--ag-background-color: var(--sec-paper)` overrides it. Every value comes from the `--sec-*`
+  ramp; **no colour, size or radius is written in TypeScript**, and no rule ever targets an `.ag-*`
+  internal class. This is exactly the M3-token discipline of `_theme.scss`, applied to the grid.
+- **A grid needs a bounded height**, the same as a sticky header does — a concrete
+  `height`/`max-height`, not `flex: 1` alone.
+- **Never set `position` on a cell.** ag-grid lays every cell out with `position: absolute` plus an
+  inline `left`/`right` offset, so overriding it to `relative` silently discards that offset and
+  the cell renders at its static position. It is invisible while a column is the only one pinned to
+  its side — the offset is 0 — and drops the cell on top of its neighbour the moment a second one
+  joins it. No override is needed anyway: an absolutely-positioned element is already a containing
+  block, so a renderer can pin itself to the cell with `position: absolute; inset: 0`.
+- **ag-grid's stylesheet is injected at runtime, after ours.** At equal specificity it wins, so
+  overriding one of its structural rules (cell padding, for instance) needs two of our own classes
+  — `.sec-grid .sec-grid__cell--x`, never an `.ag-*` name.
+- **Do not use ag-grid's cell editing for Tier-2 data.** An editable cell is a second staging
+  concept sitting next to the view's own buffer, and R7 allows exactly one. A custom cell renderer
+  holding a real control, writing to the component's own `ref`-keyed buffer, is the shape.
+
 ### Material pitfalls already paid for
 
 - **Sticky table headers inside `mat-tab-group`.** Tabs measure lazily; a sticky header
@@ -777,6 +816,23 @@ once in `styles/_tokens.scss`:
   distinguishable from imported truth. This mapping matters: **a user must never mistake
   something the app added for something DOORS said.**
 
+**One bounded exception: the system-level scale.** `--sec-level-0` … `--sec-level-4` run
+green → teal → blue → purple → magenta across the L0–L4 vocabulary, and two of those stops are
+`#009F4D` and `#0077C8` — colours the list above has already spent. The reuse is deliberate and
+it is fenced:
+
+- it is a **sequential scale over one closed vocabulary**, not a status signal, and a level is a
+  position in a hierarchy — never good or bad;
+- the tokens are only ever the fill of a **system-level chip**, which is a shape a user learns
+  once and then reads by position, not by hue;
+- the chip is still Tier-2 data, and still says so by being a filled chip — the thing `#0077C8`
+  was carrying is carried by the *form*, not by that particular blue.
+
+The risk this accepts, stated plainly: a green chip can read as "good" and a magenta one as
+"bad", which is not what L0 and L4 mean. That is the cost of a hue ramp over an ordered
+vocabulary, and it was chosen knowingly. **Do not extend this exception** — a second sequential
+scale sharing semantic hues would leave neither meaning legible.
+
 ### Surfaces and neutrals — the paper style
 
 The product is styled as **paper on a desk**, specified in `docs/proposed_new_style.md` and
@@ -789,9 +845,17 @@ them rather than invented:
 2. **Squared corners** — `--sec-radius` (2px) on a control, `--sec-radius-sheet` (3px) on a
    sheet. Never a pill; M3 defaults to pills and is overridden per component in `_theme.scss`.
 3. **Colour is a rail or a rule, never a background** — the 3px navy top rule on a lead sheet,
-   the depth rail down a card, the left rule on an accent panel. Two deliberate exceptions: the
-   navy application toolbar, and the filled Tier-2 chip, because that distinction must never
-   need a second look.
+   the depth rail down a card, the left rule on an accent panel. **Three** deliberate exceptions:
+   the navy application toolbar; the filled Tier-2 chip, because that distinction must never need
+   a second look; and **a heading row in a requirements table**, which carries a light blue ground
+   deepening towards outline level 1 (`--sec-heading-1` … `--sec-heading-6`).
+
+   The third is the newest and it is a real amendment, not a loophole. A rule or a rail marks *an
+   edge*, and a heading row is not an edge — it is a whole row that has to be findable while
+   scrolling past nine hundred requirements, in a flat list where nothing else says where you are.
+   The tints stay in near-white territory for exactly the reason the original rule exists: they
+   are paper with a wash over it, never a fill competing with the Tier-2 chip. Anything wanting a
+   background that is *not* one of these three is still wrong.
 4. **Non-content text is 10px uppercase, letter-spaced, in `--sec-ink-3`** — column headers,
    field labels, the view eyebrow.
 

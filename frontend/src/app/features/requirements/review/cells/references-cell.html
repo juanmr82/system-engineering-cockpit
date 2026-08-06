@@ -1,0 +1,31 @@
+@if (outgoing(); as group) {
+  <span class="sec-references-cell__group">
+    <span class="sec-references-cell__label">Out</span>
+    @for (reference of group.resolved; track reference.ref) {
+      <button type="button" class="sec-references-cell__ref" (click)="open(reference.ref)">
+        {{ reference.id }}
+      </button>
+    }
+    @if (group.unresolvedCount; as count) {
+      <span class="sec-references-cell__unresolved" [matTooltip]="group.unresolvedTooltip">
+        {{ count }} not yet imported
+      </span>
+    }
+  </span>
+}
+
+@if (incoming(); as group) {
+  <span class="sec-references-cell__group">
+    <span class="sec-references-cell__label">In</span>
+    @for (reference of group.resolved; track reference.ref) {
+      <button type="button" class="sec-references-cell__ref" (click)="open(reference.ref)">
+        {{ reference.id }}
+      </button>
+    }
+    @if (group.unresolvedCount; as count) {
+      <span class="sec-references-cell__unresolved" [matTooltip]="group.unresolvedTooltip">
+        {{ count }} not yet imported
+      </span>
+    }
+  </span>
+}

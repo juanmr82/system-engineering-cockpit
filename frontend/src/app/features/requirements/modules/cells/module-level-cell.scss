@@ -1,0 +1,54 @@
+@use 'mixins' as sec;
+
+:host {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+
+// A chip that happens to be a control. It keeps the filled Tier-2 shape — the thing that says the
+// application wrote this and DOORS did not — while the *hue* carries the level's position on the
+// L0–L4 scale (CLAUDE.md §8, where that reuse of two semantic colours is fenced).
+//
+// A native select rather than a Material one: it is one control per row across a whole table, it
+// opens with the platform's own picker, and it needs no overlay to position inside a virtualised
+// grid cell.
+.sec-module-level-cell__select {
+  @include sec.meta-chip;
+
+  max-width: 100%;
+  border: 0;
+  appearance: none;
+  font: inherit;
+  font-size: var(--sec-text-xs);
+  cursor: pointer;
+  text-overflow: ellipsis;
+
+  &:focus-visible {
+    @include sec.focus-ring(1px);
+  }
+}
+
+// Each stop of the scale. The class is built from the stored code, which is internal styling —
+// the code itself never reaches the user as text (R5).
+.sec-level--L0 { background: var(--sec-level-0); }
+.sec-level--L1 { background: var(--sec-level-1); }
+.sec-level--L2 { background: var(--sec-level-2); }
+.sec-level--L3 { background: var(--sec-level-3); }
+.sec-level--L4 { background: var(--sec-level-4); }
+
+// An unclassified module is a normal state, not a gap to apologise for — so it is a quiet outline
+// rather than a coloured chip, and it does not compete with the levels beside it.
+.sec-level--none {
+  background: transparent;
+  color: var(--sec-ink-3);
+  box-shadow: inset 0 0 0 var(--sec-hairline) var(--sec-line);
+}
+
+// Pending, not yet written to the graph. A dashed ring rather than a colour change: the fill is
+// already carrying the level, and the level is what the user is reading.
+.sec-module-level-cell__select--dirty {
+  outline: 2px dashed var(--sec-highlight-meta);
+  outline-offset: 1px;
+}

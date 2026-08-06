@@ -291,6 +291,172 @@ class ReviewFeatureTest {
         assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId))
     }
 
+    /**
+     * The **fixed** check: an object that never got a real `Object Type` carries `DOORSTBD`, and
+     * that is a defect in the export rather than a state to live with (`REQ_REVIEW.md` §5.3).
+     *
+     * It is not configurable, so unlike the mandatory rules it reports on a module nobody has set
+     * up — which is the whole reason it exists. The exclusions are the interesting part and are
+     * what this test is really for: DOORS does not type the cells and rows of an embedded table,
+     * and an `:__UNDEFINED` placeholder has no `Object Type` to be wrong, so reporting either
+     * would be reporting on the importer's own bookkeeping.
+     */
+    @Test
+    fun `an untyped object is reported, unless it is table structure or a placeholder`() = runBlocking {
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                MATCH (m:DOORSModule {__id: ${'$'}mid})
+                CREATE (t:DOORSObject:DOORSTBD:SEItem {
+                    __id: 'tbd-1', __moduleUrl: ${'$'}mid, __name: 'Untyped', __version: 'current',
+                    __sortKey: '000005', id: 'SRD-5', objectNumber: '5', objectLevel: 1
+                })
+                CREATE (tc:DOORSObject:DOORSTBD:DOORSTableCell:SEItem {
+                    __id: 'tbd-2', __moduleUrl: ${'$'}mid, __name: 'Untyped cell', __version: 'current',
+                    __sortKey: '000006', id: 'SRD-6', objectNumber: '6', objectLevel: 1
+                })
+                CREATE (u:DOORSObject:DOORSTBD:__UNDEFINED:SEItem {
+                    __id: 'tbd-3', __moduleUrl: ${'$'}mid, __name: 'Placeholder', __version: 'current',
+                    __sortKey: '000007', id: 'SRD-7', objectNumber: '7', objectLevel: 1
+                })
+                """.trimIndent(),
+                mapOf("mid" to moduleId),
+            ),
+        ) { }
+
+        val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+        assertEquals(listOf("Object Type shall not be TBD"), rows.getValue("SRD-5").issues)
+        assertEquals(emptyList(), rows.getValue("SRD-6").issues)
+        assertEquals(emptyList(), rows.getValue("SRD-7").issues)
+        // A typed requirement is untouched by the fixed rule.
+        assertEquals(emptyList(), rows.getValue("SRD-1").issues)
+
+        graphDriver.executeWrite(
+            Query(
+                "CYPHER 25 MATCH (n:SEItem) WHERE n.__id IN ['tbd-1','tbd-2','tbd-3'] DETACH DELETE n",
+                emptyMap(),
+            ),
+        ) { }
+    }
+
+    /**
+     * The mandatory-attribute check, computed on read (`attribute-policy-checks.md`).
+     *
+     * The seed is built for exactly this: `REQ. Priorität` is `'High'` on SRD-1, `''` on SRD-2,
+     * absent on the heading SRD-3, and absent on the table cell SRD-4. So one policy exercises
+     * every branch at once — filled, blank, out of scope by label, and excluded as table
+     * structure.
+     *
+     * **The live modules cannot test this.** A sanitised export fills every attribute on every
+     * requirement, so the reference module reports 0 violations over 437 requirements in scope
+     * (CLAUDE.md §10). This test is the only thing that holds the behaviour up.
+     */
+    @Test
+    fun `missing mandatory values are reported per row, in scope only`() = runBlocking {
+        metaWriter.saveModuleSettings(
+            moduleId = moduleId,
+            systemLevel = SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+            ),
+        )
+
+        val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+
+        // Blank counts as missing: DOORS "" means "exists and is empty", which the table renders
+        // as an empty cell but the check treats as a violation.
+        assertEquals(listOf("REQ. Priorität"), rows.getValue("SRD-2").issues)
+        // Filled, so nothing to report.
+        assertEquals(emptyList(), rows.getValue("SRD-1").issues)
+        // A heading is not a requirement and is never reported, though the attribute is absent.
+        assertEquals(emptyList(), rows.getValue("SRD-3").issues)
+        // Table structure is excluded whatever the policy's scope says — a cell is a fragment of
+        // a requirement's layout, not a requirement.
+        assertEquals(emptyList(), rows.getValue("SRD-4").issues)
+    }
+
+    /**
+     * The property that decides where this check runs: the verdict follows the *policy*, which is
+     * user-editable configuration, not the import.
+     *
+     * Nothing is re-imported between the two reads here and every answer changes — which is why
+     * the result is computed on read and never stored, and why there is no backfill to run for
+     * data that is already in the graph (R2).
+     */
+    @Test
+    fun `the verdict changes when the policy changes, with no re-import`() = runBlocking {
+        assertEquals(
+            emptyList(),
+            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+        )
+
+        metaWriter.saveModuleSettings(
+            moduleId = moduleId,
+            systemLevel = SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+            ),
+        )
+        assertEquals(
+            listOf("REQ. Priorität"),
+            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+        )
+
+        metaWriter.saveModuleSettings(
+            moduleId = moduleId,
+            systemLevel = SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false),
+            ),
+        )
+        assertEquals(
+            emptyList(),
+            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+        )
+    }
+
+    /**
+     * Un-ticking one mandatory attribute must not clear the others.
+     *
+     * The review dialog posts the **absolute state of every attribute**, so a save that turns one
+     * row off arrives as one `false` among many `true`s. If the writer treated that list as
+     * "replace everything" — or lost the `true`s on the way — a reviewer clearing a single
+     * checkbox would silently wipe the module's whole policy, and the only sign would be an
+     * Issues column that quietly went empty.
+     */
+    @Test
+    fun `turning one mandatory attribute off leaves the others alone`() = runBlocking {
+        metaWriter.saveModuleSettings(
+            moduleId = moduleId,
+            systemLevel = SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+            ),
+        )
+        assertEquals(
+            setOf("Object Text", "REQ. Priorität"),
+            doorsProjection.getExistingMandatoryAttributes(moduleId),
+        )
+
+        // One row flipped off, every other row resent unchanged — exactly what the dialog sends.
+        metaWriter.saveModuleSettings(
+            moduleId = moduleId,
+            systemLevel = SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false),
+            ),
+        )
+
+        assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId))
+        // The visible flags of both rows survive the mandatory change untouched.
+        val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
+        assertTrue(attributes.getValue("Object Text").visible)
+        assertTrue(attributes.getValue("REQ. Priorität").visible)
+    }
+
     // A dialog that does not show system level must not be able to clear it (SystemLevelChange).
     @Test
     fun `an attribute-settings save leaves the system level alone`() = runBlocking {

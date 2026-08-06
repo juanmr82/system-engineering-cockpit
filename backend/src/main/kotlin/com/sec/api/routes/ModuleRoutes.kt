@@ -4,9 +4,16 @@ import com.sec.api.decodeRef
 import com.sec.api.dto.ModuleAttributesResponseDto
 import com.sec.api.dto.ModuleListResponseDto
 import com.sec.api.dto.ModuleSettingsRequestDto
+import com.sec.api.dto.SaveSystemLevelsRequestDto
+import com.sec.api.dto.SaveSystemLevelsResponseDto
+import com.sec.api.dto.SavedSystemLevelDto
+import com.sec.api.dto.SystemLevelOptionDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
+import com.sec.domain.Ref
 import com.sec.domain.SaveModuleSettingsOutcome
+import com.sec.domain.SaveSystemLevelsOutcome
+import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.DoorsProjection
@@ -40,6 +47,74 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                 return@get call.respondModuleNotFound()
             }
             call.respond(ModuleAttributesResponseDto(doorsProjection.getModuleAttributes(moduleId)))
+        }
+
+        /**
+         * The Modules table's save icon: every changed system level, one transaction.
+         *
+         * Not module-scoped, because the batch spans modules — that is the whole difference from
+         * `/{ref}/comments`, whose batch is the objects of one module. Registered before
+         * `/{ref}/...` would be ambiguous only if it shared a shape with it; it does not.
+         */
+        post("/system-levels") {
+            val body = call.receive<SaveSystemLevelsRequestDto>()
+
+            // Decoded here, before the writer sees them, so a malformed handle is a 400 rather
+            // than a module that mysteriously does not exist.
+            val malformed = body.levels.filter { Ref.decodeOrNull(it.ref) == null }.map { it.ref }
+            if (malformed.isNotEmpty()) {
+                return@post call.respondProblem(
+                    HttpStatusCode.BadRequest,
+                    "Invalid reference",
+                    "Some references in this request are not readable. Reload the list and try again.",
+                )
+            }
+
+            val edits = body.levels.mapNotNull { edit ->
+                Ref.decodeOrNull(edit.ref)?.let {
+                    MetaWriter.SystemLevelEditInput(moduleId = it, code = edit.code)
+                }
+            }
+
+            when (val outcome = metaWriter.saveSystemLevels(edits)) {
+                is SaveSystemLevelsOutcome.MalformedRefs ->
+                    call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Invalid reference",
+                        "Some references in this request are not readable.",
+                    )
+
+                is SaveSystemLevelsOutcome.UnknownModules ->
+                    call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Unknown module",
+                        "${outcome.refs.size} of the modules in this request no longer exist. " +
+                            "Reload the list and try again.",
+                    )
+
+                is SaveSystemLevelsOutcome.InvalidSystemLevel ->
+                    call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Malformed request",
+                        "System level must be a level code or empty.",
+                    )
+
+                is SaveSystemLevelsOutcome.Saved ->
+                    call.respond(
+                        SaveSystemLevelsResponseDto(
+                            saved = outcome.levels.map { saved ->
+                                SavedSystemLevelDto(
+                                    ref = Ref.encode(saved.moduleId),
+                                    // Resolved to its wording here so the client never maps a
+                                    // stored code to language of its own (R5).
+                                    systemLevel = saved.code
+                                        ?.let(SystemLevel::fromCode)
+                                        ?.let { SystemLevelOptionDto(it.code, it.label) },
+                                )
+                            },
+                        ),
+                    )
+            }
         }
 
         // One dialog, one request, one transaction (R7) — the system level and the

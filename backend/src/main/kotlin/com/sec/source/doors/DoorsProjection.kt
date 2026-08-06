@@ -86,10 +86,12 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
                 mandatory = name in mandatory,
                 visible = flags?.visible ?: false,
                 verification = flags?.verification ?: false,
-                // Nothing discovered is ever a fixed column: ID, Type, Name, References and
-                // Comment are the view's own columns and are not DOORS attributes, so they never
-                // appear in this list to begin with (REQ_REVIEW.md §5, "Fixed columns").
-                fixed = false,
+                // Two discovered attributes *are* fixed columns, because the review table's
+                // Description column is built out of them: a heading shows `objectNumber` plus
+                // `Object Heading`, everything else shows `Object Text` (REQ_REVIEW.md §5).
+                // Offering them as optional columns would let a module show the same sentence
+                // twice, in a table whose whole problem was already too many columns.
+                fixed = name in DESCRIPTION_ATTRIBUTES,
             )
         }
     }
@@ -142,5 +144,10 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
         // A cap on distinct attribute names, not on objects read. The reference modules carry 53
         // and 78; this is the "Community has no query governor" safety net, not a working limit.
         const val MAX_ATTRIBUTES = 500
+
+        // The two attributes the review table's Description column is made of. They are still
+        // discovered and still listed in the settings dialog — as checked-and-disabled rows, so a
+        // reviewer can see *why* they cannot be turned off (REQ_REVIEW.md §5, §6).
+        val DESCRIPTION_ATTRIBUTES = setOf("Object Heading", "Object Text")
     }
 }

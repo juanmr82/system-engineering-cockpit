@@ -1,0 +1,9 @@
+<textarea
+  class="sec-comment-cell__input"
+  [class.sec-comment-cell__input--dirty]="dirty()"
+  [attr.aria-label]="label()"
+  placeholder="Add a comment"
+  rows="1"
+  [value]="text()"
+  (input)="onInput($any($event.target).value)"
+></textarea>

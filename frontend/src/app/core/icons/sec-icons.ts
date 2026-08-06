@@ -13,6 +13,7 @@ import { MatIconRegistry } from '@angular/material/icon';
 // Paths are root-absolute on purpose. public/** is emitted at the output root, and a relative
 // 'icons/x.svg' would resolve against the current route — breaking on /requirements/modules.
 const SEC_ICONS = {
+  alert: '/icons/alert.svg',
   gearbox: '/icons/gearbox.svg',
   'account-circle': '/icons/account-circle.svg',
   close: '/icons/close.svg',
