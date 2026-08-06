@@ -396,7 +396,16 @@ system-engineering-cockpit/
 │   │   └── cameo/
 │   ├── win/                      ← .bat wrappers, Windows-only, thin
 │   └── tests/
+│       └── fixtures/             ← smoke_module_current.json, a 6-object DOORS export
+├── scripts/win/                  ← PowerShell 5.1, the offline-workstation runbook made runnable
+│   ├── sec-env.ps1               ← dot-source per session; -Persist writes JAVA_HOME permanently
+│   ├── sec-doctor.ps1            ← one line per prerequisite, changes nothing
+│   ├── sec-neo4j.ps1             ← Neo4j from the console, not as a service
+│   ├── sec-backend.ps1 / sec-frontend.ps1
+│   ├── sec-importers-setup.ps1   ← venv + install, honouring a company pip mirror
+│   └── sec-import-doors.ps1      ← -Smoke, -Test, or straight through to the importer CLI
 ├── docs/
+│   ├── RUNNING.md                ← proxy-only, mirror-only, no-Docker Windows workstation
 │   ├── SE_ITEM_SCHEMA.md
 │   ├── DOORS_TO_NEO4J_IMPORTER_SPEC.md
 │   ├── CYPHER_API_DESIGN.md
@@ -409,6 +418,12 @@ system-engineering-cockpit/
 │   └── ...
 └── .run/                         ← IntelliJ run configurations, committed
 ```
+
+**Not every machine that builds this has Docker or direct internet.** `docs/RUNNING.md` is
+the environment contract for the workstation the DOORS importer actually runs on: proxy-only
+internet, a pip mirror, Neo4j from the console, `JAVA_HOME` unset at login. Anything that
+would make the build require Docker, a service-installed database, or an unproxied download
+breaks that machine — which is the only machine that can talk to DOORS.
 
 ### Cross-platform hygiene — check this every time you add a file
 

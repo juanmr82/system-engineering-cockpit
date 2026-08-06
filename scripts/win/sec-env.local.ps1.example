@@ -1,0 +1,45 @@
+# Site-specific settings for sec-env.ps1.
+#
+# Copy to sec-env.local.ps1 (same directory) and edit. That name is git-ignored, so nothing
+# here reaches the repository.
+#
+# Every line is optional. sec-env.ps1 finds the JDK and Neo4j on its own when they are in a
+# usual place; set the variables only when it does not, or when you want a specific one.
+
+# --- Toolchain locations -----------------------------------------------------------------
+
+# $SecJavaHome  = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.11+10'
+# $SecNeo4jHome = 'C:\Users\<you>\neo4j\neo4j-community-2026.06.0'
+
+# --- Neo4j credentials -------------------------------------------------------------------
+#
+# The backend reads these from the environment and refuses to start without them, which is
+# why they are here rather than in application.yaml.
+#
+# This file holds them in plain text. That is acceptable for a local development database
+# and nothing else - if the graph ever holds anything you would not paste into a ticket,
+# set SEC_NEO4J_PASSWORD as a Windows user environment variable instead and delete the line
+# below.
+
+$SecNeo4jUser     = 'neo4j'
+$SecNeo4jPassword = 'CHANGE-ME'
+
+# --- Corporate proxy ---------------------------------------------------------------------
+#
+# One URL. sec-env.ps1 translates it into what Gradle, npm and pip each expect. localhost is
+# excluded automatically; add anything else that must bypass the proxy.
+
+# $SecProxy   = 'http://proxy.company.corp:8080'
+# $SecNoProxy = '.company.corp,10.0.0.0/8'
+
+# --- Package mirrors ---------------------------------------------------------------------
+#
+# The pip index the company mirror exposes. $SecPipTrustedHost is derived from it, and only
+# needs setting when the mirror's TLS certificate is one pip does not accept.
+
+# $SecPipIndexUrl    = 'https://artifactory.company.corp/api/pypi/pypi-remote/simple'
+# $SecPipTrustedHost = 'artifactory.company.corp'
+
+# The npm registry, if the company runs one. Leave unset to use whatever `npm config` says.
+
+# $SecNpmRegistry = 'https://artifactory.company.corp/api/npm/npm-remote/'

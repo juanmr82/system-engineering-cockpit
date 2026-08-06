@@ -30,7 +30,12 @@ importers/**/__pycache__/
 importers/**/*.pyc
 importers/.pytest_cache/
 importers/*.egg-info/
+# An editable install writes this under src/, which the line above does not reach.
+importers/**/*.egg-info/
 importers/dist/
+
+# --- Local machine setup (site paths, proxy, credentials) ---
+scripts/win/sec-env.local.ps1
 
 # --- Reports / local artifacts ---
 importers/reports/
