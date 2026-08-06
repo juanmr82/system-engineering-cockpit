@@ -27,16 +27,55 @@
   @include sec.eyebrow;
 }
 
+.sec-detail__identity {
+  min-width: 0;
+}
+
+// The object id. Tabular figures, because this is the string a reviewer compares character by
+// character against DOORS and quotes in a review.
 .sec-detail__title {
   margin: 4px 0 0;
   font-size: var(--sec-text-lead);
   font-weight: 600;
   color: var(--sec-blue);
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
+}
+
+// The object's own name under it — quieter, and clamped, because for a requirement this is its
+// full statement and the header is not where it is read.
+.sec-detail__subtitle {
+  margin: 3px 0 0;
+  font-size: var(--sec-text-xs);
+  line-height: 1.45;
+  color: var(--sec-ink-2);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .sec-detail__close {
   @include sec.compact-icon-button;
+}
+
+// Tabs, so the Breakdown tree can sit beside the attribute list without either scrolling the other
+// off. The M3 tokens are set here rather than through a .mat-mdc-* selector — those are internals
+// and they move between minor versions (CLAUDE.md §8).
+.sec-detail__tabs {
+  flex: 1;
+  min-height: 0;
+
+  --mat-tab-header-label-text-size: var(--sec-text-sm);
+  --mat-tab-header-label-text-weight: 600;
+  --mat-tab-header-label-text-tracking: 0.02em;
+  --mat-tab-header-divider-color: var(--sec-line);
+  --mat-tab-header-active-label-text-color: var(--sec-blue);
+  --mat-tab-header-active-focus-label-text-color: var(--sec-blue);
+  --mat-tab-header-active-hover-label-text-color: var(--sec-blue);
+  --mat-tab-header-active-indicator-color: var(--sec-blue-mid);
+  --mat-tab-header-inactive-label-text-color: var(--sec-ink-3);
 }
 
 .sec-detail__facts {

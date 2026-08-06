@@ -10,6 +10,7 @@ import com.sec.api.respondProblem
 import com.sec.domain.Ref
 import com.sec.domain.SaveCommentsOutcome
 import com.sec.meta.MetaWriter
+import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.ktor.http.HttpStatusCode
@@ -27,6 +28,7 @@ import io.ktor.server.routing.route
 public fun Route.reviewRoutes(
     doorsProjection: DoorsProjection,
     reviewProjection: ReviewProjection,
+    breakdownProjection: BreakdownProjection,
     metaWriter: MetaWriter,
 ) {
     route("/api/v1/modules/{ref}") {
@@ -124,6 +126,42 @@ public fun Route.reviewRoutes(
             val incoming = call.request.queryParameters["direction"].equals("in", ignoreCase = true)
             call.respond(reviewProjection.getTraces(itemId, incoming = incoming))
         }
+
+        /**
+         * The Breakdown tab (docs/requirement-breakdown-tree.md §6).
+         *
+         * The traversal is server-side because assembling it from N calls to `/traces` would mean
+         * an unbounded number of round trips for a tree that is legitimately dozens of nodes.
+         *
+         * Both bounds are validated rather than passed through, and both have a server-side
+         * default, so a client that omits them — or sends nonsense — still cannot ask for an
+         * unbounded walk. This is the one endpoint where a single click reaches an arbitrary
+         * amount of the graph, and Community has no query governor (CLAUDE.md §7).
+         */
+        get("/breakdown") {
+            val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
+
+            val maxDepth = call.intParam(
+                "maxDepth",
+                default = BreakdownProjection.DEFAULT_MAX_DEPTH,
+                min = 1,
+                max = BreakdownProjection.MAX_MAX_DEPTH,
+            ) ?: return@get call.respondBadBounds()
+            val maxNodes = call.intParam(
+                "maxNodes",
+                default = BreakdownProjection.DEFAULT_MAX_NODES,
+                min = 1,
+                max = BreakdownProjection.MAX_MAX_NODES,
+            ) ?: return@get call.respondBadBounds()
+
+            val breakdown = breakdownProjection.getBreakdown(itemId, maxDepth = maxDepth, maxNodes = maxNodes)
+                ?: return@get call.respondProblem(
+                    HttpStatusCode.NotFound,
+                    "Object not found",
+                    "No object for this reference.",
+                )
+            call.respond(breakdown)
+        }
     }
 }
 
@@ -147,6 +185,14 @@ private suspend fun ApplicationCall.respondBadPaging(): Unit =
         HttpStatusCode.BadRequest,
         "Invalid paging",
         "skip must be zero or more and limit between 1 and $MAX_LIMIT.",
+    )
+
+private suspend fun ApplicationCall.respondBadBounds(): Unit =
+    respondProblem(
+        HttpStatusCode.BadRequest,
+        "Invalid limits",
+        "maxDepth must be between 1 and ${BreakdownProjection.MAX_MAX_DEPTH}, " +
+            "and maxNodes between 1 and ${BreakdownProjection.MAX_MAX_NODES}.",
     )
 
 private suspend fun ApplicationCall.respondModuleNotFound(): Unit =

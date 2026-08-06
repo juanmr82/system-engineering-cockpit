@@ -6,6 +6,7 @@ import com.sec.api.routes.moduleRoutes
 import com.sec.api.routes.reviewRoutes
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaWriter
+import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.ktor.server.application.Application
@@ -26,12 +27,13 @@ public fun Application.configureRouting(
     graphDriver: GraphDriver,
     doorsProjection: DoorsProjection,
     reviewProjection: ReviewProjection,
+    breakdownProjection: BreakdownProjection,
     metaWriter: MetaWriter,
 ) {
     routing {
         healthRoutes(graphDriver)
         moduleRoutes(doorsProjection, metaWriter)
-        reviewRoutes(doorsProjection, reviewProjection, metaWriter)
+        reviewRoutes(doorsProjection, reviewProjection, breakdownProjection, metaWriter)
         configRoutes()
 
         // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.

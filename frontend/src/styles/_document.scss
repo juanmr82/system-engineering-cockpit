@@ -189,8 +189,14 @@
 }
 
 // Verification: green rail when a method is stated, neutral when none is.
-@mixin verification-panel {
-  @include sec.accent-panel(var(--sec-highlight-verified), var(--sec-wash));
+//
+// `$accent` exists because the Breakdown tab's verification box surfaces attributes a *user* chose
+// in the settings dialog (`:__AttributeSetting`, REQ_REVIEW.md §9.2), not a fact DOORS asserted —
+// so there it wears the Tier-2 blue, matching how a dirty comment is marked in the review table. A
+// reviewer reads the same colour as "this is app-configured" in both places, and the green keeps
+// meaning "verified" rather than quietly meaning two things (CLAUDE.md §8).
+@mixin verification-panel($accent: var(--sec-highlight-verified)) {
+  @include sec.accent-panel($accent, var(--sec-wash));
 
   &.sec-doc__verification--none {
     border-left-color: var(--sec-line);

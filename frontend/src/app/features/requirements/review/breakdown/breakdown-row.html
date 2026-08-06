@@ -1,0 +1,95 @@
+<div
+  class="sec-bd__card"
+  [class.sec-bd__card--selected]="row().selected"
+  [class.sec-bd__card--unresolved]="!row().node.resolved"
+>
+  <div class="sec-bd__head">
+    @if (collapsible()) {
+      <button
+        type="button"
+        class="sec-bd__twisty"
+        [class.sec-bd__twisty--open]="row().expanded"
+        [attr.aria-expanded]="row().expanded"
+        [attr.aria-label]="row().expanded ? 'Collapse' : 'Expand'"
+        (click)="toggled.emit()"
+      ></button>
+    } @else {
+      <span class="sec-bd__twisty-gap" aria-hidden="true"></span>
+    }
+
+    <!-- Always rendered, even with no level set: the badge holds the column, and dropping it
+         un-aligns every id below it. The code carries its resolved wording on the chip itself —
+         that wording comes from the server's vocabulary and is never assembled here (R5). -->
+    <span
+      class="sec-bd__level sec-level--{{ row().node.level?.code || 'none' }}"
+      [matTooltip]="levelTooltip()"
+    >{{ row().node.level?.code }}</span>
+
+    @if (row().node.resolved) {
+      <!-- Text, not a control: this view does not navigate away from the tree it is showing. -->
+      <span class="sec-bd__id">{{ row().node.id }}</span>
+    } @else {
+      <span class="sec-bd__not-imported">{{ notImported() }}</span>
+    }
+
+    <!-- Names the parent, so a requirement drawn under two parents says which one this copy sits
+         under. Fixed verb at every level, root to leaf: it is a display convention of this tab and
+         not a claim about what the source asserted — said once, above the tree. -->
+    @if (relation(); as relation) {
+      <span class="sec-bd__relation">{{ relation }}</span>
+    }
+
+    <!-- Worded, not only coloured. This requirement can be drawn in more than one tree and more
+         than once in a tree, so "you are here" has to survive being seen out of the corner of an
+         eye halfway down a long forest. -->
+    @if (row().selected) {
+      <span class="sec-bd__subject">The requirement you opened</span>
+    }
+
+    @for (target of row().loops; track target.ref) {
+      <span
+        class="sec-bd__loop"
+        matTooltip="These requirements reference each other in a loop, so this branch stops here rather than repeating."
+      >
+        {{ loopLabel(target) }}
+      </span>
+    }
+
+    @if (!row().expanded && row().childCount > 0) {
+      <span class="sec-bd__count">{{ childLabel() }}</span>
+    }
+  </div>
+
+  @if (row().expanded && row().node.resolved) {
+    <div class="sec-bd__body">
+      @if (row().node.description) {
+        <p class="sec-bd__text">{{ row().node.description }}</p>
+      }
+
+      <div class="sec-bd__verification">
+        <p class="sec-bd__verification-label">Verification</p>
+        @if (row().node.verificationAttributes.length === 0) {
+          <!-- Quietly, not in error red: this is an absence of configuration, not a finding. -->
+          <p class="sec-bd__absent">No verification attribute defined yet for this requirement</p>
+        } @else {
+          <dl class="sec-bd__attributes">
+            @for (attribute of row().node.verificationAttributes; track attribute.name) {
+              <div>
+                <dt>{{ attribute.name }}</dt>
+                @if (attribute.value) {
+                  <dd>{{ attribute.value }}</dd>
+                } @else {
+                  <dd class="sec-bd__absent">Not filled in</dd>
+                }
+              </div>
+            }
+          </dl>
+        }
+      </div>
+
+      @if (row().childCount === 0) {
+        <p class="sec-bd__absent">No incoming links</p>
+      }
+    </div>
+  }
+</div>

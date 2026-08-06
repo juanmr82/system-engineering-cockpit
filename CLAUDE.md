@@ -269,6 +269,13 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `:__UNDEFINED` | the *Not yet imported* state, with the owning module named |
 | `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; drive table layout |
 | `refersTo` | **References** (outgoing) |
+| `refersTo` **in the Breakdown tab only** | **refines ‹parent id›** — `A -[:refersTo]-> B` reads as *A refines B*, at every level, and the row names B. A display convention of that one tab, stated visibly in it, and never to be confused with an authored `:__Meta:__Link` carrying `semantics: 'refines'` (`docs/requirement-breakdown-tree.md` §2). A requirement with several parents is drawn under each of them, so naming the parent is what tells two copies apart (§10.1) |
+| a `refersTo` the Breakdown tree cannot follow | **loops back to ‹id›** — the branch stops rather than repeating |
+| the item a Breakdown tree was opened for | **The requirement you opened** — on every copy of it, in words as well as in `--sec-subject` |
+| a `:__Classification` `systemLevel` that is not set | the level badge stays, **empty and outlined**, with *No system level set for this module* on hover. Dropping it un-aligns every id in the column and reads as a fault rather than an absence |
+| `id` in the detail panel | the panel's **heading**. `__name` is its second line — for a requirement that is `Object Text`, which a sanitised export makes identical on every object |
+| an item with no incoming `refersTo` in the closure | **No incoming links** — never "no upstream links" |
+| `:__AttributeSetting` `verification: true`, in the Breakdown tab | the **Verification** box; with none flagged, *No verification attribute defined yet for this requirement* — quietly, because it is an absence of configuration, not a finding |
 | `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting** |
 | `:__Note` in the review table | **Comment** — one per object, never a thread |
 | consistency-check findings on an object | **Issues** — the review table column, in error red. Fixed rules render as a sentence (*Object Type shall not be TBD*), configured ones as the unfilled attribute's name. Computed on read, never stored (R2) |
@@ -514,6 +521,7 @@ GET  /api/v1/tree                       ← root of the knowledge tree, lazy chi
 GET  /api/v1/items/{ref}                ← one SEItem, source-agnostic envelope
 GET  /api/v1/items/{ref}/children
 GET  /api/v1/items/{ref}/traces         ← refersTo out; ?direction=in for incoming (schema §8.2)
+GET  /api/v1/items/{ref}/breakdown      ← the decomposition forest; maxDepth/maxNodes bounded
 GET  /api/v1/items/{ref}/annotations    ← Tier-2 data attached to an item
 POST /api/v1/items/{ref}/annotations    ← R2 write path
 PATCH/DELETE /api/v1/annotations/{ref}
@@ -650,10 +658,15 @@ table { @include sec.data-table; }
   Styling `th`, `tr` or `table` from a component's own stylesheet is fine: that is the
   template's own markup.
 - `_document.scss` holds the requirement-tree vocabulary (depth rails, object cards,
-  verification and extended-attribute panels) from `docs/proposed_new_style.md`. Nothing
-  includes it yet — it is the specified look for the review and tree views, kept in tokens so
-  it does not rot in an untracked stylesheet. Mixins emit nothing until included, so it costs
-  no bytes.
+  verification and extended-attribute panels) from `docs/proposed_new_style.md`. **The Breakdown
+  tab is its first consumer** (`docs/requirement-breakdown-tree.md` §5) — reuse it there rather
+  than writing a parallel tree vocabulary, and extend it in place when a shape is genuinely
+  missing, as `verification-panel($accent)` was. Mixins emit nothing until included, so the
+  still-unused half costs no bytes.
+- One trap from that first use, and it generalises: `twisty` draws a CSS triangle out of three
+  borders and says nothing about the fourth. On a `<span>` that is fine; on a `<button>` the
+  browser's own `border-right` survives and the triangle renders as an hourglass. Zero the fourth
+  side *after* the include — `border: 0` before it takes the triangle with it.
 - Changing `angular.json` requires a **dev-server restart** — it is build configuration, not
   watched source, and a running `ng serve` will silently keep the old Sass load path.
 
@@ -845,17 +858,21 @@ them rather than invented:
 2. **Squared corners** — `--sec-radius` (2px) on a control, `--sec-radius-sheet` (3px) on a
    sheet. Never a pill; M3 defaults to pills and is overridden per component in `_theme.scss`.
 3. **Colour is a rail or a rule, never a background** — the 3px navy top rule on a lead sheet,
-   the depth rail down a card, the left rule on an accent panel. **Three** deliberate exceptions:
+   the depth rail down a card, the left rule on an accent panel. **Four** deliberate exceptions:
    the navy application toolbar; the filled Tier-2 chip, because that distinction must never need
-   a second look; and **a heading row in a requirements table**, which carries a light blue ground
-   deepening towards outline level 1 (`--sec-heading-1` … `--sec-heading-6`).
+   a second look; **a heading row in a requirements table**, which carries a light blue ground
+   deepening towards outline level 1 (`--sec-heading-1` … `--sec-heading-6`); and **the row a view
+   is about** (`--sec-subject`), the requirement whose breakdown is on screen.
 
-   The third is the newest and it is a real amendment, not a loophole. A rule or a rail marks *an
-   edge*, and a heading row is not an edge — it is a whole row that has to be findable while
-   scrolling past nine hundred requirements, in a flat list where nothing else says where you are.
-   The tints stay in near-white territory for exactly the reason the original rule exists: they
-   are paper with a wash over it, never a fill competing with the Tier-2 chip. Anything wanting a
-   background that is *not* one of these three is still wrong.
+   The last two are real amendments, not loopholes, and they share one shape: a rule or a rail
+   marks *an edge*, and neither of these is an edge — each is a whole row that has to be findable
+   among rows that look exactly like it. A heading has to be found while scrolling past nine
+   hundred requirements in a flat list; the subject of a breakdown has to be found in a forest
+   where it is drawn once per parent it refines, so it appears more than once and never at a
+   predictable place. Both tints stay in near-white territory for exactly the reason the original
+   rule exists — paper with a wash over it, never a fill competing with the Tier-2 chip — and the
+   subject row **also says so in words**, so the colour is never the only thing carrying it.
+   Anything wanting a background that is *not* one of these four is still wrong.
 4. **Non-content text is 10px uppercase, letter-spaced, in `--sec-ink-3`** — column headers,
    field labels, the view eyebrow.
 

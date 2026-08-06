@@ -1,0 +1,45 @@
+@if (breakdown.isLoading() && !breakdown.hasValue()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (breakdown.error()) {
+  <div class="sec-bd__error" role="alert">
+    <p>Couldn't load the breakdown for this object.</p>
+    <button type="button" class="sec-bd__retry" (click)="retry()">Retry</button>
+  </div>
+} @else if (rows().length === 0) {
+  <p class="sec-bd__empty">This object is not linked to anything, so there is no breakdown to show.</p>
+} @else {
+  <!-- Said once, visibly, so a drawn "refines" is never mistaken for one somebody authored: every
+       outgoing reference is read as decomposition here, which is this tab's convention and not
+       something DOORS asserted. -->
+  <p class="sec-bd__caveat">
+    <mat-icon svgIcon="info" />
+    <span>
+      Every reference out of a requirement is read here as "this requirement refines its target".
+      That is how this tree is drawn, not something the source states.
+    </span>
+  </p>
+
+  <ul class="sec-bd__tree">
+    @for (row of rows(); track row.key) {
+      <!-- Only when there is more than one, so the ordinary single-root case reads exactly as it
+           did before roots could be plural. -->
+      @if (row.depth === 0 && rootCount() > 1) {
+        <li class="sec-bd__root-label">Root {{ row.rootIndex + 1 }} of {{ rootCount() }}</li>
+      }
+      <li>
+        <sec-breakdown-row [row]="row" [attr.data-key]="row.key" (toggled)="toggle(row.key)" />
+      </li>
+    }
+  </ul>
+
+  <!-- Said rather than left to be inferred: a partial forest presented as complete is how a
+       reviewer concludes a requirement decomposes into nothing (§6). -->
+  @if (truncated()) {
+    <p class="sec-bd__truncated">Tree truncated at {{ nodeCount() }} items.</p>
+  } @else if (capped()) {
+    <p class="sec-bd__truncated">
+      Only the first {{ maxRows }} rows are drawn. A requirement appears under each parent it
+      refines, and this breakdown has more of those than one view holds.
+    </p>
+  }
+}

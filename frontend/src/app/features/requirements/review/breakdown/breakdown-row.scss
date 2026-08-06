@@ -1,0 +1,204 @@
+@use 'mixins' as sec;
+@use 'document' as doc;
+
+// One line of the breakdown tree. The vocabulary is _document.scss's — depth rails, object cards,
+// the verification panel — which was written for exactly this view and is being used for the first
+// time here (CLAUDE.md §6).
+
+:host {
+  @include doc.depth-rails;
+
+  display: block;
+
+  // Depth is a rail one step further right, never growing indentation. Four levels of indent would
+  // not survive to L4 in a side panel this narrow; a rail at a fixed step does.
+  margin-left: calc(var(--depth, 0) * 15px);
+}
+
+.sec-bd__card {
+  @include doc.tree-card;
+
+  margin-bottom: 4px;
+}
+
+.sec-bd__head {
+  @include doc.tree-card-head;
+
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: default;
+}
+
+// A CSS triangle rather than an icon: a disclosure affordance is not content, and this one never
+// waits on an SVG to load.
+.sec-bd__twisty {
+  @include doc.twisty;
+
+  // The mixin draws the triangle out of three borders and says nothing about the fourth, which is
+  // fine on a <span> and wrong on a <button>: the UA's own border-right survives and the triangle
+  // renders as an hourglass. Zeroed after the include, never before — `border: 0` there would take
+  // the triangle with it.
+  border-right: 0;
+  padding: 0;
+  background: none;
+  transform: rotate(0deg);
+  cursor: pointer;
+
+  &:focus-visible {
+    @include sec.focus-ring(3px);
+  }
+}
+
+.sec-bd__twisty--open {
+  transform: rotate(90deg);
+}
+
+// Keeps every row's id at the same x whether or not it has children.
+.sec-bd__twisty-gap {
+  flex: none;
+  width: 5px;
+}
+
+// Always occupies its own width, level or no level, so every id in the column starts at the same x.
+.sec-bd__level {
+  @include sec.badge;
+
+  flex: none;
+  min-width: 24px;
+  min-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+@include sec.system-level-scale;
+
+// The identifier — the thing a reviewer reads first and quotes in a review. Plain text, not a
+// link: this view does not navigate away from the tree it is showing.
+.sec-bd__id {
+  @include doc.object-id;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-bd__not-imported {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-highlight-undefined);
+}
+
+.sec-bd__card--unresolved {
+  border-left-color: var(--sec-highlight-undefined);
+}
+
+.sec-bd__relation {
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+// A loop in the data. Informational rather than a finding — the reference it reports is real DOORS
+// `refersTo` — but the reviewer has to know the branch stopped here before reading the tree as
+// complete, so it carries the TBD tone rather than the neutral hairline.
+.sec-bd__loop {
+  @include sec.outline-chip;
+
+  border-color: var(--sec-highlight-tbd);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sec-bd__count {
+  margin-left: auto;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-bd__body {
+  @include doc.tree-card-body;
+
+  padding: 8px 12px 12px;
+}
+
+.sec-bd__text {
+  @include doc.object-text;
+
+  margin-top: 8px;
+  font-size: var(--sec-text-sm);
+}
+
+// The Tier-2 accent, because what this panel surfaces is an attribute a user flagged in the
+// settings dialog — the same colour that marks an app annotation everywhere else (§5).
+.sec-bd__verification {
+  @include doc.verification-panel(var(--sec-highlight-meta));
+
+  margin-top: 10px;
+}
+
+.sec-bd__verification-label {
+  @include sec.field-label;
+
+  margin: 0;
+}
+
+.sec-bd__attributes {
+  margin: 6px 0 0;
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 2px 0;
+  }
+
+  dt {
+    flex: none;
+    width: 150px;
+    font-size: var(--sec-text-xs);
+    color: var(--sec-blue-deep);
+  }
+
+  dd {
+    flex: 1 1 180px;
+    margin: 0;
+    font-size: var(--sec-text-sm);
+    color: var(--sec-ink);
+    overflow-wrap: anywhere;
+  }
+}
+
+.sec-bd__absent {
+  @include sec.absent-text;
+
+  margin-top: 6px;
+  font-size: var(--sec-text-xs);
+}
+
+// "You are here" — and it has to hold at a glance, because this requirement can be drawn in more
+// than one tree and more than once in a tree.
+//
+// The sidenav's active-item language (a --sec-blue-mid rule over --sec-wash-cool) was the first
+// attempt and was too quiet here: the sidenav marks one row in a short list of unlike things,
+// while this marks one card among a dozen cards that look exactly like it. Navy rail, navy wash,
+// and a hairline all the way round, so the card reads as a distinct object rather than as a row
+// that happens to be tinted. Three signals, none of them load-bearing alone — the chip below says
+// it in words (CLAUDE.md §8, the fourth background exception).
+.sec-bd__card--selected {
+  border-color: var(--sec-subject-line);
+  border-left-color: var(--sec-blue);
+  background: var(--sec-subject);
+}
+
+// Navy outline rather than a filled chip: filled is the Tier-2 shape, and this is not Tier-2 data
+// — nothing here was written by the application, it is a statement about what the user is looking
+// at.
+.sec-bd__subject {
+  @include sec.outline-chip;
+
+  // Sentence case: the mixin uppercases, and ALL CAPS is only for headlines of three words or
+  // fewer (CLAUDE.md §8). This is five, and it is a sentence about the row, not a label on it.
+  text-transform: none;
+  border-color: var(--sec-blue);
+  color: var(--sec-blue);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+

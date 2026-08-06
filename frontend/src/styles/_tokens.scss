@@ -67,6 +67,19 @@
   --sec-heading-5: #eff6f9;
   --sec-heading-6: #f4f9fb;
 
+  // --- The subject of a view ----------------------------------------------------------------
+  // The one row a view is *about*, where that row sits among others that look like it — the
+  // requirement whose breakdown is on screen, drawn among the ones it decomposes into, and drawn
+  // more than once when it refines more than one parent.
+  //
+  // This is the fourth exception to "colour is a rail or a rule, never a background"
+  // (CLAUDE.md §8) and it is fenced the same way the heading-row tints are: a navy wash in
+  // near-white territory, never a saturated fill, paired with a navy rail and a worded chip so the
+  // colour is never the only thing carrying the meaning. It is not a status and never a Tier-2
+  // signal — "you are here" is all it says.
+  --sec-subject: #e7edf7;
+  --sec-subject-line: #c3d0e6;
+
   // --- Ink ----------------------------------------------------------------------------------
   --sec-ink: #12212e; // body copy and data
   --sec-ink-2: #4a5b68; // secondary copy, quiet controls

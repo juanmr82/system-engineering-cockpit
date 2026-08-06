@@ -271,6 +271,9 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
         return ItemDetailDto(
             ref = Ref.encode(props["__id"]?.toString().orEmpty()),
+            // Display only, never a key (R6). Absent on a placeholder, and on a module — neither
+            // has a DOORS object id, and neither may fall back to __name (R5).
+            id = props["id"]?.toString().takeIf { UNRESOLVED_LABEL !in labels },
             name = props["__name"]?.toString().orEmpty(),
             type = Aliases.renderType(props["__typeRaw"]?.toString(), labels),
             labels = labels,
@@ -335,6 +338,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         val RESERVED_KEYS = setOf("id", "objectNumber", "objectLevel")
 
         const val TBD_LABEL = "DOORSTBD"
+        const val UNRESOLVED_LABEL = "__UNDEFINED"
 
         // The wording a reviewer reads. "Object Type" is the DOORS attribute the label came from
         // and "TBD" is that label's alias, so this sentence is displayable under R5 — no

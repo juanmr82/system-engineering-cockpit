@@ -309,6 +309,31 @@
   padding: 3px 8px;
 }
 
+// The five stops of the system-level scale, as `.sec-level--L0` … `.sec-level--L4`. Emitted here
+// rather than copied into each view that shows a level chip: the ramp is a sequential scale over
+// one closed vocabulary (CLAUDE.md §8) and two of its stops are hues that mean something else
+// elsewhere, so a second copy drifting out of step is exactly the failure to avoid.
+//
+// The class name is built from the *stored* code, which is internal styling — the code itself
+// reaches the user only as a value, next to its resolved label (R5).
+@mixin system-level-scale {
+  .sec-level--L0 { background: var(--sec-level-0); }
+  .sec-level--L1 { background: var(--sec-level-1); }
+  .sec-level--L2 { background: var(--sec-level-2); }
+  .sec-level--L3 { background: var(--sec-level-3); }
+  .sec-level--L4 { background: var(--sec-level-4); }
+
+  // An unclassified module is a normal state, not a gap to apologise for — a quiet outline rather
+  // than a coloured chip, so it does not compete with the levels beside it. It still occupies the
+  // chip's full width: dropping the badge entirely un-aligns every id in the column and reads as a
+  // rendering fault rather than as an absence.
+  .sec-level--none {
+    background: transparent;
+    color: var(--sec-ink-3);
+    box-shadow: inset 0 0 0 var(--sec-hairline) var(--sec-line);
+  }
+}
+
 // The proposal's .folder: an outlined uppercase chip for a container or a kind, not a value.
 // Outlined rather than filled precisely so it does not compete with a badge next to it.
 @mixin outline-chip {

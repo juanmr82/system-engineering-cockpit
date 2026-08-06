@@ -1,8 +1,15 @@
 <aside class="sec-detail" aria-label="Object detail">
   <header class="sec-detail__head">
-    <div>
+    <div class="sec-detail__identity">
       <p class="sec-detail__eyebrow">Object</p>
-      <h2 class="sec-detail__title">{{ detail.value()?.name }}</h2>
+      <!-- The id leads, not the name. `name` for a requirement is its `Object Text`, and on an
+           export sanitised for sharing that is the same sentence on every object — so a panel
+           headed by it cannot say which requirement is open. An object with no id of its own (a
+           module, a placeholder) keeps the name as its heading, because that is all there is. -->
+      <h2 class="sec-detail__title">{{ detail.value()?.id || detail.value()?.name }}</h2>
+      @if (subtitle(); as subtitle) {
+        <p class="sec-detail__subtitle">{{ subtitle }}</p>
+      }
     </div>
     <button
       mat-icon-button
@@ -17,49 +24,70 @@
 
   @if (detail.isLoading()) {
     <mat-progress-bar mode="indeterminate" />
-  } @else if (detail.error()) {
-    <p class="sec-detail__error" role="alert">Couldn't load this object.</p>
-  } @else if (detail.value(); as item) {
-    <dl class="sec-detail__facts">
-      @if (item.type) {
-        <div>
-          <dt>Type</dt>
-          <dd>{{ item.type }}</dd>
-        </div>
-      }
-      @if (item.moduleName; as moduleName) {
-        <div>
-          <dt>Module</dt>
-          <dd>
-            @if (item.moduleRef; as moduleRef) {
-              <button type="button" class="sec-detail__link" (click)="moduleSelected.emit(moduleRef)">
-                {{ moduleName }}
-              </button>
-            } @else {
-              {{ moduleName }}
-            }
-          </dd>
-        </div>
-      }
-      @for (property of properties(); track property.label) {
-        <div>
-          <dt>{{ property.label }}</dt>
-          <dd>{{ property.value }}</dd>
-        </div>
-      }
-    </dl>
-
-    @if (attributes().length === 0) {
-      <p class="sec-detail__empty">This object carries no attributes of its own.</p>
-    } @else {
-      <dl class="sec-detail__facts sec-detail__facts--attributes">
-        @for (attribute of attributes(); track attribute.label) {
-          <div>
-            <dt>{{ attribute.label }}</dt>
-            <dd>{{ attribute.value }}</dd>
-          </div>
-        }
-      </dl>
-    }
   }
+
+  <!-- The tab group is outside every @if on purpose. Pointing the panel at another object puts
+       `detail` back into loading, and a tab group that unmounts for that moment comes back with
+       tab one selected — which would drop a reviewer following a link inside the Breakdown tree
+       back onto Attributes, the exact opposite of re-rooting the tree in place (§7). Each tab
+       handles its own loading instead. -->
+  <mat-tab-group class="sec-detail__tabs" mat-stretch-tabs="false">
+    <mat-tab label="Attributes">
+      @if (detail.error()) {
+        <p class="sec-detail__error" role="alert">Couldn't load this object.</p>
+      } @else if (detail.value(); as item) {
+        <dl class="sec-detail__facts">
+          @if (item.type) {
+            <div>
+              <dt>Type</dt>
+              <dd>{{ item.type }}</dd>
+            </div>
+          }
+          @if (item.moduleName; as moduleName) {
+            <div>
+              <dt>Module</dt>
+              <dd>
+                @if (item.moduleRef; as moduleRef) {
+                  <button type="button" class="sec-detail__link" (click)="moduleSelected.emit(moduleRef)">
+                    {{ moduleName }}
+                  </button>
+                } @else {
+                  {{ moduleName }}
+                }
+              </dd>
+            </div>
+          }
+          @for (property of properties(); track property.label) {
+            <div>
+              <dt>{{ property.label }}</dt>
+              <dd>{{ property.value }}</dd>
+            </div>
+          }
+        </dl>
+
+        @if (attributes().length === 0) {
+          <p class="sec-detail__empty">This object carries no attributes of its own.</p>
+        } @else {
+          <dl class="sec-detail__facts sec-detail__facts--attributes">
+            @for (attribute of attributes(); track attribute.label) {
+              <div>
+                <dt>{{ attribute.label }}</dt>
+                <dd>{{ attribute.value }}</dd>
+              </div>
+            }
+          </dl>
+        }
+      }
+    </mat-tab>
+
+    <mat-tab label="Breakdown">
+      <!-- Lazy content, which is what makes "opening the Breakdown tab triggers the request" true
+           rather than aspirational: the component — and with it its httpResource — is not created
+           until the tab is first selected, so the Attributes tab costs nothing extra. Once created
+           it stays, so re-rooting refetches rather than rebuilding. -->
+      <ng-template matTabContent>
+        <sec-breakdown [itemRef]="itemRef()" />
+      </ng-template>
+    </mat-tab>
+  </mat-tab-group>
 </aside>

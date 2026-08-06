@@ -30,21 +30,9 @@
   }
 }
 
-// Each stop of the scale. The class is built from the stored code, which is internal styling —
-// the code itself never reaches the user as text (R5).
-.sec-level--L0 { background: var(--sec-level-0); }
-.sec-level--L1 { background: var(--sec-level-1); }
-.sec-level--L2 { background: var(--sec-level-2); }
-.sec-level--L3 { background: var(--sec-level-3); }
-.sec-level--L4 { background: var(--sec-level-4); }
-
-// An unclassified module is a normal state, not a gap to apologise for — so it is a quiet outline
-// rather than a coloured chip, and it does not compete with the levels beside it.
-.sec-level--none {
-  background: transparent;
-  color: var(--sec-ink-3);
-  box-shadow: inset 0 0 0 var(--sec-hairline) var(--sec-line);
-}
+// Each stop of the scale, and the unset state, from the one place they are defined — the Breakdown
+// tab's level badge wears the same ramp (styles/_mixins.scss).
+@include sec.system-level-scale;
 
 // Pending, not yet written to the graph. A dashed ring rather than a colour change: the fill is
 // already carrying the level, and the level is what the user is reading.

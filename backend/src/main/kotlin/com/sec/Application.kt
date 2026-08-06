@@ -6,6 +6,7 @@ import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -68,7 +69,8 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     // lifecycles and a test can substitute its own.
     val doorsProjection = DoorsProjection(graphDriver)
     val reviewProjection = ReviewProjection(graphDriver)
+    val breakdownProjection = BreakdownProjection(graphDriver)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
 
-    configureRouting(graphDriver, doorsProjection, reviewProjection, metaWriter)
+    configureRouting(graphDriver, doorsProjection, reviewProjection, breakdownProjection, metaWriter)
 }

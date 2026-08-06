@@ -508,4 +508,20 @@ class ReviewFeatureTest {
         assertEquals("Requirement", detail.type)
         assertTrue(detail.attributes.keys.none { it.startsWith("__") })
     }
+
+    /**
+     * The panel leads with the object's DOORS id, so it carries one.
+     *
+     * `__name` for a requirement is its `Object Text`, which on a sanitised export is the same
+     * sentence on every object — a panel headed by it cannot say which requirement is open.
+     * A placeholder has no id and must not fall back to its `__name`, which is its `__id` spelled
+     * out (R5).
+     */
+    @Test
+    fun `item detail carries the DOORS id, and never invents one for a placeholder`() = runBlocking {
+        assertEquals("SRD-1", assertNotNull(reviewProjection.getItemDetail("obj-1")).id)
+
+        val placeholder = assertNotNull(reviewProjection.getItemDetail("missing-1"))
+        assertNull(placeholder.id)
+    }
 }

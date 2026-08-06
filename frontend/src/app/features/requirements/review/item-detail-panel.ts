@@ -3,6 +3,8 @@ import { httpResource } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatTabsModule } from '@angular/material/tabs';
+import { Breakdown } from './breakdown/breakdown';
 import { ReviewApiService } from './review-api.service';
 import type { ItemDetail } from './review.model';
 
@@ -16,7 +18,7 @@ interface AttributeEntry {
 // scroll position — and closing it disposes the request with the panel.
 @Component({
   selector: 'sec-item-detail-panel',
-  imports: [MatButtonModule, MatIconModule, MatProgressBarModule],
+  imports: [Breakdown, MatButtonModule, MatIconModule, MatProgressBarModule, MatTabsModule],
   templateUrl: './item-detail-panel.html',
   styleUrl: './item-detail-panel.scss',
 })
@@ -39,4 +41,15 @@ export class ItemDetailPanel {
   );
 
   protected readonly properties = computed(() => this.detail.value()?.properties ?? []);
+
+  /**
+   * The line under the heading: the object's name, but only when the heading is not already it.
+   *
+   * With an id to lead on, the name is the useful second line; without one the name *is* the
+   * heading, and repeating it under itself would say nothing.
+   */
+  protected readonly subtitle = computed(() => {
+    const item = this.detail.value();
+    return item?.id ? item.name : '';
+  });
 }

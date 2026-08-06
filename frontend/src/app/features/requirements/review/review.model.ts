@@ -67,6 +67,14 @@ export interface ItemProperty {
 
 export interface ItemDetail {
   readonly ref: string;
+  /**
+   * DOORS's own module-local identifier, which the panel leads with.
+   *
+   * Display only, never a key (R6), and null where there is none — a placeholder, or a module.
+   * The panel needs it because `name` for a requirement is its `Object Text`, and on a sanitised
+   * export that is the same sentence for every object.
+   */
+  readonly id: string | null;
   readonly name: string;
   readonly type: string | null;
   readonly labels: string[];

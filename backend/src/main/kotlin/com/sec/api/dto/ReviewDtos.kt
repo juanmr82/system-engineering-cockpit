@@ -94,9 +94,16 @@ public data class ModuleObjectsResponseDto(
 )
 
 // The detail panel (§7). `moduleName` is what __moduleUrl renders as, per the R5 alias map.
+//
+// `id` is DOORS's own module-local identifier, and the panel leads with it. Without it the panel is
+// headed by `__name`, which for a requirement is its `Object Text` — on a sanitised export that is
+// the same sentence for every object, so there was no way to tell which requirement was open. It is
+// display only and never a key (R6), and it is null for a placeholder, whose internal name is its
+// internal id spelled out and so cannot be shown (R5).
 @Serializable
 public data class ItemDetailDto(
     public val ref: String,
+    public val id: String? = null,
     public val name: String,
     public val type: String?,
     public val labels: List<String>,
