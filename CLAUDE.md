@@ -405,7 +405,7 @@ system-engineering-cockpit/
 │   ├── sec-importers-setup.ps1   ← venv + install, honouring a company pip mirror
 │   └── sec-import-doors.ps1      ← -Smoke, -Test, or straight through to the importer CLI
 ├── docs/
-│   ├── RUNNING.md                ← proxy-only, mirror-only, no-Docker Windows workstation
+│   ├── RUNNING.md                ← no-admin, proxy-only, mirror-only, no-Docker Windows box
 │   ├── SE_ITEM_SCHEMA.md
 │   ├── DOORS_TO_NEO4J_IMPORTER_SPEC.md
 │   ├── CYPHER_API_DESIGN.md
@@ -419,11 +419,13 @@ system-engineering-cockpit/
 └── .run/                         ← IntelliJ run configurations, committed
 ```
 
-**Not every machine that builds this has Docker or direct internet.** `docs/RUNNING.md` is
-the environment contract for the workstation the DOORS importer actually runs on: proxy-only
-internet, a pip mirror, Neo4j from the console, `JAVA_HOME` unset at login. Anything that
-would make the build require Docker, a service-installed database, or an unproxied download
-breaks that machine — which is the only machine that can talk to DOORS.
+**Not every machine that builds this has Docker, direct internet, or administrator rights.**
+`docs/RUNNING.md` is the environment contract for the workstation the DOORS importer actually
+runs on: **no admin rights**, proxy-only internet, a pip mirror, Neo4j unzipped under the user
+profile and run from the console, `JAVA_HOME` unset at login. Anything that would make the
+build require Docker, a service-installed database, an unproxied download, a machine-wide
+environment variable, a port below 1024, or a write outside the user profile breaks that
+machine — which is the only machine that can talk to DOORS.
 
 ### Cross-platform hygiene — check this every time you add a file
 

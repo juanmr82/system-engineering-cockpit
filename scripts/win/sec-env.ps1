@@ -88,6 +88,11 @@ function Resolve-Jdk {
 
     # The vendors a locked-down Windows workstation actually ships, plus JetBrains' bundled
     # runtime, which is a real JDK and is present on any machine with IntelliJ installed.
+    #
+    # The %ProgramFiles% roots only ever match a JDK somebody with administrator rights put
+    # there. Without those rights a JDK arrives as an unzipped directory under the user
+    # profile instead - IntelliJ's own downloads land in ~\.jdks, scoop in ~\scoop\apps - so
+    # those roots are searched too. See docs\RUNNING.md §1.
     $roots = @(
         "$env:ProgramFiles\Eclipse Adoptium"
         "$env:ProgramFiles\Java"
@@ -98,17 +103,30 @@ function Resolve-Jdk {
         "$env:ProgramFiles\JetBrains"
         "$env:LOCALAPPDATA\Programs\Eclipse Adoptium"
         "$env:LOCALAPPDATA\Programs\Microsoft"
+        "$env:LOCALAPPDATA\Programs"
+        "$env:LOCALAPPDATA\JetBrains\Toolbox\apps"
+        "$env:USERPROFILE\.jdks"
+        "$env:USERPROFILE\scoop\apps"
+        "$env:USERPROFILE\tools"
     )
+    # Layouts that put the JDK one directory below the entry the search finds: IntelliJ's
+    # bundled runtime, and scoop's version-independent symlink.
+    $nested = @('jbr', 'current')
+
     foreach ($root in $roots) {
         if (-not (Test-Path $root)) { continue }
-        Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path (Join-Path $_.FullName 'bin\java.exe') } |
-            ForEach-Object { $candidates.Add($_.FullName) }
-        # IntelliJ nests its runtime one level deeper.
-        Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object { Join-Path $_.FullName 'jbr' } |
-            Where-Object { Test-Path (Join-Path $_ 'bin\java.exe') } |
-            ForEach-Object { $candidates.Add($_) }
+        $children = Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue
+        foreach ($child in $children) {
+            if (Test-Path (Join-Path $child.FullName 'bin\java.exe')) {
+                $candidates.Add($child.FullName)
+            }
+            foreach ($sub in $nested) {
+                $nestedPath = Join-Path $child.FullName $sub
+                if (Test-Path (Join-Path $nestedPath 'bin\java.exe')) {
+                    $candidates.Add($nestedPath)
+                }
+            }
+        }
     }
 
     # Preference order among *discovered* JDKs, and it is deliberately NOT "newest wins".
@@ -167,7 +185,17 @@ function Resolve-Neo4jHome {
     if ($SecNeo4jHome)   { $candidates.Add($SecNeo4jHome) }
     if ($env:NEO4J_HOME) { $candidates.Add($env:NEO4J_HOME) }
 
-    $roots = @("$env:USERPROFILE\neo4j", "$env:ProgramFiles\neo4j", "C:\neo4j", "C:\tools\neo4j")
+    # The user-profile roots come first on purpose: unzipping the Neo4j tarball under the
+    # user profile is the install that needs no administrator rights, and it is also the one
+    # whose data\, logs\ and conf\ stay writable afterwards.
+    $roots = @(
+        "$env:USERPROFILE\neo4j"
+        "$env:USERPROFILE\tools\neo4j"
+        "$env:LOCALAPPDATA\neo4j"
+        "$env:ProgramFiles\neo4j"
+        "C:\neo4j"
+        "C:\tools\neo4j"
+    )
     foreach ($root in $roots) {
         if (-not (Test-Path $root)) { continue }
         if (Test-Path (Join-Path $root 'bin\neo4j.bat')) { $candidates.Add($root) }
