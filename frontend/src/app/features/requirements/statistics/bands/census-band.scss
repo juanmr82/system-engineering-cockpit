@@ -1,0 +1,33 @@
+@use 'mixins' as sec;
+
+.sec-band {
+  @include sec.sheet;
+}
+
+.sec-band--lead {
+  @include sec.sheet-lead;
+}
+
+.sec-band__title {
+  @include sec.section-title;
+}
+
+.sec-band__pending {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+// A grid rather than a wrapping flex row, so every tile is the same size.
+//
+// Flex sizes each item to its own content and stretches only within one line, so tiles came out at
+// different widths, and the moment the row wrapped the two lines ended up different heights as
+// well — a census of six figures reading as six unrelated cards. `1fr` columns make the widths
+// equal; `grid-auto-rows: 1fr` makes every row as tall as the tallest tile in the whole grid, not
+// just the tallest in its own line.
+.sec-census {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 12px;
+}

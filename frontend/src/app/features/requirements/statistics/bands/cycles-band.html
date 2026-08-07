@@ -1,0 +1,69 @@
+<section class="sec-band" aria-labelledby="sec-band-cycles" id="sec-band-cycles-anchor">
+  <h2 id="sec-band-cycles" class="sec-band__title">Circular references</h2>
+
+  @if (loading()) {
+    <p class="sec-band__pending">Following every reference. This one takes longest.</p>
+  } @else if (failed()) {
+    <p class="sec-band__failed">
+      The reference check did not finish. The other figures on this page are unaffected.
+    </p>
+  } @else if (cycles(); as result) {
+    @if (result.loops.length) {
+      <p class="sec-band__summary sec-band__summary--warn">
+        <b>{{ result.loops.length }}</b>
+        closed loop{{ result.loops.length === 1 ? '' : 's' }} in
+        {{ result.edgesExamined }} references. A requirement inside a loop has no top, so its
+        breakdown cannot be read.
+      </p>
+
+      @for (loop of result.loops; track $index) {
+        <article class="sec-loop">
+          <ol class="sec-loop__ring">
+            @for (member of loop.ring; track member.ref) {
+              <li class="sec-loop__hop">
+                <button type="button" class="sec-loop__member" (click)="memberSelect.emit(member.ref)">
+                  <span class="sec-loop__id">{{ label(member) }}</span>
+                  <span class="sec-loop__name">{{ member.name }}</span>
+                </button>
+                <span class="sec-loop__meta">
+                  @if (member.systemLevel; as level) {
+                    <span class="sec-loop__level sec-level--{{ level.code }}">{{ level.code }}</span>
+                  }
+                  @if (member.moduleName) {
+                    <span class="sec-loop__module">{{ member.moduleName }}</span>
+                  }
+                </span>
+                <span class="sec-loop__arrow">
+                  {{ $last ? 'refines the first, closing the loop' : 'refines' }}
+                </span>
+              </li>
+            }
+          </ol>
+
+          @if (loop.others.length) {
+            <p class="sec-loop__others">
+              Also in this loop:
+              @for (member of loop.others; track member.ref) {
+                <button type="button" class="sec-loop__other" (click)="memberSelect.emit(member.ref)">
+                  {{ label(member) }}
+                </button>
+              }
+            </p>
+          }
+        </article>
+      }
+
+      @if (result.truncated) {
+        <p class="sec-band__note">
+          More references exist than could be read in one pass, so there may be loops this list
+          does not show.
+        </p>
+      }
+    } @else {
+      <sec-empty-state
+        title="No circular references found"
+        description="Every reference chain in view ends somewhere. Nothing to fix here."
+      />
+    }
+  }
+</section>

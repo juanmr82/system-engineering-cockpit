@@ -1,0 +1,44 @@
+<div class="sec-chart-controls">
+  <mat-button-toggle-group
+    class="sec-chart-controls__group"
+    [value]="mode()"
+    (change)="mode.set($event.value)"
+    aria-label="Show counts or percentages"
+    hideSingleSelectionIndicator
+  >
+    <mat-button-toggle value="absolute">Counts</mat-button-toggle>
+    <mat-button-toggle value="percentage">Percent</mat-button-toggle>
+  </mat-button-toggle-group>
+
+  <mat-button-toggle-group
+    class="sec-chart-controls__group"
+    [value]="sort()"
+    (change)="sort.set($event.value)"
+    aria-label="Sort order"
+    hideSingleSelectionIndicator
+  >
+    <mat-button-toggle value="value">Worst first</mat-button-toggle>
+    <mat-button-toggle value="name">By name</mat-button-toggle>
+  </mat-button-toggle-group>
+
+  @if (showScale()) {
+    <mat-button-toggle-group
+      class="sec-chart-controls__group"
+      [value]="scale()"
+      (change)="scale.set($event.value)"
+      aria-label="Axis scale"
+      hideSingleSelectionIndicator
+    >
+      <mat-button-toggle value="linear">Linear</mat-button-toggle>
+      <mat-button-toggle
+        value="log"
+        [disabled]="!logAvailable()"
+        [matTooltip]="
+          logAvailable() ? 'Compress a long tail' : 'Log scale needs every value above zero'
+        "
+      >
+        Log
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+  }
+</div>

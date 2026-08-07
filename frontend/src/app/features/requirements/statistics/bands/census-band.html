@@ -1,0 +1,46 @@
+<section class="sec-band sec-band--lead" aria-labelledby="sec-band-census">
+  <h2 id="sec-band-census" class="sec-band__title">Census</h2>
+
+  @if (census(); as data) {
+    <div class="sec-census">
+      <sec-kpi-tile
+        [label]="scopedToModule() ? 'Module' : 'Modules'"
+        [value]="data.modules"
+        (tileSelect)="anchorSelect.emit('completeness')"
+      />
+      <sec-kpi-tile
+        label="Items"
+        [value]="data.items"
+        hint="Everything imported"
+        (tileSelect)="anchorSelect.emit('completeness')"
+      />
+      <sec-kpi-tile
+        label="Requirements"
+        [value]="data.requirements"
+        hint="Headings and tables excluded"
+        (tileSelect)="anchorSelect.emit('completeness')"
+      />
+      <sec-kpi-tile
+        label="TBD / TBC"
+        [value]="data.openPoints"
+        tone="open"
+        hint="Found in text"
+        (tileSelect)="anchorSelect.emit('completeness')"
+      />
+      <sec-kpi-tile
+        label="Links"
+        [value]="data.links"
+        (tileSelect)="anchorSelect.emit('traceability')"
+      />
+      <sec-kpi-tile
+        label="Circular references"
+        [value]="loops()"
+        [tone]="loops() ? 'alert' : 'plain'"
+        [hint]="loops() === null ? 'Still checking' : ''"
+        (tileSelect)="anchorSelect.emit('cycles')"
+      />
+    </div>
+  } @else {
+    <p class="sec-band__pending">Counting.</p>
+  }
+</section>

@@ -1,0 +1,63 @@
+@use 'mixins' as sec;
+
+.sec-band {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sec-band__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sec-band__title {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-band__pending {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+.sec-band__summary {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+  font-variant-numeric: tabular-nums;
+
+  b {
+    font-weight: 600;
+    color: var(--sec-blue);
+  }
+}
+
+// A dangling link is a real defect, and --sec-highlight-error is already its colour elsewhere.
+// A rule, not a fill: the paper style's rule 3.
+.sec-band__summary--warn {
+  padding-left: 10px;
+  border-left: var(--sec-rail) solid var(--sec-highlight-error);
+}
+
+.sec-band__targets {
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+.sec-band__note {
+  margin: 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+}
+
+.sec-band__note--quiet {
+  color: var(--sec-ink-3);
+}

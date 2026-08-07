@@ -1,0 +1,70 @@
+<section class="sec-band" aria-labelledby="sec-band-completeness" id="sec-band-completeness-anchor">
+  <header class="sec-band__head">
+    <h2 id="sec-band-completeness" class="sec-band__title">Completeness</h2>
+    <sec-chart-controls
+      [(mode)]="mode"
+      [(sort)]="sort"
+      [(scale)]="scale"
+      [logAvailable]="logAvailable()"
+    />
+  </header>
+
+  @if (completeness(); as data) {
+    <div class="sec-band__charts">
+      <div class="sec-band__chart">
+        <sec-bar-chart
+          caption="Mandatory attribute empty, by attribute"
+          valueName="Violations"
+          token="sec-highlight-undefined"
+          [data]="mandatoryBars()"
+          [sort]="sort()"
+          [scale]="scale()"
+          [mode]="mode()"
+          [total]="itemCount()"
+          (barSelect)="attributeSelect.emit($event)"
+        />
+        @if (mandatoryUnconfigured()) {
+          <p class="sec-band__note">
+            No mandatory attributes are configured here, so nothing is being checked. That is not
+            the same as everything being filled in.
+          </p>
+        }
+      </div>
+
+      <div class="sec-band__chart">
+        <sec-bar-chart
+          caption="TBD / TBC in text, by attribute"
+          valueName="Items"
+          token="sec-highlight-tbd"
+          [data]="openPointBars()"
+          [sort]="sort()"
+          [scale]="scale()"
+          [mode]="mode()"
+          [total]="itemCount()"
+          (barSelect)="attributeSelect.emit($event)"
+        />
+        <p class="sec-band__note sec-band__note--quiet">
+          A text search of the imported attribute values. It will also match a sentence that says
+          no open points remain.
+        </p>
+      </div>
+    </div>
+
+    @if (verificationUnconfigured()) {
+      <p class="sec-band__note sec-band__note--quiet">
+        No verification attribute has been chosen yet, so verification is not being checked.
+      </p>
+    }
+
+    <sec-stacked-bar-chart
+      caption="Items by finding, per module"
+      [rows]="moduleRows()"
+      [series]="series"
+      [sort]="sort()"
+      [mode]="mode()"
+      (segmentSelect)="onSegmentSelect($event)"
+    />
+  } @else {
+    <p class="sec-band__pending">Checking.</p>
+  }
+</section>

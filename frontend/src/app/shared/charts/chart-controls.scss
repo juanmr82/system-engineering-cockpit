@@ -1,0 +1,17 @@
+@use 'mixins' as sec;
+
+.sec-chart-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-left: auto;
+}
+
+// Squared, quiet, and small: these are controls over a chart, not actions in the view. M3 wants
+// a pill here, and _theme.scss squares the group; this only sets the density.
+.sec-chart-controls__group {
+  --mat-standard-button-toggle-height: 28px;
+
+  font-size: var(--sec-text-xs);
+}

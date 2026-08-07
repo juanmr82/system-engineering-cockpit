@@ -1,0 +1,68 @@
+@use 'mixins' as sec;
+
+// The host element is what the census strip lays out, not the button inside it, and an Angular
+// component host is `display: inline` until told otherwise. So a grid of identical cells still
+// produced a ragged row: each cell was the right size and each button sat inside its cell at the
+// size of its own text. The host fills the cell; the button fills the host.
+:host {
+  display: flex;
+}
+
+// A tile is a small sheet, and colour on it is a rail along the top — the paper style's rule 3,
+// not an exception to it. The alert tone is the one place a tile is allowed to shout, and it
+// still shouts with a rail rather than a fill.
+.sec-kpi {
+  @include sec.focus-ring;
+
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+  padding: 12px 14px 14px;
+  text-align: left;
+  cursor: pointer;
+  background: var(--sec-paper);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-top: var(--sec-rail) solid var(--sec-grey-blue);
+  border-radius: var(--sec-radius-sheet);
+  font: inherit;
+  color: inherit;
+
+  &:hover {
+    background: var(--sec-wash);
+  }
+}
+
+.sec-kpi--open {
+  border-top-color: var(--sec-highlight-tbd);
+}
+
+.sec-kpi--alert {
+  border-top-color: var(--sec-highlight-error);
+
+  .sec-kpi__value {
+    color: var(--sec-highlight-error);
+  }
+}
+
+.sec-kpi__label {
+  @include sec.field-label;
+}
+
+.sec-kpi__value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--sec-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+// Pinned to the foot of the tile. Tiles are all one height now, and only some carry a hint, so
+// letting it sit directly under the value would leave the hints at three different heights across
+// one row — which reads as misalignment rather than as the absence it is.
+.sec-kpi__hint {
+  margin-top: auto;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}

@@ -1,0 +1,38 @@
+@use 'mixins' as sec;
+
+// The chart vocabulary is shared with bar-chart.scss rather than imported from it: component
+// styles are scoped, so each component carries the rules its own template needs. The values that
+// must not drift are the tokens, and those are global.
+.sec-chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sec-chart__caption {
+  @include sec.field-label;
+}
+
+.sec-chart__canvas {
+  width: 100%;
+  height: 220px;
+}
+
+// One row per module, so the height grows with the data rather than squeezing the bars.
+.sec-chart__canvas--tall {
+  height: 320px;
+}
+
+.sec-chart__empty {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+// Visually hidden, not display:none — a hidden element is not read out, and being read out is
+// the entire purpose of this table. It is the wrapping div that is hidden and never the table
+// itself: a <caption> belongs to the table's wrapper box, which ignores the clip (see the mixin).
+.sec-chart__data {
+  @include sec.visually-hidden;
+}

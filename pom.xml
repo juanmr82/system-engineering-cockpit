@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Root aggregator and the single source of truth for JVM dependency versions.
+
+  Every version lives in <properties> and every dependency in <dependencyManagement>, so a
+  module declares a dependency without a version and no two modules can drift. This is the
+  role gradle/libs.versions.toml used to play; see docs/adr/0007-maven-over-gradle.md for why
+  the build moved.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sec</groupId>
+  <artifactId>system-engineering-cockpit</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <name>System Engineering Cockpit</name>
+
+  <modules>
+    <module>backend</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+
+    <kotlin.version>2.4.0</kotlin.version>
+    <ktor.version>3.5.1</ktor.version>
+    <neo4j-driver.version>6.0.0</neo4j-driver.version>
+    <!--
+      Container image for the Testcontainers tests. Pin it to the series that is deployed -
+      testing against a different major than production defeats the point of testing against
+      Community.
+    -->
+    <neo4j-image.version>2026.06.0-community</neo4j-image.version>
+    <kotlin-logging.version>7.0.3</kotlin-logging.version>
+    <logback.version>1.5.13</logback.version>
+    <kotlinx-serialization.version>1.8.0</kotlinx-serialization.version>
+    <!--
+      1.11.0, not the 1.10.1 the Gradle version catalogue named. Ktor 3.5.1 depends on
+      coroutines 1.11.0, and Gradle resolves a conflict by taking the HIGHEST version, so the
+      catalogue's 1.10.1 was quietly being upgraded and the build ran 1.11.0 all along. Maven
+      takes the NEAREST declaration instead, which made 1.10.1 stick and broke six tests with a
+      NoSuchMethodError - kotlinx-coroutines-test 1.11.0 against core 1.10.1. Pinning what was
+      really in use is the faithful migration; anything else is a silent upgrade or downgrade.
+    -->
+    <kotlinx-coroutines.version>1.11.0</kotlinx-coroutines.version>
+    <!--
+      1.21+ is required by Docker Engine 29, which rejects Docker API versions below 1.40. The
+      docker-java shipped with 1.20.4 negotiates 1.32 and every container test dies at start()
+      with an opaque "Could not find a valid Docker environment" - the daemon is fine, the API
+      version is not.
+    -->
+    <testcontainers.version>1.21.3</testcontainers.version>
+    <junit.version>5.11.4</junit.version>
+
+    <!--
+      Testcontainers' docker-java still negotiates Docker API 1.32 by default, and Docker Engine
+      29 rejects everything below 1.40 with a bodyless 400. 1.41 is the version every engine we
+      target speaks: Docker 20.10 and later on RHEL, Docker Desktop on Windows. Override from
+      the command line with -Dapi.version=... for an engine that ever needs something else.
+    -->
+    <api.version>1.41</api.version>
+
+    <maven-surefire.version>3.5.2</maven-surefire.version>
+    <exec-maven.version>3.5.0</exec-maven.version>
+    <maven-shade.version>3.6.0</maven-shade.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!--
+        Ktor and kotlinx are Kotlin Multiplatform artifacts. Maven must depend on the "-jvm"
+        variants: the unsuffixed artifact carries Gradle module metadata that Maven does not
+        read, and resolves to a metadata jar with no classes in it. The failure is a compile
+        error about a missing package, not a resolution error, so it is worth knowing.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-core-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-netty-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-content-negotiation-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-serialization-kotlinx-json-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-status-pages-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-call-id-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-call-logging-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-config-yaml-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-test-host-jvm</artifactId>
+        <version>${ktor.version}</version>
+        <scope>test</scope>
+      </dependency>
+
+      <!-- Graph -->
+      <dependency>
+        <groupId>org.neo4j.driver</groupId>
+        <artifactId>neo4j-java-driver</artifactId>
+        <version>${neo4j-driver.version}</version>
+      </dependency>
+
+      <!-- Serialization / coroutines -->
+      <dependency>
+        <groupId>org.jetbrains.kotlinx</groupId>
+        <artifactId>kotlinx-serialization-json-jvm</artifactId>
+        <version>${kotlinx-serialization.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.jetbrains.kotlinx</groupId>
+        <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+        <version>${kotlinx-coroutines.version}</version>
+      </dependency>
+
+      <!-- Logging -->
+      <dependency>
+        <groupId>io.github.oshai</groupId>
+        <artifactId>kotlin-logging-jvm</artifactId>
+        <version>${kotlin-logging.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>ch.qos.logback</groupId>
+        <artifactId>logback-classic</artifactId>
+        <version>${logback.version}</version>
+        <scope>runtime</scope>
+      </dependency>
+
+      <!-- Test -->
+      <dependency>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-test-junit5</artifactId>
+        <version>${kotlin.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>neo4j</artifactId>
+        <version>${testcontainers.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${testcontainers.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.jetbrains.kotlin</groupId>
+          <artifactId>kotlin-maven-plugin</artifactId>
+          <version>${kotlin.version}</version>
+          <executions>
+            <execution>
+              <id>compile</id>
+              <phase>compile</phase>
+              <goals><goal>compile</goal></goals>
+              <configuration>
+                <!--
+                  Explicit API mode, and ONLY on main sources. Gradle's explicitApi() applies to
+                  production source sets alone; putting the flag on the plugin instead of on this
+                  execution would demand an explicit visibility modifier and a declared return
+                  type on every test function too.
+                -->
+                <args>
+                  <arg>-Xexplicit-api=strict</arg>
+                </args>
+              </configuration>
+            </execution>
+            <execution>
+              <id>test-compile</id>
+              <phase>test-compile</phase>
+              <goals><goal>test-compile</goal></goals>
+            </execution>
+          </executions>
+          <configuration>
+            <jvmTarget>21</jvmTarget>
+            <compilerPlugins>
+              <plugin>kotlinx-serialization</plugin>
+            </compilerPlugins>
+          </configuration>
+          <dependencies>
+            <dependency>
+              <groupId>org.jetbrains.kotlin</groupId>
+              <artifactId>kotlin-maven-serialization</artifactId>
+              <version>${kotlin.version}</version>
+            </dependency>
+          </dependencies>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire.version}</version>
+          <configuration>
+            <!--
+              Tests that need a container are tagged "docker" and are NOT part of the default
+              build. Not every machine that builds this has Docker - the DOORS importer's own
+              target is a Windows workstation - and a verify that cannot pass locally is a verify
+              that gets skipped, taking the other tests with it. Run them with -Pdocker.
+            -->
+            <excludedGroups>docker</excludedGroups>
+            <systemPropertyVariables>
+              <sec.test.neo4jImage>${neo4j-image.version}</sec.test.neo4jImage>
+              <api.version>${api.version}</api.version>
+            </systemPropertyVariables>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>${exec-maven.version}</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>${maven-shade.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
+  <profiles>
+    <!--
+      The container tests, and nothing else. Same test classes as the default build, opposite
+      tag filter - which is exactly what the Gradle integrationTest task did.
+
+          mvn -Pdocker test
+    -->
+    <profile>
+      <id>docker</id>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <configuration>
+                <excludedGroups combine.self="override"/>
+                <groups>docker</groups>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+  </profiles>
+</project>

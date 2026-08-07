@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A starting settings.xml for a workstation behind a company proxy and mirror.
+
+  Copy it to %USERPROFILE%\.m2\settings.xml, which is where Maven looks without being told,
+  and edit. It needs no administrator rights: .m2 is inside your own profile.
+
+  Keep it somewhere else and point $SecMavenSettings at it only if you need a settings.xml
+  specific to this project; sec-backend.ps1 then passes it with -s.
+
+  This is the file that matters most in a locked-down environment. Maven's dependency resolver
+  reads <proxies> and <mirrors> from here - it does NOT reliably read the JVM proxy system
+  properties, which is why a proxy configured only in the environment still fails to resolve.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <!--
+    The company mirror, standing in for Maven Central.
+
+    <mirrorOf>central</mirrorOf> redirects only Central. Use *  to send everything through the
+    mirror, which is what a network that blocks all outbound repository traffic needs.
+  -->
+  <mirrors>
+    <mirror>
+      <id>company-central</id>
+      <name>Company mirror of Maven Central</name>
+      <url>https://artifactory.company.corp/artifactory/maven-remote</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <!--
+    Credentials for the mirror, if it requires a login. The <id> MUST match the mirror's id
+    above - that is how Maven pairs them, and a mismatch fails as an anonymous 401 rather than
+    as a configuration error.
+
+    Prefer an API token over your domain password. Maven can encrypt a password
+    (mvn --encrypt-password), which keeps it out of clear text here.
+  -->
+  <servers>
+    <server>
+      <id>company-central</id>
+      <username>jreina</username>
+      <password>CHANGE-ME</password>
+    </server>
+  </servers>
+
+  <!--
+    The proxy. Delete this block entirely if the mirror is internal and reachable directly -
+    which is the common case, and sending internal traffic to a proxy that will not answer for
+    it is a failure that reads exactly like the mirror being down.
+
+    <nonProxyHosts> is pipe-separated, unlike everything else in this file.
+  -->
+  <proxies>
+    <proxy>
+      <id>company-proxy</id>
+      <active>true</active>
+      <protocol>http</protocol>
+      <host>proxy.company.corp</host>
+      <port>8080</port>
+      <!-- <username>jreina</username> -->
+      <!-- <password>CHANGE-ME</password> -->
+      <nonProxyHosts>localhost|127.0.0.1|*.company.corp</nonProxyHosts>
+    </proxy>
+  </proxies>
+
+  <!--
+    Uncomment to keep the local repository somewhere other than %USERPROFILE%\.m2\repository -
+    useful when the profile is on a small or roaming drive.
+  -->
+  <!-- <localRepository>C:\Users\<you>\.m2\repository</localRepository> -->
+</settings>

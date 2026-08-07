@@ -1,0 +1,66 @@
+<div class="sec-statistics">
+  <header class="sec-statistics__head">
+    <div>
+      <p class="sec-statistics__eyebrow">Requirements</p>
+      <h1 class="sec-statistics__title">Statistics</h1>
+    </div>
+
+    <mat-form-field class="sec-statistics__scope" subscriptSizing="dynamic">
+      <mat-label>Scope</mat-label>
+      <mat-select
+        [value]="moduleRef()"
+        (valueChange)="onScopeChange($event)"
+        panelClass="sec-statistics__scope-panel"
+      >
+        <mat-option [value]="null">All modules</mat-option>
+        @for (module of moduleOptions(); track module.ref) {
+          <mat-option [value]="module.ref">{{ module.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </header>
+
+  <div class="sec-statistics__bands">
+    @if (statistics.error()) {
+      <p class="sec-statistics__error">
+        These figures could not be loaded. Choose a different scope, or reload the page.
+      </p>
+    }
+
+    <sec-census-band
+      [census]="data()?.census ?? null"
+      [loops]="loopCount()"
+      [scopedToModule]="scopedToModule()"
+      (anchorSelect)="scrollTo($event)"
+    />
+
+    <sec-completeness-band
+      [completeness]="data()?.completeness ?? null"
+      [mandatoryByAttribute]="data()?.mandatoryByAttribute ?? []"
+      [openPointsByAttribute]="data()?.openPointsByAttribute ?? []"
+      [modules]="data()?.modules ?? []"
+      (moduleSelect)="openModule($event)"
+    />
+
+    <sec-traceability-band
+      [parentage]="data()?.parentage ?? null"
+      [modules]="data()?.modules ?? []"
+      [danglingTargets]="data()?.danglingTargets ?? []"
+      [modulesWithoutSystemLevel]="data()?.modulesWithoutSystemLevel ?? []"
+      (moduleSelect)="openModule($event)"
+    />
+
+    <sec-cycles-band
+      [cycles]="cyclesData()"
+      [loading]="cycles.isLoading()"
+      [failed]="!!cycles.error()"
+      (memberSelect)="openItem($event)"
+    />
+
+    @if (data()?.truncated) {
+      <p class="sec-statistics__note">
+        There is more data than could be read in one pass, so these figures cover part of it.
+      </p>
+    }
+  </div>
+</div>

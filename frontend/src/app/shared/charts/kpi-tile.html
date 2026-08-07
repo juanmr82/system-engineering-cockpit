@@ -1,0 +1,13 @@
+<button
+  type="button"
+  class="sec-kpi"
+  [class.sec-kpi--open]="tone() === 'open'"
+  [class.sec-kpi--alert]="tone() === 'alert'"
+  (click)="tileSelect.emit()"
+>
+  <span class="sec-kpi__label">{{ label() }}</span>
+  <span class="sec-kpi__value">{{ value() === null ? '—' : value() }}</span>
+  @if (hint()) {
+    <span class="sec-kpi__hint">{{ hint() }}</span>
+  }
+</button>

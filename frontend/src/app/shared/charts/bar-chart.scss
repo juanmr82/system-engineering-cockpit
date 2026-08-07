@@ -1,0 +1,32 @@
+@use 'mixins' as sec;
+
+.sec-chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sec-chart__caption {
+  @include sec.field-label;
+}
+
+// A chart needs a bounded height for the same reason a sticky header does: `flex: 1` alone gives
+// the canvas nothing to measure against and echarts renders at zero height.
+.sec-chart__canvas {
+  width: 100%;
+  height: 220px;
+}
+
+.sec-chart__empty {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+// Visually hidden, not display:none — a hidden element is not read out, and being read out is
+// the entire purpose of this table. It is the wrapping div that is hidden and never the table
+// itself: a <caption> belongs to the table's wrapper box, which ignores the clip (see the mixin).
+.sec-chart__data {
+  @include sec.visually-hidden;
+}

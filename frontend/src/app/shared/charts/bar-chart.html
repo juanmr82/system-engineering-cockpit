@@ -1,0 +1,43 @@
+<figure class="sec-chart">
+  <figcaption class="sec-chart__caption">{{ caption() }}</figcaption>
+
+  @if (rows().length) {
+    <div
+      echarts
+      class="sec-chart__canvas"
+      [options]="option()"
+      (chartClick)="onChartClick($event)"
+      aria-hidden="true"
+    ></div>
+
+    <!--
+      Always present, never a fallback. The canvas above is invisible to a screen reader and to
+      jsdom; this table carries the same numbers and the same click-through (ADR 0008).
+    -->
+    <div class="sec-chart__data">
+      <table>
+        <caption>
+          {{ caption() }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">{{ valueName() }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of rows(); track row.key) {
+            <tr>
+              <th scope="row">
+                <button type="button" (click)="onRowSelect(row.key)">{{ row.label }}</button>
+              </th>
+              <td>{{ row.shown }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="sec-chart__empty">Nothing to show yet.</p>
+  }
+</figure>

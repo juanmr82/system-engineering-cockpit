@@ -1,0 +1,52 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-statistics {
+  @include sec.page-shell;
+}
+
+.sec-statistics__head {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+}
+
+.sec-statistics__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-statistics__title {
+  @include sec.view-title;
+}
+
+.sec-statistics__scope {
+  margin-left: auto;
+  min-width: 260px;
+}
+
+// The bands scroll together inside a bounded panel, so the page itself never scrolls and the
+// header stays put — the same shape every other view in the application uses.
+.sec-statistics__bands {
+  @include sec.scroll-panel;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.sec-statistics__error {
+  @include sec.error-panel;
+
+  margin: 0;
+}
+
+.sec-statistics__note {
+  @include sec.absent-text;
+
+  margin: 0;
+}

@@ -1,0 +1,43 @@
+<figure class="sec-chart">
+  <figcaption class="sec-chart__caption">{{ caption() }}</figcaption>
+
+  @if (tableRows().length) {
+    <div
+      echarts
+      class="sec-chart__canvas sec-chart__canvas--tall"
+      [options]="option()"
+      (chartClick)="onChartClick($event)"
+      aria-hidden="true"
+    ></div>
+
+    <div class="sec-chart__data">
+      <table>
+        <caption>
+          {{ caption() }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            @for (s of series(); track s.key) {
+              <th scope="col">{{ s.label }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of tableRows(); track row.key) {
+            <tr>
+              <th scope="row">
+                <button type="button" (click)="onRowSelect(row.key)">{{ row.label }}</button>
+              </th>
+              @for (cell of row.cells; track cell.seriesKey) {
+                <td>{{ cell.shown }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  } @else {
+    <p class="sec-chart__empty">Nothing to show yet.</p>
+  }
+</figure>

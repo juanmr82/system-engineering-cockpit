@@ -1,0 +1,53 @@
+@use 'mixins' as sec;
+
+.sec-band {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sec-band__head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.sec-band__title {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-band__pending {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+// Two charts side by side above the per-module stack, collapsing to one column when the sheet
+// is narrow. auto-fit rather than a media query: the sidenav can be open or railed.
+.sec-band__charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 22px;
+}
+
+.sec-band__chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+// An absence of configuration is not a finding, so it is stated rather than coloured.
+.sec-band__note {
+  margin: 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+}
+
+.sec-band__note--quiet {
+  color: var(--sec-ink-3);
+}

@@ -1,0 +1,141 @@
+@use 'mixins' as sec;
+
+.sec-band {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
+  // The five level stops, emitted once from the shared mixin rather than copied per view.
+  @include sec.system-level-scale;
+}
+
+.sec-band__title {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-band__pending,
+.sec-band__note {
+  @include sec.absent-text;
+
+  margin: 0;
+}
+
+.sec-band__failed {
+  @include sec.error-panel;
+
+  margin: 0;
+}
+
+.sec-band__summary {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+  font-variant-numeric: tabular-nums;
+
+  b {
+    font-weight: 600;
+    color: var(--sec-blue);
+  }
+}
+
+.sec-band__summary--warn {
+  padding-left: 10px;
+  border-left: var(--sec-rail) solid var(--sec-highlight-error);
+}
+
+// One loop, one bordered card. The rail is red because a loop is a defect, and it is a rail
+// rather than a fill — the paper style's rule 3.
+.sec-loop {
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-left: var(--sec-rail) solid var(--sec-highlight-error);
+  border-radius: var(--sec-radius-sheet);
+  padding: 12px 14px;
+}
+
+.sec-loop__ring {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sec-loop__hop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sec-loop__member {
+  @include sec.focus-ring;
+
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sec-loop__id {
+  @include sec.mono;
+
+  font-size: var(--sec-text-sm);
+  font-weight: 600;
+  color: var(--sec-blue);
+}
+
+.sec-loop__name {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink);
+  overflow-wrap: anywhere;
+}
+
+.sec-loop__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-loop__level {
+  @include sec.badge;
+}
+
+.sec-loop__module {
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+// The wording carries the direction, so the loop is readable without relying on the rail alone.
+.sec-loop__arrow {
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+.sec-loop__others {
+  margin: 10px 0 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}
+
+.sec-loop__other {
+  @include sec.focus-ring;
+  @include sec.mono;
+
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+  color: var(--sec-blue);
+  cursor: pointer;
+}

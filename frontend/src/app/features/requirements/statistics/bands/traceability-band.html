@@ -1,0 +1,65 @@
+<section
+  class="sec-band"
+  aria-labelledby="sec-band-traceability"
+  id="sec-band-traceability-anchor"
+>
+  <header class="sec-band__head">
+    <h2 id="sec-band-traceability" class="sec-band__title">Traceability</h2>
+    <sec-chart-controls [(mode)]="mode" [(sort)]="sort" [showScale]="false" />
+  </header>
+
+  @if (parentage(); as data) {
+    @if (rows().length) {
+      <sec-stacked-bar-chart
+        caption="Requirements above L0, by parent state"
+        [rows]="rows()"
+        [series]="series"
+        [sort]="sort()"
+        [mode]="mode()"
+        (segmentSelect)="onSegmentSelect($event)"
+      />
+
+      <p class="sec-band__summary">
+        <b>{{ orphanCount() }}</b> requirement{{ orphanCount() === 1 ? '' : 's' }} above L0
+        refine nothing above them.
+      </p>
+    } @else {
+      <p class="sec-band__note">
+        Nothing to measure here. This question only applies to modules below L0, and none of the
+        modules in view carry a system level above it.
+      </p>
+    }
+
+    @if (danglingCount()) {
+      <p class="sec-band__summary sec-band__summary--warn">
+        <b>{{ danglingCount() }}</b> link{{ danglingCount() === 1 ? '' : 's' }} point to objects
+        that have not been imported yet.
+      </p>
+      @if (namedTargets().length) {
+        <ul class="sec-band__targets">
+          @for (target of namedTargets(); track target.ref) {
+            <li>{{ target.name }}</li>
+          }
+        </ul>
+      }
+
+      @if (unnamedTargetCount()) {
+        <p class="sec-band__note sec-band__note--quiet">
+          {{ unnamedTargetCount() }}
+          @if (namedTargets().length) { further }
+          module{{ unnamedTargetCount() === 1 ? '' : 's' }}
+          cannot be named until {{ unnamedTargetCount() === 1 ? 'it is' : 'they are' }} imported.
+        </p>
+      }
+    }
+
+    @if (modulesWithoutSystemLevel().length) {
+      <p class="sec-band__note sec-band__note--quiet">
+        Left out of the count above, because no system level is set for them:
+        {{ modulesWithoutSystemLevel().join(', ') }}.
+      </p>
+    }
+  } @else {
+    <p class="sec-band__pending">Tracing.</p>
+  }
+</section>
