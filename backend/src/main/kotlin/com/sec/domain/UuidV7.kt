@@ -4,7 +4,7 @@ import java.security.SecureRandom
 import java.util.UUID
 
 // __metaId is UUID v7 (CLAUDE.md §2 R2) so ids sort roughly by creation time. The JDK only
-// generates v4 (java.util.UUID.randomUUID()); there is no dependency in gradle/libs.versions.toml
+// generates v4 (java.util.UUID.randomUUID()); there is no dependency in the root pom.xml
 // that provides v7, and the format is simple enough that adding one would violate "prefer fewer
 // libraries over convenience wrappers" (CLAUDE.md §4).
 public object UuidV7 {

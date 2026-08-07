@@ -30,30 +30,10 @@ import org.neo4j.driver.types.Node
  */
 public class ReviewProjection(private val graphDriver: GraphDriver) {
 
-    /**
-     * Labels that make an object "requirement-like" for the view's requirements-only filter
-     * (REQ_REVIEW.md §11 O4). Table structure, headings and information objects are context, not
-     * requirements — the same scope the mandatory-attribute check uses
-     * (attribute-policy-checks.md §1), so the two views agree on what a requirement is.
-     *
-     * DOORSTBD counts: a sanitised export blanks `Object Type`, so every object imports as TBD and
-     * excluding it would empty the table on exactly the fixtures people share (CLAUDE.md §10).
-     */
-    private val requirementLikeTypes = setOf("DOORSRequirement", "DOORSTBD")
-    private val structuralTypes = setOf("DOORSTable", "DOORSTableRow", "DOORSTableCell")
-
-    /**
-     * The **fixed** consistency check: an object whose `Object Type` never resolved to a real type
-     * carries `DOORSTBD`, and a requirement that was never classified is a defect in the export,
-     * not a state to live with. Unlike the mandatory-attribute rules this one is not configurable
-     * and runs on every module (`REQ_REVIEW.md` §5.3).
-     *
-     * Table structure is exempt because DOORS genuinely does not type the cells and rows of an
-     * embedded table, and `:__UNDEFINED` is exempt because a placeholder for an object no import
-     * has reached has no `Object Type` to be wrong — reporting either would be reporting on the
-     * importer's own bookkeeping.
-     */
-    private val tbdCheckExclusions = structuralTypes + "__UNDEFINED"
+    // The type vocabulary and the consistency checks live in DoorsChecks, shared with the
+    // Statistics view. They are not duplicated here: two implementations of "missing mandatory"
+    // would let the review table and its own summary disagree about the same module
+    // (requirements-statistics.md §3.2).
 
     public suspend fun getModuleObjects(
         moduleId: String,
@@ -142,78 +122,19 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
     // --- Mapping ---------------------------------------------------------------------------------
 
-    /** One mandatory-attribute rule: which attribute, and which objects it applies to. */
-    private data class MandatoryPolicy(
-        val attributeName: String,
-        val appliesToLabels: Set<String>,
-    )
-
-    private suspend fun getMandatoryPolicies(moduleId: String): List<MandatoryPolicy> =
+    private suspend fun getMandatoryPolicies(moduleId: String): List<DoorsChecks.MandatoryPolicy> =
         graphDriver.executeRead(
             Query(ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId)),
         ) { records ->
             records.map { record ->
-                MandatoryPolicy(
+                DoorsChecks.MandatoryPolicy(
                     attributeName = record.get("attributeName").asString(""),
                     appliesToLabels = record.get("appliesToLabels").asList { it.asString() }.toSet(),
                 )
             }
         }
 
-    /**
-     * Everything the consistency checks find wrong with one object (`REQ_REVIEW.md` §5.3).
-     *
-     * Fixed rules first, then the configured ones: a typed object with an unfilled attribute is a
-     * different conversation from an object that was never classified at all, and the second is
-     * the more fundamental problem.
-     */
-    private fun issuesFor(
-        policies: List<MandatoryPolicy>,
-        labels: List<String>,
-        props: Map<String, Any?>,
-    ): List<String> = buildList {
-        if (labels.contains(TBD_LABEL) && labels.none { it in tbdCheckExclusions }) {
-            add(TBD_ISSUE)
-        }
-        addAll(missingMandatory(policies, labels, props))
-    }
-
-    /**
-     * The mandatory attributes this object should carry a value for and does not.
-     *
-     * Scope comes from the policy's own `appliesToLabels`, never from a default living here, and
-     * table structure is excluded whatever the policy says — a table cell is a fragment of a
-     * requirement's layout, not a requirement (`attribute-policy-checks.md` §1).
-     *
-     * "Missing" is absent **or** blank. DOORS `""` means "the attribute exists and is empty",
-     * which the table renders as an empty cell rather than as absent (CLAUDE.md §11) — but for
-     * this check the two are equally a violation, and the distinction is not surfaced.
-     */
-    private fun missingMandatory(
-        policies: List<MandatoryPolicy>,
-        labels: List<String>,
-        props: Map<String, Any?>,
-    ): List<String> {
-        if (policies.isEmpty() || labels.any { it in structuralTypes }) {
-            return emptyList()
-        }
-        val labelSet = labels.toSet()
-        return policies
-            .filter { policy -> policy.appliesToLabels.any { it in labelSet } }
-            .map { it.attributeName }
-            .filter { name ->
-                when (val value = props[name]) {
-                    null -> true
-                    is String -> value.isBlank()
-                    // A non-string property is present and typed — the importer coerces a handful
-                    // to integers. Comparing one to "" would quietly evaluate false rather than
-                    // throw, so it is answered explicitly instead of by accident.
-                    else -> false
-                }
-            }
-    }
-
-    private fun Record.toReviewRow(policies: List<MandatoryPolicy>): ReviewRowDto {
+    private fun Record.toReviewRow(policies: List<DoorsChecks.MandatoryPolicy>): ReviewRowDto {
         val node: Node = get("object").asNode()
         val labels: List<String> = get("labels").asList { it.asString() }
         val props = node.asMap()
@@ -231,9 +152,8 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             type = Aliases.renderType(props["__typeRaw"]?.toString(), labels),
             labels = labels,
             level = (props["objectLevel"] as? Number)?.toInt() ?: 1,
-            requirementLike = labels.any { it in requirementLikeTypes } &&
-                labels.none { it in structuralTypes },
-            issues = issuesFor(policies, labels, props),
+            requirementLike = DoorsChecks.isRequirementLike(labels),
+            issues = DoorsChecks.issuesFor(policies, labels, props),
             attributes = attributeBag(props),
             references = ReferencesDto(
                 outgoing = get("outgoing").toReferences(),
@@ -273,7 +193,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             ref = Ref.encode(props["__id"]?.toString().orEmpty()),
             // Display only, never a key (R6). Absent on a placeholder, and on a module — neither
             // has a DOORS object id, and neither may fall back to __name (R5).
-            id = props["id"]?.toString().takeIf { UNRESOLVED_LABEL !in labels },
+            id = props["id"]?.toString().takeIf { DoorsChecks.UNRESOLVED_LABEL !in labels },
             name = props["__name"]?.toString().orEmpty(),
             type = Aliases.renderType(props["__typeRaw"]?.toString(), labels),
             labels = labels,
@@ -336,13 +256,5 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
     private companion object {
         const val DEFAULT_PAGE = 2_000
         val RESERVED_KEYS = setOf("id", "objectNumber", "objectLevel")
-
-        const val TBD_LABEL = "DOORSTBD"
-        const val UNRESOLVED_LABEL = "__UNDEFINED"
-
-        // The wording a reviewer reads. "Object Type" is the DOORS attribute the label came from
-        // and "TBD" is that label's alias, so this sentence is displayable under R5 — no
-        // `DOORSTBD` and no `__`-prefixed name reaches it.
-        const val TBD_ISSUE = "Object Type shall not be TBD"
     }
 }

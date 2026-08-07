@@ -24,18 +24,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Probes IPv4 and IPv6. Neo4j binds 127.0.0.1 by default, so IPv4 alone happens to work
+# today - but a conf that moves it to IPv6 would make this script cheerfully start a second
+# instance on a bound port. See sec-ports.ps1.
+. "$PSScriptRoot\sec-ports.ps1"
+
 function Test-BoltPort {
-    $client = New-Object System.Net.Sockets.TcpClient
-    try {
-        $async = $client.BeginConnect('127.0.0.1', 7687, $null, $null)
-        if (-not $async.AsyncWaitHandle.WaitOne(700)) { return $false }
-        $client.EndConnect($async)
-        return $true
-    } catch {
-        return $false
-    } finally {
-        $client.Close()
-    }
+    return Test-SecPort -Port 7687
 }
 
 if ($Status) {

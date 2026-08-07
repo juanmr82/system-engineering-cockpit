@@ -370,18 +370,18 @@ data.
 
 ## 3. Repository layout
 
-One IntelliJ project, one Gradle multi-project build at the root. The frontend is an npm
-workspace that Gradle can drive but that developers normally run directly.
+One IntelliJ project, one Maven reactor at the root. The frontend is an npm workspace that
+the Maven build deliberately does not drive - developers run it directly.
 
 ```
 system-engineering-cockpit/
 ├── CLAUDE.md                     ← this file
-├── settings.gradle.kts           ← IntelliJ opens this
-├── build.gradle.kts
-├── gradle/
-│   └── libs.versions.toml        ← single source of truth for JVM dependency versions
+├── pom.xml                       ← IntelliJ opens this. Aggregator, and the single source
+│                                   of truth for JVM dependency versions and plugin config
+├── mvnw / mvnw.cmd               ← Maven wrapper, "only-script" flavour: NO jar
+├── .mvn/wrapper/                 ← maven-wrapper.properties, nothing else
 ├── backend/                      ← Ktor service
-│   ├── build.gradle.kts
+│   ├── pom.xml
 │   └── src/{main,test}/kotlin/com/sec/...
 ├── frontend/                     ← Angular workspace
 │   ├── package.json
@@ -398,9 +398,12 @@ system-engineering-cockpit/
 │   └── tests/
 │       └── fixtures/             ← smoke_module_current.json, a 6-object DOORS export
 ├── scripts/win/                  ← PowerShell 5.1, the offline-workstation runbook made runnable
+│   ├── sec-up.ps1                ← THE entry point: starts all three, -Status, -Stop
+│   ├── sec-ports.ps1             ← one dual-stack port probe, shared (ng serve binds ::1 only)
 │   ├── sec-env.ps1               ← dot-source per session; -Persist writes JAVA_HOME permanently
 │   ├── sec-doctor.ps1            ← one line per prerequisite, changes nothing
 │   ├── sec-neo4j.ps1             ← Neo4j from the console, not as a service
+│   ├── sec-package.ps1           ← ng build + mvn -Pui package → ONE deployable jar
 │   ├── sec-backend.ps1 / sec-frontend.ps1
 │   ├── sec-importers-setup.ps1   ← venv + install, honouring a company pip mirror
 │   └── sec-import-doors.ps1      ← -Smoke, -Test, or straight through to the importer CLI
@@ -432,7 +435,7 @@ machine — which is the only machine that can talk to DOORS.
 - `.gitattributes`: `* text=auto eol=lf`, `*.bat text eol=crlf`, `*.ps1 text eol=crlf`.
 - Never hardcode `/` or `\` in a path. Kotlin: `Path`. Python: `pathlib.Path`. Angular
   build config: forward slashes only, they are POSIX-normalised.
-- No `bash`-only steps in Gradle tasks or npm scripts. Anything shell-shaped goes in a
+- No `bash`-only steps in Maven plugin config or npm scripts. Anything shell-shaped goes in a
   Kotlin/Python entry point invoked identically on both platforms.
 - Windows-only code is confined to `importers/win/` and `importers/src/sec_import/doors/`.
   If Windows-only logic appears anywhere else, that is a defect.
@@ -443,21 +446,23 @@ machine — which is the only machine that can talk to DOORS.
 
 ## 4. Technology and versions
 
-Pin these in `gradle/libs.versions.toml` and `package.json`. Do not float versions.
+Pin these in the root `pom.xml` and `package.json`. Do not float versions.
 
 | Component | Version | Notes |
 |---|---|---|
 | Neo4j | **Community 2026.x** | CalVer. Requires **JDK 21+**. Community has no RBAC, no property-existence constraints, no query governor — see §7. |
 | Neo4j Java driver | **6.x** | matches the 2026 server series |
-| JVM | **21 (LTS)** | toolchain pinned in Gradle, not inherited from `JAVA_HOME` |
+| JVM | **21 (LTS)** | `maven.compiler.release` and the Kotlin plugin's `jvmTarget`. Maven compiles with the JDK it runs on, so `JAVA_HOME` **is** the build JDK — `sec-env.ps1` prefers 21 for that reason |
 | Kotlin | **2.4.x** | |
 | Ktor | **3.5.x** | latest stable at time of writing (3.5.1, June 2026). Netty engine. |
-| Gradle | latest 9.x wrapper | `./gradlew` / `gradlew.bat`, both committed |
+| Maven | **3.9.x** | `mvnw` / `mvnw.cmd` committed, `distributionType=only-script` so there is no wrapper jar to be quarantined. A real Maven install is preferred over the wrapper — see ADR 0007 |
 | Angular | **22** (released 3 June 2026) | |
 | Angular Material | **22** | matched major to Angular |
 | Node | **22+** | required by Angular 22 |
 | TypeScript | **6.x** | required by Angular 22 |
 | ag-grid Community | **36.1.0**, exact | `ag-grid-angular` + `ag-grid-community`, both MIT. The **only** table implementation — see ADR 0006 and §6. Pinned exactly, not `^`: ag-grid ships majors fast and an upgrade is a deliberate act. |
+| echarts | **6.1.0**, exact | Apache-2.0. The **only** charting implementation — see ADR 0008 and §6. Pinned exactly for the same reason ag-grid is. Imported through `shared/charts/echarts-core`, never from `'echarts'` wholesale |
+| ngx-echarts | **22.0.0**, exact | Apache-2.0, matched major to Angular. The standalone `NgxEchartsDirective` only; `NgxEchartsModule` is in the package and is never imported |
 | Python | **3.11+** | importers |
 
 Frontend quality gate — these exist so `npm run lint` and `npm test` are real (§11):
@@ -550,6 +555,8 @@ POST /api/v1/modules/system-levels      ← the Modules table's batch save; span
 POST /api/v1/modules/{ref}/comments     ← every dirty comment for one module, one txn
 GET  /api/v1/modules/{ref}/attributes   ← runtime attribute discovery, namespace filtered
 GET  /api/v1/modules/{ref}/checks/attribute-policy
+GET  /api/v1/statistics/requirements     ← Statistics view; ?module={ref} scopes it
+GET  /api/v1/statistics/requirements/cycles  ← loop detection, its own endpoint so Band 4 loads apart
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
 GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
 POST /api/v1/cypher/explain             ← see docs/CYPHER_API_DESIGN.md
@@ -572,6 +579,20 @@ Feature-shaped write endpoints such as `POST /modules/{ref}/settings` exist beca
 dialog is one transaction, not N annotation calls. They **route through the same guarded
 meta writer** as `POST /items/{ref}/annotations`. One meta write path, however many
 endpoints reach it.
+
+**The built frontend ships inside the backend jar.** `mvn -Pui package` copies
+`frontend/dist/frontend/browser` into the artifact under `static/`, and `api/routes/UiRoutes.kt`
+serves it: assets by path, and `index.html` for any non-`/api` path with no file extension, so an
+Angular route survives a reload. Two rules that must not drift, both covered by `PackagedUiTest`:
+
+- **`/api/**` is never answered with a page.** An unknown endpoint stays an RFC 9457 problem
+  detail — a 200 with HTML in it is the least useful possible answer to a mistyped API call.
+- **A missing *file* is a 404, not the index.** Returning `index.html` for a stale
+  `main-A1B2C3.js` after a redeploy hands the browser an HTML document with status 200, which it
+  reports as a syntax error. The extension is what separates an asset from a route.
+
+Ktor's own `staticResources("/", …)` cannot be used for this: mounted at the root it installs a
+catch-all that answers 404 itself, taking both rules with it.
 
 Item responses carry `labels: string[]` so the frontend can switch on the type label, and
 this is the one place raw label strings cross the wire. They are a *state channel*, not
@@ -753,6 +774,41 @@ list inside a dialog — it is *data* tables this rule is about.
 - **Do not use ag-grid's cell editing for Tier-2 data.** An editable cell is a second staging
   concept sitting next to the view's own buffer, and R7 allows exactly one. A custom cell renderer
   holding a real control, writing to the component's own `ref`-keyed buffer, is the shape.
+
+### Charts — echarts via ngx-echarts (ADR 0008)
+
+**Every chart in the application is echarts.** Not a hand-rolled SVG, not a second library. The
+same one-implementation rule ADR 0006 applies to tables.
+
+- **A number is not a chart.** A KPI tile, a system-level badge, a progress rule, a depth rail —
+  these are layout, and they stay real DOM with their colour in CSS. Reaching for echarts to draw
+  a two-segment bar inside a table cell is the wrong reading of the ADR.
+- **`shared/charts/chart-theme.ts` is the only place a `--sec-*` token crosses into TypeScript.**
+  It reads them once via `getComputedStyle`. **No hex literal belongs in any `.ts` file** — a
+  component that calls `getComputedStyle` itself, or writes `#00205b` into an option, defeats the
+  whole arrangement. This is the `_grid.scss` rule, restated for a canvas.
+- **Every chart carries a visually-hidden data table** holding the same numbers, adjacent in the
+  DOM. It is what a screen reader reads and what a jsdom spec asserts. It is not a fallback and is
+  never conditional.
+- **Option objects are built by pure functions** in `shared/charts/chart-options.ts`, and specs
+  assert what those return — never rendered pixels. A canvas is invisible to jsdom, to screen
+  readers, and to `sec/no-internal-namespace`, which cannot see inside an option object; the
+  linter's cover does not extend here, so an alias-map violation in a chart label is caught by
+  review and by those specs or not at all.
+- **Chart types are registered once**, in `shared/charts/echarts-core.ts`, and that file is what
+  `provideEchartsCore` loads — lazily, so echarts stays out of the initial bundle. Importing from
+  `'echarts'` anywhere else silently undoes the tree-shaking.
+- **jsdom cannot mount a chart**: it has no canvas and no `ResizeObserver`, and
+  `NgxEchartsDirective.ngOnInit` throws outright without the latter. A spec that mounts a component
+  containing a chart adds `provideEchartsTesting()` from `shared/charts/echarts-testing.ts`.
+- **`resource.value()` throws when the resource is in an error state.** Guard every read with
+  `hasValue()`. An unguarded read inside a `computed` the template consumes tears down the whole
+  view — which is how one failed request took down a page that was specifically designed so it
+  could not.
+- **There is no time axis in this product.** Nothing in the graph is timestamped and R2 forbids
+  storing a derived value to build history from, so "interactive" means re-ranking, rescaling and
+  drilling through — never a date range. Adding trends means a timestamped snapshot store, which is
+  a new persistence mechanism and needs its own ADR.
 
 ### Material pitfalls already paid for
 
@@ -1069,7 +1125,7 @@ inside the shell, not a bare page.
 
 - If the task has a spec in `docs/features/`, read it first — it exists because the
   decisions in it were expensive.
-- Check `gradle/libs.versions.toml` and `package.json` for the pinned version and use its
+- Check the root `pom.xml` and `package.json` for the pinned version and use its
   current API, not a remembered one. Angular 22, Ktor 3.5 and Neo4j driver 6 all changed
   APIs recently.
 - Search for an existing helper before adding one. This codebase should have exactly one
@@ -1099,19 +1155,21 @@ inside the shell, not a bare page.
 
 **Before saying you are done**
 
-- `./gradlew check` passes, and from `frontend/`: `npm run lint && npm test && npm run build`.
+- `mvn verify` passes, and from `frontend/`: `npm run lint && npm test && npm run build`.
   Run the npm commands **from the `frontend/` directory**, not with `npm --prefix frontend`
   from the root — `--prefix` also changes where `npm install` writes, and installing from the
   wrong directory silently creates `frontend/frontend/node_modules` and leaves `package.json`
   untouched.
 - New graph behaviour has a Testcontainers test against a real Neo4j **Community** image.
   Never test against Enterprise; the constraint differences are the whole point.
-- **Container tests are tagged `docker` and are not part of `check`.** Not every machine that
-  builds this has Docker, and a gate that cannot pass locally is a gate that gets skipped —
-  taking the tests that *could* have run with it. Run them with
-  `./gradlew :backend:integrationTest`; CI must run both tasks. The image tag is pinned in
-  `gradle/libs.versions.toml` (`neo4j-image`) and passed to the test as a system property, so it
-  sits next to every other version rather than inside a test file.
+- **Container tests are tagged `docker` and are not part of `mvn verify`.** Not every machine
+  that builds this has Docker, and a gate that cannot pass locally is a gate that gets skipped —
+  taking the tests that *could* have run with it. Surefire carries
+  `<excludedGroups>docker</excludedGroups>`; the `docker` profile inverts that to
+  `<groups>docker</groups>`, so the same test classes run under the opposite filter. Run them
+  with `mvn -Pdocker test`; CI must run both. The image tag is pinned in the root `pom.xml`
+  (`neo4j-image.version`) and passed to the test as a system property, so it sits next to every
+  other version rather than inside a test file.
 - Any feature that writes Tier 2 has the byte-identical-anchor test from R2.
 - Any decision that took real thought gets a short ADR in `docs/adr/`.
 - Update this file if you changed something it describes.

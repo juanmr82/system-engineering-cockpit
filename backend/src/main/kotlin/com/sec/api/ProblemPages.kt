@@ -1,5 +1,6 @@
 package com.sec.api
 
+import com.sec.api.routes.respondPackagedUi
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -60,6 +61,11 @@ public fun Application.configureProblemDetails() {
 public fun Route.notFoundFallback() {
     route("{...}") {
         handle {
+            // When the UI is packaged into the jar, an unmatched non-API GET is a client-side
+            // route (/requirements/modules) rather than a mistake, and gets index.html. Without
+            // a packaged UI this is false and nothing changes. See routes/UiRoutes.kt.
+            if (respondPackagedUi(call)) return@handle
+
             call.respondProblem(
                 HttpStatusCode.NotFound,
                 "Not found",

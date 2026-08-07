@@ -443,3 +443,29 @@
   outline: 2px solid var(--sec-blue-mid);
   outline-offset: $offset;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Assistive-only content
+// ---------------------------------------------------------------------------------------------
+
+// Removed from the page, kept in the accessibility tree. `display: none` and `visibility: hidden`
+// both take the element out of that tree, and being read out is the entire point of the elements
+// this is used on (ADR 0008: every chart carries the same numbers as a real table).
+//
+// **Put this on a plain wrapper, never on a `<table>` directly.** A table generates two boxes: the
+// anonymous *wrapper* box, which takes `position` and `margin`, and the *grid* box, which takes
+// `width`, `height`, `overflow` and `clip-path` — and `<caption>` belongs to the wrapper. So on a
+// table these declarations clip the rows and leave the caption behind: full size, absolutely
+// positioned against whichever ancestor happens to be positioned, and therefore appearing to float
+// over the page as it scrolls. Chrome hides the result anyway; Firefox does not.
+@mixin visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

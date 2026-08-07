@@ -548,7 +548,7 @@ that consumes it does not invent its own wording.
 11. Unresolved references render as *Not yet imported* with the owning module named, and the
     incoming-links caveat is present.
 12. Graph behaviour covered by a Testcontainers test against Neo4j **Community**, tagged `docker`,
-    run via `./gradlew :backend:integrationTest`.
+    run via `mvn -Pdocker test`.
 
 ---
 

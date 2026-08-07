@@ -1,3 +1,20 @@
 * text=auto eol=lf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
+
+# Binary files. The `* text=auto` rule above asks git to *guess* whether a file is text, and
+# the guess is only "no NUL byte in the first 8000 bytes". A jar that guesses wrong is checked
+# out with CRLF injected into it, and Java then reports it as a missing main class rather than
+# as a corrupt archive - which is a long way from the truth. Declare, do not guess.
+*.jar   binary
+*.zip   binary
+*.gz    binary
+*.png   binary
+*.jpg   binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.xlsx  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary

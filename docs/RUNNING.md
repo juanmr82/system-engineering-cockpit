@@ -71,12 +71,13 @@ in `C:\Program Files`, and none needs a `PATH` entry set machine-wide.
 | Tool | The no-admin route | Where it lands |
 |---|---|---|
 | **JDK 21** | The Adoptium **`.zip`**, not the `.msi`. Or, if you have IntelliJ, let it download one: *Project Structure → SDKs → Add → Download JDK*. | `%LOCALAPPDATA%\Programs\…`, or `%USERPROFILE%\.jdks\…` for IntelliJ's |
+| **Maven 3.9.x** | The **binary `.zip`** from maven.apache.org. Unzip it; there is nothing to install. It is 9 MB, and IntelliJ already bundles a copy. | `%USERPROFILE%\tools\apache-maven-3.9.x` |
 | **Neo4j Community** | The **Windows `.zip`** from the Neo4j download centre. Unzip it; there is no installer to run. | `%USERPROFILE%\neo4j\neo4j-community-2026.x.y` |
 | **Node 22+** | The **`.zip`** build from nodejs.org, not the `.msi`. Add its directory to your *user* `PATH` (`setx PATH …`, or the "Edit environment variables for your account" dialog — the top half of it, never the bottom). | anywhere; `%LOCALAPPDATA%\Programs\nodejs` is tidy |
 | **Python 3.11+** | The python.org installer with **"Install for all users" left unchecked** — that is its default, and it is a per-user install that raises no UAC prompt. | `%LOCALAPPDATA%\Programs\Python\Python3xx` |
 
-`sec-env.ps1` searches all of these locations, so a JDK unzipped into any of them is found
-without configuration. It looks under `%ProgramFiles%` **and** under `%LOCALAPPDATA%\Programs`,
+`sec-env.ps1` searches all of these locations, so a JDK or a Maven unzipped into any of them is
+found without configuration. It looks under `%ProgramFiles%` **and** under `%LOCALAPPDATA%\Programs`,
 `%USERPROFILE%\.jdks`, `%USERPROFILE%\scoop\apps`, `%USERPROFILE%\tools` and the JetBrains
 Toolbox directory; for Neo4j it prefers the user-profile roots over `%ProgramFiles%`. When it
 still picks the wrong one, `$SecJavaHome` / `$SecNeo4jHome` in `sec-env.local.ps1` end the
@@ -87,22 +88,25 @@ Two details worth knowing rather than discovering:
 - **Unzip Neo4j into your profile even if you *could* write to `C:\Program Files`.** Neo4j
   writes to `data\`, `logs\`, `run\` and `conf\` under its own install directory every time it
   starts. Under `%ProgramFiles%` those writes need elevation and the database will not start.
-- **Prefer a real JDK 21 over a bundled runtime.** `backend/build.gradle.kts` pins
-  `jvmToolchain(21)`, so Gradle needs a 21 installed whatever it is itself running on. If it
-  cannot find one it tries to *download* one, which is one more thing for the proxy to break.
-  `sec-env.ps1` already prefers 21 over anything newer for exactly this reason.
+- **Prefer a real JDK 21 over a bundled runtime.** Maven has no toolchain of its own here: it
+  compiles with whatever JDK it is itself running on, so `JAVA_HOME` *is* the build JDK. A
+  newer JDK would compile against a newer class file version than `maven.compiler.release`
+  claims. `sec-env.ps1` prefers 21 over anything newer for exactly this reason.
+- **Prefer a real Maven over the wrapper.** `mvnw.cmd` works, but its first act is to download
+  a Maven distribution - the one step this network is most likely to stop. Unzipping Maven once
+  removes that dependency permanently.
 
 ### 1.3 What you genuinely cannot do, and why none of it matters here
 
 | Needs administrator rights | Why you do not need it |
 |---|---|
 | Installing Neo4j as a Windows **service** | `sec-neo4j.ps1` runs it in the console. The window is the database. |
-| **Docker Desktop** (installer, Hyper-V, WSL2) | Only the Testcontainers tests want it, and they are excluded from `check` by design — §6. |
+| **Docker Desktop** (installer, Hyper-V, WSL2) | Only the Testcontainers tests want it, and they are excluded from `mvn verify` by design — §6. |
 | Binding a port below 1024 | Nothing here does. Bolt 7687, HTTP 7474, API 8080, dev server 4200 — all unprivileged. |
 | Approving a **Windows Firewall** prompt | Neo4j's shipped `conf\neo4j.conf` leaves `server.default_listen_address` commented out, so it binds to `localhost` and no prompt appears. Do not uncomment it: exposing the database to the network is the one change here that would raise a prompt you cannot answer. |
 | Adding a certificate to the **LocalMachine** store | Your company's CA is already there via policy. What is missing is the *toolchains'* private trust stores — see §2.5, all of which are fixed with user-scoped settings. |
 | Enabling **long path** support (`HKLM`) | Keep the clone somewhere short — `C:\src\sec`, not a deep OneDrive path — and `git config --global core.longpaths true`. `node_modules` is what pushes against `MAX_PATH`. |
-| Writing to `C:\Program Files` | Nothing this project produces goes there. Builds write to `build\`, `node_modules\`, `.venv\` and `~\.gradle`, all inside your profile. |
+| Writing to `C:\Program Files` | Nothing this project produces goes there. Builds write to `target\`, `node_modules\`, `.venv\` and `~\.m2`, all inside your profile. |
 | Machine-wide environment variables | `sec-env.ps1 -Persist` writes to the **user** environment (`[Environment]::SetEnvironmentVariable(…, 'User')`), which is why it works. |
 
 ---
@@ -123,8 +127,13 @@ Fill in what applies. Every entry is optional except the Neo4j password:
 |---|---|
 | `$SecNeo4jUser` / `$SecNeo4jPassword` | **always** — the backend refuses to start without them |
 | `$SecProxy` | when the machine reaches the internet through a proxy |
+| `$SecNoProxy` | hosts that must bypass it — **every internal mirror belongs here** (§2.6) |
+| `$SecProxyUser` / `$SecProxyPassword` | when the proxy demands a login (§2.6) |
 | `$SecPipIndexUrl` | when pip must use the company mirror |
 | `$SecNpmRegistry` | when npm must use a company registry |
+| `$SecMavenHome` | only when Maven is somewhere the search does not look (§2.6) |
+| `$SecMavenOpts` | extra JVM flags for Maven — a trust store, most often (§2.5) |
+| `$SecMavenSettings` | a `settings.xml` kept outside `~\.m2` (§2.6) |
 | `$SecJavaHome` / `$SecNeo4jHome` | only when auto-detection picks the wrong one, or finds nothing |
 
 `sec-env.local.ps1` is git-ignored. It holds the database password in plain text, which is
@@ -152,10 +161,9 @@ future terminal has them without running anything. Do it once. It raises no UAC 
 user environment is yours, and this is the only thing in the runbook that writes outside the
 repository at all.
 
-The JDK it picks is not the newest one it finds — it prefers **21**, because
-`backend/build.gradle.kts` pins `jvmToolchain(21)` and a machine holding only 25 fails the
-build asking for a JDK that is installed three directories away. An explicit `$SecJavaHome`
-always wins over the search.
+The JDK it picks is not the newest one it finds — it prefers **21**, because Maven compiles
+with the JDK it runs on and the build targets 21. An explicit `$SecJavaHome` always wins over
+the search.
 
 ### 2.3 Check the machine before installing anything
 
@@ -178,26 +186,20 @@ proxy. Run them in any order. All three write only inside your profile.
 ```powershell
 .\sec-frontend.ps1 -Install     # npm ci        -> frontend\node_modules
 .\sec-importers-setup.ps1       # python venv   -> importers\.venv
-.\sec-backend.ps1 -Check        # gradle        -> ~\.gradle
+.\se
+c-backend.ps1 -Check        # maven         -> ~\.m2\repository
 ```
 
 `sec-env.ps1` has already translated `$SecProxy` into what each of the three expects:
-`GRADLE_OPTS` system properties for Gradle, `http_proxy`/`https_proxy` for npm and pip. You
-do not configure the proxy three times.
+`MAVEN_OPTS` system properties, `http_proxy`/`https_proxy` for npm and pip. **Maven is the
+exception**: its dependency resolver reads the proxy from `settings.xml`, not from the
+environment, so a proxy set only here will still fail to resolve. That, the company mirror and
+proxy credentials are all section 2.6.
 
-**If Maven Central itself is blocked** and your company mirrors it, add the mirror to
-`build.gradle.kts`:
-
-```kotlin
-allprojects {
-    repositories {
-        maven { url = uri("https://artifactory.company.corp/api/maven/maven-remote/") }
-        mavenCentral()   // keep as a fallback for a machine that has direct access
-    }
-}
-```
-
-That is a committed change affecting everyone, so make it deliberately.
+**If Maven Central itself is blocked** and your company mirrors it, that is a `settings.xml`
+`<mirror>` — section 2.6. Unlike the old Gradle arrangement it is *not* a committed change:
+`settings.xml` lives in your profile, so each machine points at whatever it can reach without
+anyone editing a build file.
 
 ### 2.5 If the proxy inspects TLS
 
@@ -209,7 +211,7 @@ what makes this look like an administrator problem when it is not. Each fix is u
 |---|---|---|
 | Node / npm | `NODE_EXTRA_CA_CERTS=C:\Users\<you>\certs\corp-ca.pem` | `sec-env.local.ps1`, as `$env:NODE_EXTRA_CA_CERTS = …` |
 | pip | `$env:PIP_CERT = 'C:\Users\<you>\certs\corp-ca.pem'` | same file |
-| Gradle / the JVM | add the CA to a **copy** of the JDK's `cacerts`, then point at it | see below |
+| Maven / the JVM | add the CA to a **copy** of the JDK's `cacerts`, then point at it | see below |
 
 Export the CA from your browser, or from the Windows store:
 `Get-ChildItem Cert:\LocalMachine\Root | Where-Object Subject -match '<company>'`, then
@@ -226,17 +228,126 @@ under your profile is writable**, which is a second reason to prefer §1.2's rou
 ```
 
 If the JDK is somewhere you cannot write, copy `cacerts` into your profile, import there, and
-add `-Djavax.net.ssl.trustStore=<path>` to `$env:GRADLE_OPTS` in `sec-env.local.ps1`.
+set `$SecMavenOpts` in `sec-env.local.ps1`:
+
+```powershell
+$SecMavenOpts = '-Djavax.net.ssl.trustStore=C:\Users\<you>\certs\cacerts -Djavax.net.ssl.trustStorePassword=changeit'
+```
+
+Use `$SecMavenOpts`, not `$env:MAVEN_OPTS` — `sec-env.ps1` **appends** the proxy settings to
+what you put there, and assigning the environment variable yourself worked only until it did.
 
 pip's blunter escape hatch is `$SecPipTrustedHost`, which skips verification for the mirror
 host. It gets you unblocked; it is not the fix.
+
+### 2.6 Maven: the mirror, the proxy, and getting Maven itself
+
+Maven puts all three in one file, `settings.xml`, and that file lives in **your** profile at
+`%USERPROFILE%\.m2\settings.xml`. Nothing here needs administrator rights and nothing here is
+a committed change — which is the practical reason this project builds with Maven at all
+(ADR 0007).
+
+Start from the annotated template:
+
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.m2" | Out-Null
+Copy-Item <repo>\scripts\win\maven-settings.xml.example "$env:USERPROFILE\.m2\settings.xml"
+notepad "$env:USERPROFILE\.m2\settings.xml"
+```
+
+#### The company mirror
+
+A `<mirror>` redirects Maven Central to whatever your company hosts:
+
+```xml
+<mirror>
+  <id>company-central</id>
+  <url>https://artifactory.company.corp/artifactory/maven-remote</url>
+  <mirrorOf>central</mirrorOf>
+</mirror>
+```
+
+`<mirrorOf>central</mirrorOf>` redirects only Central; `*` sends everything through the mirror,
+which is what a network that blocks all outbound repository traffic needs.
+
+If the mirror wants a login, add a `<server>` whose **`<id>` matches the mirror's `<id>`**.
+That pairing is the whole mechanism, and a mismatch fails as an anonymous `401` rather than as
+a configuration error. `mvn --encrypt-password` keeps the password out of clear text.
+
+#### The proxy
+
+**This is the part that differs from every other tool here.** Maven's dependency resolver does
+not reliably read the JVM proxy properties, so `$SecProxy` — which is enough for npm and pip —
+does *not* get Maven through. The proxy has to be in `settings.xml`:
+
+```xml
+<proxy>
+  <id>company-proxy</id>
+  <active>true</active>
+  <protocol>http</protocol>
+  <host>proxy.company.corp</host>
+  <port>8080</port>
+  <nonProxyHosts>localhost|127.0.0.1|*.company.corp</nonProxyHosts>
+</proxy>
+```
+
+Two traps:
+
+- **`<nonProxyHosts>` is pipe-separated**, unlike every other list in the file.
+- **An internal mirror usually needs no proxy at all.** If your Artifactory is internal, delete
+  the `<proxy>` block or list its host in `<nonProxyHosts>` — sending internal traffic to a
+  proxy that will not answer for it fails in a way that reads exactly like the mirror being down.
+
+#### Getting Maven itself
+
+`mvnw.cmd` is committed and works, but it downloads a Maven distribution on first use, which is
+the one step this network is most likely to stop. It is a **9 MB** download rather than Gradle's
+144 MB, and the wrapper here is the `only-script` flavour, so there is no wrapper jar for an
+endpoint agent to quarantine.
+
+Better still, avoid the download: **Maven is a zip with no installer.** Unzip it anywhere you
+can write and `sec-env.ps1` finds it — it looks on `PATH`, under `%USERPROFILE%\tools`, in
+scoop, and in IntelliJ's bundled copy, which is a complete Maven already sitting on the disk of
+anyone who opens this project in the IDE. `$SecMavenHome` ends the argument.
+
+To point the wrapper at a company-hosted Maven instead, edit `distributionUrl` in
+`.mvn\wrapper\maven-wrapper.properties`. That one *is* a committed file.
 
 ---
 
 ## 3. Every day
 
-Three windows, started in this order. Each one blocks — that is the point; the window *is*
-the process.
+```powershell
+<repo>\scripts\win\sec-up.ps1
+```
+
+That is the whole thing. It dot-sources the environment, starts Neo4j, waits for it, starts the
+backend, waits for `/health`, starts the dev server, waits for it, and opens the browser.
+
+```powershell
+sec-up.ps1 -Status       # what is up, what is not - changes nothing
+sec-up.ps1 -Stop         # stop all three
+sec-up.ps1 -Jar          # run the built artifact instead of the sources (3.3)
+sec-up.ps1 -NoFrontend   # database + API only, for backend work
+sec-up.ps1 -NoBrowser
+```
+
+**Each service still runs in its own window**, because each window *is* its process: the log is
+in it and Ctrl+C there stops that one. What `sec-up.ps1` removes is opening three terminals,
+dot-sourcing the environment three times, and knowing the order.
+
+Two behaviours worth relying on:
+
+- **Everything is checked before anything is launched.** A missing password or an uninstalled
+  JDK is reported with nothing started. Three windows that each die instantly is the worst way
+  to find out.
+- **Anything already listening is left strictly alone**, and reported as such. Starting a second
+  Neo4j on a bound port fails several screens into a log and reads as a broken installation.
+
+### 3.1 Starting them by hand
+
+Still supported, and what `sec-up.ps1` does for you. Use it when you want one service in a
+terminal you already have open.
 
 ```powershell
 # window 1 - the database. This window IS Neo4j. Ctrl+C stops it.
@@ -261,16 +372,60 @@ Three things that will otherwise cost you an afternoon:
 - **`sec-neo4j.ps1` refuses to start a second instance** when 7687 is already listening. A
   duplicate start otherwise fails on a port bind several screens into the log, which reads
   as a broken installation rather than as "it is already running".
-- **Do not open these windows as administrator**, even if you can. Gradle and npm would write
+- **Do not open these windows as administrator**, even if you can. Maven and npm would write
   their caches as a different user, and the next ordinary session would fail on files it does
   not own. Everything here is built to run as you.
 
-Before calling any work done:
+### 3.2 Running it as one jar
+
+Development runs from source: Maven compiles the backend, `ng serve` serves the UI on :4200 with
+hot reload, and a dev-server proxy forwards `/api` to :8080. Three processes, and every one of
+them needs the toolchain and the sources.
+
+Deployment does not have to look like that. `sec-package.ps1` builds **one jar containing the API
+and the user interface**, and running it needs a JDK and nothing else - no Maven, no Node, no
+sources, no IDE.
 
 ```powershell
-.\sec-backend.ps1 -Check      # ./gradlew check
+scripts\win\sec-package.ps1          # ng build, then the jar around it
+scripts\win\sec-up.ps1 -Jar          # Neo4j + that jar
+```
+
+Then open <http://localhost:8080> — **:8080, not :4200**. The jar serves the pages and the API on
+one port, so there is no dev server and no proxy: the frontend already asks for `/api/v1/...`
+with root-relative URLs, and being served from the same origin is all that needs.
+
+What comes out is `backend\target\backend-<version>-all.jar`, about 21 MB. To deploy it, copy
+that one file to a machine with a JDK 21 and a reachable Neo4j:
+
+```powershell
+$env:SEC_NEO4J_USER = 'neo4j'
+$env:SEC_NEO4J_PASSWORD = '...'
+java -jar backend-0.1.0-all.jar
+```
+
+Three things about this mode:
+
+- **The UI is a build artifact now.** A change to the frontend needs `sec-package.ps1` again;
+  there is no hot reload. Develop against `ng serve`, deploy the jar.
+- **`sec-package.ps1` verifies the UI really is inside**, by opening the jar and looking for
+  `static/index.html`. A jar missing its pages is indistinguishable from a working one until
+  somebody opens a browser, and Maven's copy step only warns when the directory is absent.
+- **`mvn package` on its own leaves the UI out.** Including it is the `ui` profile
+  (`mvn -Pui package`), which `sec-package.ps1` passes for you. A jar whose contents depend on
+  whether somebody happened to have built the UI earlier is a jar nobody can reason about.
+
+`sec-package.ps1 -NoUi` builds the API alone, and `-SkipTests` is faster and worth less.
+
+### 3.3 Before calling any work done
+
+```powershell
+.\sec-backend.ps1 -Check      # mvn verify
 .\sec-frontend.ps1 -Gate      # npm run lint && npm test && npm run build
 ```
+
+`.\sec-backend.ps1 -Docker` runs the container tests (`mvn -Pdocker test`) on a machine that
+has Docker. They are excluded from `-Check` by design — §6.
 
 ---
 
@@ -382,7 +537,7 @@ setup script creates one.
 
 | | |
 |---|---|
-| `.\gradlew :backend:integrationTest` | Testcontainers, so it needs Docker — whose installer, Hyper-V and WSL2 all need administrator rights. **Excluded from `check` by design** (`backend/build.gradle.kts` says why): not every machine that builds this has Docker, and a gate that cannot pass locally is a gate that gets skipped, taking the tests that *could* have run with it. `check` is complete and honest without it. Run it on a machine that has Docker, or in CI, before merging anything that touches a graph query. |
+| `mvn -Pdocker test` (`.\sec-backend.ps1 -Docker`) | Testcontainers, so it needs Docker — whose installer, Hyper-V and WSL2 all need administrator rights. **Excluded from `mvn verify` by design** (the root `pom.xml` says why): not every machine that builds this has Docker, and a gate that cannot pass locally is a gate that gets skipped, taking the tests that *could* have run with it. `verify` is complete and honest without it. Run it on a machine that has Docker, or in CI, before merging anything that touches a graph query. |
 | `deploy\docker-compose.dev.yml` | The container path to a dev Neo4j. Irrelevant here — you have a real one. Kept for the RHEL deployment target. |
 | `.run\Neo4j (docker compose).run.xml` | The IntelliJ run configuration for the above. Use `sec-neo4j.ps1` instead. |
 | Neo4j as a Windows service (`neo4j install-service`) | Needs administrator rights. `sec-neo4j.ps1` gives you the same database in a console window; the only thing you lose is starting at boot. |
@@ -397,11 +552,14 @@ setup script creates one.
 | `… cannot be loaded because running scripts is disabled on this system` | The execution policy. §1.1 — one line, no administrator rights. |
 | `… is not digitally signed` on a script that used to work | The file came from a zip or an email attachment and carries the mark of the web. `Unblock-File` it. |
 | `JAVA_HOME is not set` | You did not dot-source `sec-env.ps1` **with the leading dot**. `.\sec-env.ps1` runs it in a child scope and every variable it sets dies with it. |
-| `sec-env.ps1` reports `JAVA_HOME NOT FOUND` with a JDK installed | It is somewhere the search does not look. Set `$SecJavaHome` in `sec-env.local.ps1`; §1.2 lists the roots that are searched. |
-| Backend exits at startup complaining about config | `SEC_NEO4J_USER` / `SEC_NEO4J_PASSWORD` are unset. `application.yaml` resolves them from the environment and fails loudly rather than starting with a default — that is intentional. |
-| Every view is empty, console shows failed requests | The backend is not running, or is not on 8080. The dev server proxies `/api` there. |
-| `GET /api/v1/config/navigation` 404s in the console | **Expected.** The endpoint is not built yet; the sidenav has a hardcoded fallback. It is the one standing console error. |
-| Gradle hangs resolving dependencies | The proxy is not reaching Gradle. Check `$env:GRADLE_OPTS` is populated after dot-sourcing. `-Offline` builds from the cache once it is warm. |
+| `Could not resolve dependencies ... Could not transfer artifact` | Maven cannot reach a repository. Almost always the proxy, and almost always because it is set in the environment but not in `settings.xml` — §2.6. `-Offline` builds from `~\.m2\repository` once it is warm. |
+| `Could not transfer artifact ... ReasonPhrase: Proxy Authentication Required (407)` | The proxy wants credentials. They belong in the `<proxy>` block's `<username>`/`<password>` in `settings.xml`, not only in `$SecProxyUser` — §2.6. |
+| `401 Unauthorized` from the company mirror | The `<server>` id does not match the `<mirror>` id. Maven pairs them by id alone and sends no credentials when they differ, so it reads as an anonymous request being refused. |
+| `PKIX path building failed` during dependency resolution | The proxy is inspecting TLS and the JVM does not trust its CA — §2.5. Windows trusting it is not enough. |
+| The wrapper hangs or fails at `Downloading ... apache-maven-3.9.x-bin.zip` | The Maven distribution download. Unzip Maven yourself instead and set `$SecMavenHome`; it is 9 MB and needs no installer — §2.6. |
+| `mvn` works but `mvnw.cmd` does not, or vice versa | They are two different Mavens. `sec-backend.ps1` prefers the installed one (`$env:SEC_MVN`) and falls back to the wrapper; `sec-doctor.ps1` says which one is in play. |
+| Dependencies re-download on every build | The local repository is somewhere Maven is not looking. Check `MAVEN_REPO_LOCAL` and any `<localRepository>` in `settings.xml`; `sec-doctor.ps1` reports the path it found and how many jars are in it. |
+| A dependency resolves to the wrong version | Maven takes the **nearest** declaration, where Gradle took the **highest**. A transitive dependency that used to be silently upgraded now is not — pin it in the root `pom.xml` `<dependencyManagement>`. This is not theoretical: it is what the coroutines pin in that file records. |
 | `PKIX path building failed`, `SELF_SIGNED_CERT_IN_CHAIN`, `CERTIFICATE_VERIFY_FAILED` | The proxy is inspecting TLS and that toolchain does not trust its CA. §2.5 — a Windows-level trust does not reach Java, Node or pip. |
 | `Access is denied` writing to the Neo4j directory | Neo4j is unzipped somewhere you cannot write, usually `C:\Program Files`. Move it under your profile (§1.2); it needs no installation, only unzipping. |
 | Umlauts corrupted in imported attribute names | Something ran Python without UTF-8. The wrappers set `PYTHONUTF8` and `PYTHONIOENCODING`; a bare `python -m sec_import...` does not. |
@@ -410,3 +568,47 @@ setup script creates one.
 | An `.exe` under your profile is blocked from running | AppLocker or the endpoint agent, not a bug here. It needs a policy exception; there is no local workaround. |
 | `pytest` collects nothing | You installed with `-NoDev`. |
 | A successful import reports `NativeCommandError` | You piped it through `2>&1`. The importer logs to stderr, and Windows PowerShell 5.1 wraps every native stderr line in an ErrorRecord — turning a clean run into a failure. Redirect to a file with `--report` instead, or do not redirect. |
+
+### 7.1 Repairing the local repository
+
+Maven caches every artifact it downloads in `%USERPROFILE%\.m2\repository`. Nothing in there is
+your work, so anything in it can be deleted — the cost is a re-download, never lost code.
+
+Two failures live here.
+
+**A failed download is remembered.** When a repository is unreachable, Maven writes a
+`*.lastUpdated` marker next to the missing artifact and then *refuses to retry it* for the rest
+of the day, so a build that failed while the proxy was misconfigured keeps failing after you fix
+it. Clear the markers:
+
+```powershell
+Get-ChildItem "$env:USERPROFILE\.m2\repository" -Recurse -Filter "*.lastUpdated" | Remove-Item -Force
+```
+
+`-U` on a single build does the same thing (`mvn -U verify`) and is the quicker check.
+
+**A truncated or quarantined jar** produces a checksum failure, or a `NoClassDefFoundError` for
+a class that is plainly on the classpath — the same shape as the Gradle distribution problem
+this section used to describe, and the same cause on this kind of machine: an endpoint agent
+removing jars from a directory under your profile. Delete the offending artifact's directory and
+rebuild; if it keeps happening, the durable fix is an exclusion for `%USERPROFILE%\.m2`, which
+only your IT can grant — ask for that path specifically.
+
+To rule the cache out entirely, move it aside rather than deleting it, so you can put it back:
+
+```powershell
+Rename-Item "$env:USERPROFILE\.m2\repository" repository.bak
+.\sec-backend.ps1 -Check
+```
+
+**Seeding it offline.** `~\.m2\repository` is a plain directory tree and copies between
+machines — the equivalent of carrying the Gradle distribution in by hand, and the answer when
+the proxy cannot be made to work at all:
+
+```powershell
+robocopy "$env:USERPROFILE\.m2\repository" "E:\m2-repository" /E      # on a machine that builds
+robocopy "E:\m2-repository" "$env:USERPROFILE\.m2\repository" /E      # on the stranded one
+```
+
+Then build with `--offline` (`.\sec-backend.ps1 -Check -Offline`) so Maven never reaches for the
+network at all.

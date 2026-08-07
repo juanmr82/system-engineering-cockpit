@@ -49,19 +49,13 @@ function Test-Sec {
     }
 }
 
+# Test-SecPort probes IPv4 and IPv6. That matters here: ng serve binds ::1 only, and an
+# IPv4-only probe reported a running dev server as "Not running". See sec-ports.ps1.
+. "$PSScriptRoot\sec-ports.ps1"
+
 function Test-Port {
     param([int] $Port)
-    $client = New-Object System.Net.Sockets.TcpClient
-    try {
-        $async = $client.BeginConnect('127.0.0.1', $Port, $null, $null)
-        if (-not $async.AsyncWaitHandle.WaitOne(700)) { return $false }
-        $client.EndConnect($async)
-        return $true
-    } catch {
-        return $false
-    } finally {
-        $client.Close()
-    }
+    return Test-SecPort -Port $Port
 }
 
 function Get-CommandVersion {
@@ -91,11 +85,40 @@ Test-Sec 'JDK 21+' {
     return "$full at $env:JAVA_HOME"
 } 'JAVA_HOME unset or below 21. Dot-source sec-env.ps1, or set $SecJavaHome in sec-env.local.ps1.'
 
-Test-Sec 'Gradle wrapper' {
-    $wrapper = Join-Path $repo 'gradlew.bat'
-    if (Test-Path $wrapper) { return 'gradlew.bat' }
+Test-Sec 'Maven' {
+    # A real Maven beats the wrapper here, because the wrapper's first act is to download a
+    # distribution and that is exactly the step this network stops. Either is fine; say which.
+    if ($env:SEC_MVN -and (Test-Path $env:SEC_MVN)) {
+        # Not $home: it is a read-only automatic variable and assigning to it throws.
+        $mavenRoot = Split-Path -Parent (Split-Path -Parent $env:SEC_MVN)
+        return "installed at $mavenRoot"
+    }
+    if (Test-Path (Join-Path $repo 'mvnw.cmd')) {
+        return 'mvnw.cmd only - the first build downloads Maven (~9 MB)'
+    }
     return $null
-} 'gradlew.bat missing from the repository root.'
+} 'No Maven and no mvnw.cmd. Unzip Apache Maven anywhere you can write and set $SecMavenHome in sec-env.local.ps1 - see docs\RUNNING.md section 1.2.'
+
+Test-Sec 'Project model' {
+    # Both poms, and the root one has to list the backend module. A checkout that lost either
+    # fails much later, inside a build log, saying something about a missing parent.
+    $rootPom = Join-Path $repo 'pom.xml'
+    $backendPom = Join-Path $repo 'backend\pom.xml'
+    if (-not (Test-Path $rootPom)) { return $null }
+    if (-not (Test-Path $backendPom)) { return $null }
+    if (-not (Select-String -Path $rootPom -Pattern '<module>backend</module>' -Quiet)) { return $null }
+    return 'pom.xml + backend\pom.xml'
+} 'pom.xml or backend\pom.xml is missing. Both are committed: git checkout -- pom.xml backend/pom.xml'
+
+Test-Sec 'Local repository' {
+    # Absent is not broken - it is a machine that has not built yet. Report the size, because
+    # "the build downloads everything again every time" is usually this being somewhere else.
+    $m2 = $env:MAVEN_REPO_LOCAL
+    if (-not $m2) { $m2 = Join-Path $env:USERPROFILE '.m2\repository' }
+    if (-not (Test-Path $m2)) { return 'empty - the first build populates it' }
+    $count = @(Get-ChildItem -Path $m2 -Recurse -Filter '*.jar' -ErrorAction SilentlyContinue).Count
+    return "$count jars cached"
+} 'Could not read the local repository.' -WarnOnly
 
 Test-Sec 'Node 22+' {
     $version = Get-CommandVersion -Exe 'node'

@@ -9,11 +9,11 @@
 
     It resolves JAVA_HOME and NEO4J_HOME by looking in the usual places, puts the JDK on
     PATH, exports the Neo4j credentials the backend reads from application.yaml, and turns a
-    corporate proxy into the settings Gradle, npm and pip each expect in their own way.
+    corporate proxy into the settings Maven, npm and pip each expect in their own way.
 
     Nothing here is site-specific. Values that ARE site-specific - where your JDK lives, the
     proxy URL, the pip mirror, the database password - go in sec-env.local.ps1 next to this
-    file, which is git-ignored. Copy sec-env.local.ps1.example to start.
+    file, which is git-ignored. Copy sec-env.local.ps1 to start.
 
     -Persist writes JAVA_HOME and NEO4J_HOME to your Windows user environment, so new
     sessions have them without dot-sourcing anything. Run it once; it is the answer to
@@ -51,8 +51,8 @@ function Write-SecLine {
 }
 
 # ---------------------------------------------------------------------------------------
-# JDK. The build needs 21 or newer: the Gradle toolchain compiles to 21 and Neo4j 2026
-# refuses to start on anything older.
+# JDK. The build needs 21 or newer: the Kotlin compiler targets 21 and Neo4j 2026 refuses
+# to start on anything older.
 #
 # The version is read from the JDK's own `release` file rather than by running `java
 # -version`. Redirecting a native executable's stderr in Windows PowerShell 5.1 wraps every
@@ -131,11 +131,11 @@ function Resolve-Jdk {
 
     # Preference order among *discovered* JDKs, and it is deliberately NOT "newest wins".
     #
-    # backend/build.gradle.kts pins jvmToolchain(21), so Gradle needs a JDK 21 to be
-    # installed whatever it is itself running on. On a machine with 21 and 25 present,
-    # picking 25 leaves the toolchain unresolvable and the build fails asking for a JDK that
-    # is sitting right there. So: 21 first, then the lowest thing above it, and a standalone
-    # JDK ahead of an IDE's bundled runtime.
+    # The root pom sets maven.compiler.release and the Kotlin plugin's jvmTarget to 21, and
+    # Maven compiles with whatever JDK it is itself running on - so the JDK picked here IS the
+    # one the build uses. 21 first keeps that honest; a newer JDK would compile against a newer
+    # class file version than the target claims. Then the lowest thing above it, and a
+    # standalone JDK ahead of an IDE's bundled runtime.
     $found = New-Object System.Collections.Generic.List[object]
     $seen = New-Object System.Collections.Generic.HashSet[string]
 
@@ -219,6 +219,84 @@ if ($neo4jHome) {
 }
 
 # ---------------------------------------------------------------------------------------
+# Maven. A real install is preferred over the wrapper, because the wrapper's first act is to
+# download a distribution and that is the step a locked-down network stops. Maven is a 9 MB
+# zip with no installer, so "a real install" here means "somebody unzipped it" - see
+# docs\RUNNING.md section 1.2.
+#
+# Nothing is fatal: with no Maven anywhere, sec-backend.ps1 falls back to mvnw.cmd.
+# ---------------------------------------------------------------------------------------
+function Resolve-MavenHome {
+    $candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($SecMavenHome)   { $candidates.Add($SecMavenHome) }
+    if ($env:MAVEN_HOME) { $candidates.Add($env:MAVEN_HOME) }
+    if ($env:M2_HOME)    { $candidates.Add($env:M2_HOME) }
+
+    # An mvn already on PATH: walk back from bin\mvn.cmd to the install root.
+    $onPath = Get-Command 'mvn.cmd' -ErrorAction SilentlyContinue
+    if (-not $onPath) { $onPath = Get-Command 'mvn' -ErrorAction SilentlyContinue }
+    if ($onPath -and $onPath.Source) {
+        $candidates.Add((Split-Path -Parent (Split-Path -Parent $onPath.Source)))
+    }
+
+    # The places an unzipped Maven lands on a machine with no administrator rights, plus the
+    # copy IntelliJ bundles - which is a complete Maven and is already on the disk of anyone
+    # who opens this project in the IDE.
+    $roots = @(
+        "$env:USERPROFILE\tools"
+        "$env:USERPROFILE\scoop\apps\maven"
+        "$env:LOCALAPPDATA\Programs"
+        "$env:ProgramFiles"
+    )
+    foreach ($root in $roots) {
+        if (-not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Directory -Filter 'apache-maven-*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object { $candidates.Add($_.FullName) }
+        Get-ChildItem -Path $root -Directory -Filter 'maven*' -ErrorAction SilentlyContinue |
+            ForEach-Object { $candidates.Add($_.FullName); $candidates.Add((Join-Path $_.FullName 'current')) }
+    }
+    foreach ($ide in @("$env:LOCALAPPDATA\JetBrains", "$env:ProgramFiles\JetBrains")) {
+        if (-not (Test-Path $ide)) { continue }
+        Get-ChildItem -Path $ide -Directory -Recurse -Depth 2 -Filter 'maven3' -ErrorAction SilentlyContinue |
+            ForEach-Object { $candidates.Add($_.FullName) }
+    }
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        if (Test-Path (Join-Path $candidate 'bin\mvn.cmd')) { return $candidate }
+    }
+    return $null
+}
+
+$mavenHome = Resolve-MavenHome
+if ($mavenHome) {
+    $env:MAVEN_HOME = $mavenHome
+    $mavenBin = Join-Path $mavenHome 'bin'
+    if ($env:PATH -notlike "*$mavenBin*") {
+        $env:PATH = "$mavenBin;$env:PATH"
+    }
+    $env:SEC_MVN = Join-Path $mavenBin 'mvn.cmd'
+    Write-SecLine 'Maven' $mavenHome 'Green'
+} else {
+    $env:SEC_MVN = ''
+    Write-SecLine 'Maven' 'not found - sec-backend.ps1 will use .\mvnw.cmd (needs one download)' 'Yellow'
+}
+
+# A settings.xml carrying the company mirror, the proxy and any repository credentials. Maven
+# reads %USERPROFILE%\.m2\settings.xml by itself; this is for keeping one beside the repo
+# instead, which is what a machine with several projects and one awkward network tends to want.
+if ($SecMavenSettings) {
+    if (Test-Path $SecMavenSettings) {
+        $env:SEC_MVN_SETTINGS = $SecMavenSettings
+        Write-SecLine 'Maven settings' $SecMavenSettings 'Green'
+    } else {
+        Write-SecLine 'Maven settings' "NOT FOUND at $SecMavenSettings" 'Red'
+    }
+}
+
+# ---------------------------------------------------------------------------------------
 # Backend credentials. application.yaml resolves "$SEC_NEO4J_USER" / "$SEC_NEO4J_PASSWORD"
 # from the environment and fails at startup if either is unset - deliberately, so that a
 # password is never committed and config has exactly one source.
@@ -241,7 +319,10 @@ if ($env:SEC_NEO4J_USER -and $env:SEC_NEO4J_PASSWORD) {
 # ---------------------------------------------------------------------------------------
 # Proxy. Three toolchains, three ways of being told the same thing.
 #
-#   Gradle  - JVM system properties, passed through GRADLE_OPTS
+#   Maven   - settings.xml <proxies>, which is the ONLY mechanism its resolver reads reliably.
+#             The JVM properties below are set as well, because plugins that open their own
+#             connections do honour them, but a proxy configured ONLY here and not in
+#             settings.xml will still fail to resolve dependencies. See docs\RUNNING.md 2.6.
 #   npm/pip - the lowercase http_proxy / https_proxy convention
 #
 # localhost is always excluded: Neo4j on 7687 and the dev server on 4200 must never be
@@ -251,6 +332,14 @@ $proxy = $null
 if ($SecProxy)            { $proxy = $SecProxy }
 elseif ($env:HTTPS_PROXY) { $proxy = $env:HTTPS_PROXY }
 elseif ($env:HTTP_PROXY)  { $proxy = $env:HTTP_PROXY }
+
+# MAVEN_OPTS is ACCUMULATED, never assigned over. sec-env.local.ps1 is sourced before this
+# point and is where a site adds its own JVM flags - a trust store for an inspecting proxy,
+# most often - and assigning here would silently discard them. $SecMavenOpts is the
+# supported way to add flags; anything already in the environment is kept too.
+$mavenOpts = New-Object System.Collections.Generic.List[string]
+if ($env:MAVEN_OPTS) { $mavenOpts.Add($env:MAVEN_OPTS) }
+if ($SecMavenOpts)   { $mavenOpts.Add($SecMavenOpts) }
 
 if ($proxy) {
     $env:HTTP_PROXY  = $proxy
@@ -268,14 +357,49 @@ if ($proxy) {
     $proxyPort = $uri.Port
     $nonProxyHosts = ($noProxy -replace ',', '|')
 
-    $gradleProxy = "-Dhttp.proxyHost=$proxyHost -Dhttp.proxyPort=$proxyPort " +
+    $mavenOpts.Add("-Dhttp.proxyHost=$proxyHost -Dhttp.proxyPort=$proxyPort " +
                    "-Dhttps.proxyHost=$proxyHost -Dhttps.proxyPort=$proxyPort " +
-                   "-Dhttp.nonProxyHosts=`"$nonProxyHosts`""
-    $env:GRADLE_OPTS = $gradleProxy
+                   "-Dhttp.nonProxyHosts=`"$nonProxyHosts`"")
 
-    Write-SecLine 'Proxy' "$proxyHost`:$proxyPort  (Gradle, npm, pip)" 'Green'
+    # Proxy credentials, when the proxy demands them. Two JVM properties do the obvious job -
+    # and a third undoes a default that otherwise makes them useless: since 8u111 the JVM
+    # refuses Basic authentication to a proxy on an HTTPS tunnel, which is exactly the case
+    # here, and it fails with a bare 407 that names no cause. Clearing disabledSchemes is what
+    # every corporate JVM setup ends up doing.
+    #
+    # Every value is quoted. MAVEN_OPTS is expanded by cmd.exe and split on whitespace, so an
+    # unquoted password containing a space becomes two arguments and is silently truncated at
+    # the space - which authenticates with the wrong password and reports only a bare 407.
+    # (A password containing a double quote cannot survive this and needs changing.)
+    if ($SecProxyUser) {
+        $mavenOpts.Add("-Dhttp.proxyUser=`"$SecProxyUser`" -Dhttp.proxyPassword=`"$SecProxyPassword`" " +
+                       "-Dhttps.proxyUser=`"$SecProxyUser`" -Dhttps.proxyPassword=`"$SecProxyPassword`" " +
+                       '-Djdk.http.auth.tunneling.disabledSchemes="" ' +
+                       '-Djdk.http.auth.proxying.disabledSchemes=""')
+
+        # npm and pip take the credentials inside the URL instead. Only rewrite when the URL
+        # does not already carry them.
+        if ($proxy -notmatch '@') {
+            $encodedUser = [System.Uri]::EscapeDataString($SecProxyUser)
+            $encodedPass = [System.Uri]::EscapeDataString([string] $SecProxyPassword)
+            $authProxy = $proxy -replace '^(https?://)', "`${1}${encodedUser}:${encodedPass}@"
+            $env:HTTP_PROXY = $authProxy; $env:http_proxy = $authProxy
+            $env:HTTPS_PROXY = $authProxy; $env:https_proxy = $authProxy
+        }
+    }
+
+    $proxyNote = if ($SecProxyUser) { "  (npm, pip - as $SecProxyUser; Maven needs settings.xml)" } else { '  (npm, pip; Maven needs settings.xml)' }
+    Write-SecLine 'Proxy' "$proxyHost`:$proxyPort$proxyNote" 'Green'
 } else {
     Write-SecLine 'Proxy' 'none configured' 'Gray'
+}
+
+if ($mavenOpts.Count -gt 0) {
+    # A password in MAVEN_OPTS is visible to anything that can list this process's
+    # environment. On a single-user workstation that is an acceptable trade for a build that
+    # works; it is not a pattern to carry to a shared or a build machine. settings.xml with a
+    # <server> entry is the better home for a credential that outlives the session.
+    $env:MAVEN_OPTS = ($mavenOpts -join ' ')
 }
 
 # pip's mirror. Exported rather than written to pip.ini so it stays visible in one place

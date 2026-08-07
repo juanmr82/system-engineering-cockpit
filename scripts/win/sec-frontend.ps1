@@ -5,6 +5,7 @@
 .DESCRIPTION
         scripts\win\sec-frontend.ps1 -Install    # npm ci (or npm install without a lockfile)
         scripts\win\sec-frontend.ps1             # ng serve
+        scripts\win\sec-frontend.ps1 -Build      # ng build -> frontend\dist, for packaging
         scripts\win\sec-frontend.ps1 -Gate       # lint + test + build, the full gate
 
     Every npm command runs from frontend\, never from the repository root with --prefix:
@@ -14,12 +15,16 @@
 .PARAMETER Install
     Install dependencies. Uses the registry in NPM_CONFIG_REGISTRY when sec-env.ps1 set one.
 
+.PARAMETER Build
+    Production build only. sec-package.ps1 runs this before folding dist into the backend jar.
+
 .PARAMETER Gate
     Run lint, tests and a production build - what has to pass before calling work done.
 #>
 [CmdletBinding()]
 param(
     [switch] $Install,
+    [switch] $Build,
     [switch] $Gate
 )
 
@@ -41,6 +46,11 @@ try {
             Write-Host '  No package-lock.json - falling back to npm install.' -ForegroundColor Yellow
             npm install
         }
+        exit $LASTEXITCODE
+    }
+
+    if ($Build) {
+        npm run build
         exit $LASTEXITCODE
     }
 

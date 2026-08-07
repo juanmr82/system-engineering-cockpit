@@ -1,8 +1,8 @@
-# --- Gradle / Kotlin / JVM ---
-.gradle/
-build/
+# --- Maven / Kotlin / JVM ---
+target/
 out/
-!gradle/wrapper/gradle-wrapper.jar
+# The Maven wrapper is the "only-script" flavour: two shell scripts and a properties file,
+# no jar. That is deliberate - see docs/adr/0007-maven-over-gradle.md.
 
 # --- IntelliJ (keep .run/ and the .iml/module files, ignore caches) ---
 .idea/**/workspace.xml

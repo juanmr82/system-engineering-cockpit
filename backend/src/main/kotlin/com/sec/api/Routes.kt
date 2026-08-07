@@ -4,11 +4,13 @@ import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.moduleRoutes
 import com.sec.api.routes.reviewRoutes
+import com.sec.api.routes.statisticsRoutes
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
+import com.sec.source.doors.StatisticsProjection
 import io.ktor.server.application.Application
 import io.ktor.server.routing.routing
 
@@ -29,11 +31,13 @@ public fun Application.configureRouting(
     reviewProjection: ReviewProjection,
     breakdownProjection: BreakdownProjection,
     metaWriter: MetaWriter,
+    statisticsProjection: StatisticsProjection,
 ) {
     routing {
         healthRoutes(graphDriver)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(doorsProjection, reviewProjection, breakdownProjection, metaWriter)
+        statisticsRoutes(statisticsProjection)
         configRoutes()
 
         // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.

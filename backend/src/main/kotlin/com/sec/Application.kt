@@ -9,6 +9,7 @@ import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
+import com.sec.source.doors.StatisticsProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -71,6 +72,14 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     val reviewProjection = ReviewProjection(graphDriver)
     val breakdownProjection = BreakdownProjection(graphDriver)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
+    val statisticsProjection = StatisticsProjection(graphDriver)
 
-    configureRouting(graphDriver, doorsProjection, reviewProjection, breakdownProjection, metaWriter)
+    configureRouting(
+        graphDriver,
+        doorsProjection,
+        reviewProjection,
+        breakdownProjection,
+        metaWriter,
+        statisticsProjection,
+    )
 }

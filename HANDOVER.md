@@ -1,72 +1,111 @@
 # Handover
 
-Transient session-to-session note — not project documentation. Delete once its content is
+TrLetsansient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-06 (end of session 7)
+## State as of 2026-08-07 (end of session 8)
 
-Branch `master` (**not** the repo's main branch). This session's work is committed as
-`6fe5450`, "Add the Breakdown tab". Session 6's warning about the review settings dialog
-(§1 below) is carried forward unchanged — nothing this session touched it.
+Branch `master` (**not** the repo's main branch).
+
+> **NOTHING FROM THIS SESSION IS COMMITTED.** Around forty files are changed, added or deleted
+> in the working tree. Read this file before `git status` confuses you, and commit before doing
+> anything else — a working tree this size is not a safe place to start new work from.
+
+Session 7's work (`6fe5450`, the Breakdown tab) is committed. Session 6's warning about the
+review settings dialog (§1 below) is carried forward again, unchanged and still unexplained —
+nothing this session touched it.
 
 **There is still uncommitted, staged work in `importers/` that belongs to someone else** — the
-DOORS importer refactor (`derivations.py`, `parser.py`, `validator.py`, `importer.py`,
-`schema.py`, `reporter.py`, `exceptions.py`, `tests/`) plus `docs/DOORS_IMPORTER_INFO`. Left
-staged and untouched for the second session running, deliberately excluded from this
-session's commit.
+DOORS importer refactor plus `docs/DOORS_IMPORTER_INFO`. Left staged and untouched for the third
+session running.
 
 ---
 
 ## What was built
 
-**The Breakdown tab** — the second tab of the Req review detail panel, specified in
-`docs/requirement-breakdown-tree.md`, which is now committed with a §10 recording what the
-implementation changed about it. Read §10 before changing any of this; the decisions in it were
-made against real data and each one reversed an earlier attempt.
+This session was **build and tooling only**. No feature work, no graph writes, no UI changes.
+The application behaves exactly as it did, with one addition: the backend can now serve the
+built frontend.
 
-`GET /api/v1/items/{ref}/breakdown?maxDepth&maxNodes` walks `refersTo` up to every root, then
-back down over everything decomposing those roots, and returns nodes + edges + roots. Files:
+### 1. The build moved from Gradle to Maven
 
-| File | What it is |
+Recorded in `docs/adr/0007-maven-over-gradle.md` — read that before questioning any of it. The
+short version: Gradle could not be made to work on the locked-down workstation, and it failed
+three different ways, all of them "Gradle has to download Gradle first". Maven's mirror, proxy
+and credentials all live in `%USERPROFILE%\.m2\settings.xml` — user-scoped, no admin, and not a
+committed file, which is the thing Gradle could not offer.
+
+`settings.gradle.kts`, `build.gradle.kts`, `backend/build.gradle.kts`, `gradle/libs.versions.toml`
+and the wrapper are **deleted**. `pom.xml` (aggregator, all versions) + `backend/pom.xml` replace
+them.
+
+| Was | Is |
 |---|---|
-| `graph/cypher/BreakdownCypher.kt` | four statements — edges up, edges down, nodes, verification attributes |
-| `source/doors/BreakdownProjection.kt` | the two-phase BFS, the node cap, the back-edge DFS |
-| `api/dto/BreakdownDtos.kt` | the wire types |
-| `review/breakdown/breakdown.model.ts` | `buildTree` / `flatten` — the DAG-to-forest rendering |
-| `review/breakdown/breakdown{,-row}.*` | the view |
+| `./gradlew check` | `mvn verify` |
+| `./gradlew :backend:integrationTest` | `mvn -Pdocker test` |
+| `./gradlew :backend:run` | `mvn -pl backend exec:java` |
+| `gradle/libs.versions.toml` | root `pom.xml` `<properties>` + `<dependencyManagement>` |
 
-Four things worth knowing before touching it:
+**The one trap that will bite again:** Gradle resolved version conflicts by taking the *highest*
+version, Maven takes the *nearest*. The catalogue said `kotlinx-coroutines` 1.10.1 while Ktor
+3.5.1 needs 1.11.0, so Gradle had been silently upgrading it and the build was running 1.11.0 all
+along. Under Maven the pin stuck and six tests died with `NoSuchMethodError`. **Any version the
+old catalogue named may have been fiction.** A `NoSuchMethodError` or `NoClassDefFoundError`
+after this migration is that, until proven otherwise.
 
-1. **The traversal is a Kotlin loop over one query per level, not one var-length pattern.**
-   Neo4j will not take a parameter as a var-length bound, so a single statement has to bake a
-   literal in — and then `maxDepth=2` costs what `maxDepth=12` costs. A query per level makes
-   both bounds real and truncation exact. §10.2.
-2. **A requirement is drawn under every parent it refines.** §3B of the spec (draw once, "also
-   refines" chips) shipped first and left SEG-REQ-1247 missing from the second tree it belongs
-   to. Before switching, the duplication cost was measured on the imported data rather than
-   assumed: worst case 40 rows over 31 nodes, so the 500-row cap is a guard, not a working
-   limit. The cascade this implies is real and is documented in §10.1 — a branch under two
-   parents appears under both wherever it appears, which is why the specs assert 4 copies of
-   `CMP1` and not 3.
-3. **Nothing in the tree is clickable.** The spec left "should a node re-root the view" open; it
-   was built, the user rejected it, and the twisty is now the only control on a row. A spec asserts
-   this so it does not creep back.
-4. **Nothing is stored.** Verification attributes are read from `:__AttributeSetting` per call;
-   the description is derived server-side (mirroring `review-table.model.ts`'s `describe()`, both
-   sites commented as pointing at each other) because the alternative was a 78-attribute bag per
-   node for two strings.
+Also: Ktor and kotlinx need the **`-jvm` artifact suffix** under Maven. The unsuffixed artifacts
+carry Gradle module metadata Maven cannot read and resolve to empty jars — the failure is a
+compile error about a missing package, not a resolution error.
 
-Three panel-level changes came out of using it, all in the commit message and in §10.7:
+### 2. One command runs everything: `scripts\win\sec-up.ps1`
 
-- The panel **leads with the DOORS id**. It was headed by `__name` = `Object Text`, and a
-  sanitised export blanks user attributes, so every object showed the same sentence.
-  `ItemDetailDto.id` is null for anything with no id of its own — never invented.
-- The opened requirement gets a navy rail, a navy wash and the words *The requirement you
-  opened*, on every copy. The wash is a **fourth exception** to "colour is a rail, never a
-  background", recorded in `CLAUDE.md` §8 with its fence.
-- The **level badge stays when unset**, empty and outlined. Dropping it un-aligned every id in
-  the column. `.sec-level--none` moved into the shared `system-level-scale` mixin on its second
-  use, so `module-level-cell.scss` no longer carries its own copy.
+Starts Neo4j, the backend and the dev server, each in its own window, waiting for each before
+starting the next. `-Status`, `-Stop`, `-Jar`, `-NoFrontend`, `-NoBrowser`. Everything is checked
+before any window opens.
+
+**A latent bug was found and fixed doing this**, and it predates the script: `ng serve` binds to
+**`::1` only**, and every port probe in these scripts connected to `127.0.0.1`. A running frontend
+therefore read as down — `sec-doctor.ps1` said "Frontend running: Not running" while the site was
+open in a browser. `scripts/win/sec-ports.ps1` now holds the one dual-stack probe all three
+scripts use. Do not re-introduce a local copy.
+
+`-Stop` finds the window to close by walking the process tree from the listening process, not by
+window title: a console started with `Start-Process` reports an empty `MainWindowTitle`, so
+title matching silently finds nothing.
+
+### 3. One deployable jar: `scripts\win\sec-package.ps1`
+
+`npm run build`, then `mvn -Pui package`, producing `backend/target/backend-0.1.0-all.jar` — 21 MB,
+API **and** user interface, served on :8080. Deployment is that one file plus a JDK 21 and a
+reachable Neo4j. `sec-up.ps1 -Jar` runs it.
+
+`backend/.../api/routes/UiRoutes.kt` serves it, and `CLAUDE.md` §5 records the two rules that must
+not drift (both covered by `PackagedUiTest`):
+
+- `/api/**` is never answered with a page — an unknown endpoint stays a problem detail.
+- A missing *file* is a 404, not `index.html` — otherwise a stale hashed bundle after a redeploy
+  hands the browser HTML with status 200 and it reports a syntax error in it.
+
+Ktor's own `staticResources("/", …)` cannot do this job: mounted at the root it installs a
+catch-all that answers 404 itself and takes both rules with it. That is why the fallback is
+hand-rolled.
+
+---
+
+## ⚠ Something is corrupting files in the editor
+
+**Three times this session**, a few stray characters appeared at the very start of a file that was
+open in the IDE, each time breaking it:
+
+| File | Became |
+|---|---|
+| `scripts/win/sec-backend.ps1` | truncated to the single word `For` — the whole 65-line script gone |
+| `pom.xml` | `i<?xml version…` — the build stopped parsing |
+| `scripts/win/maven-settings.xml.example` | `Ok,<?xml version…` |
+
+All three are repaired. The pattern looks like chat text being typed into the editor window. It
+is worth finding the cause before it lands somewhere subtler than a file that refuses to parse —
+`sec-backend.ps1` was only noticed because its content vanished entirely.
 
 ---
 
@@ -118,9 +157,12 @@ what caused the loss.
 
 | | Status |
 |---|---|
-| `./gradlew check` | **green** |
-| `./gradlew :backend:integrationTest` | **green** — including 11 new container tests (10 breakdown + 1 panel id) |
-| `npm run lint` / `npm test` / `npm run build` | **green** — **62 tests**, initial bundle 165 kB |
+| `mvn verify` | **green** — **22 tests** (15 carried over + 7 new `PackagedUiTest`) |
+| `mvn -Pdocker test` | **green** — **32 container tests**, unchanged by the migration |
+| `npm run lint` / `npm test` / `npm run build` | **green as of session 7** — 62 tests. **Not re-run this session**; only `npm run build` was, via `sec-package.ps1`. |
+| The packaged jar | **driven end to end** — run against a throwaway Neo4j container, then checked over HTTP: `/` and `/requirements/modules` serve the app, hashed JS and CSS come back with the right content types, `/api/v1/modules` is JSON, and `/favicon.ico` and a stale bundle name are 404 problem details rather than the index page |
+| `sec-up.ps1` `-Status`, preflight refusal, already-running detection, Neo4j cold start, `-Stop`'s window discovery | **driven** |
+| `sec-up.ps1` cold start of the **backend and frontend windows** | **NOT verified** — both were already running from session 7 and the Neo4j password was not available, so stopping them was a one-way door. The waits themselves are exercised by the Neo4j path. |
 | Breakdown against SEG-REQ-1247 | **driven end to end** — two parents, both roots, the placeholder leaf, collapse/expand, the subject marker on every copy |
 | A real verification attribute | **driven** — SRD-1158 shows a Verification Requirement value, so that path is exercised with live data, not only in tests |
 | Level badge alignment, set vs unset | **measured** in the browser — 24 px empty, 25 px with `L1`/`L2` |
@@ -128,20 +170,26 @@ what caused the loss.
 | Truncation / the 500-row cap | **tests only** — real data does not reach either bound |
 | The review **settings dialog** | **still suspect** — see §1 |
 
-The graph was left exactly as found. Nothing was written this session.
+The graph was left exactly as found. Nothing was written to it this session.
+
+Neo4j was started during testing and left running. The throwaway container used to drive the
+jar was removed.
 
 ---
 
 ## Environment
 
-- Backend `:8080`, frontend `npm start` → `:4200`, Neo4j native from
-  `C:\Users\juanm\neo4j\neo4j-community-2026.06.0` (`./bin/neo4j.bat console`). **All three were
-  left running**, backend restarted after the `id` field was added.
+- Backend `:8080`, frontend `:4200`, Neo4j native from
+  `C:\Users\juanm\neo4j\neo4j-community-2026.06.0`. **Start everything with
+  `scripts\win\sec-up.ps1`**; `-Status` says what is up.
+- **Maven is not installed on this machine.** `mvnw.cmd` works and downloads one on first use;
+  unzipping a real Maven and setting `$SecMavenHome` avoids that download permanently
+  (`docs/RUNNING.md` §1.2). The wrapper is the `only-script` flavour — there is no wrapper jar.
 - **Credentials are not written down here.** `scripts\win\sec-env.local.ps1` holds them, is
-  git-ignored, and is what `sec-env.ps1` reads — see `docs/RUNNING.md` §2.1. Dot-source that and
-  the three scripts beside it start everything with the environment already set.
-- **Restart the backend after any backend change** — `./gradlew :backend:run` serves the code it
-  started with. `Get-NetTCPConnection -LocalPort 8080 -State Listen` → `Stop-Process`.
+  git-ignored, and is what `sec-env.ps1` reads — see `docs/RUNNING.md` §2.1. **That file does not
+  currently exist**, so `sec-doctor.ps1` reports one failure until it is created from the
+  `.example` beside it.
+- **Restart the backend after any backend change** — it serves the code it started with.
 
 ### Traps that cost time, in rough order of how much
 

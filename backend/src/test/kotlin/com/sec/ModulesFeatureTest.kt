@@ -36,7 +36,7 @@ import kotlin.test.assertTrue
 @Tag("docker")
 class ModulesFeatureTest {
 
-    // Tag comes from libs.versions.toml via the test task, so it is pinned next to every other
+    // Tag comes from the root pom.xml via surefire, so it is pinned next to every other
     // version rather than buried in a test file.
     private val neo4j = Neo4jContainer(
         "neo4j:" + System.getProperty("sec.test.neo4jImage", "2026.06.0-community"),
