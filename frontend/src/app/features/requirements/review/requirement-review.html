@@ -127,6 +127,18 @@
       Objects with issues
     </mat-checkbox>
 
+    <!-- An outgoing reference reads as "refines": A -> B means A refines B, the convention the
+         Breakdown tab states in words. So a requirement with none refines nothing above it. The
+         tooltip says that, because the column header alone cannot. -->
+    <mat-checkbox
+      class="sec-review__filter"
+      matTooltip="Requirements with no outgoing reference — nothing they refine. Headings and table structure are excluded, because they never carry one. A reference into a module that has not been imported yet still counts as a parent."
+      [checked]="withoutParents()"
+      (change)="withoutParents.set($event.checked)"
+    >
+      Requirements without parents
+    </mat-checkbox>
+
     <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded
          in, so this clears every column's sort rather than sorting by anything (§5). -->
     @if (sorted()) {
@@ -177,8 +189,31 @@
       </div>
 
       @if (selectedItem(); as itemRef) {
+        <!-- The drag handle between the table and the panel. A `separator` with a value and a
+             range, not a decorative div: it is operable, so it is announced and it takes the
+             keyboard. Pointer capture is what keeps a drag alive once the pointer leaves these
+             8px, which happens on the first frame. -->
+        <div
+          #panelHandle
+          class="sec-review__resizer"
+          role="separator"
+          tabindex="0"
+          aria-orientation="vertical"
+          aria-label="Resize the object detail panel"
+          [attr.aria-valuenow]="panelWidth()"
+          [attr.aria-valuemin]="panelWidthMin"
+          [attr.aria-valuemax]="panelWidthMax"
+          (pointerdown)="onPanelResizeStart($event, panelHandle)"
+          (pointermove)="onPanelResizeMove($event)"
+          (pointerup)="onPanelResizeEnd()"
+          (pointercancel)="onPanelResizeEnd()"
+          (keydown.arrowleft)="nudgePanelWidth(1)"
+          (keydown.arrowright)="nudgePanelWidth(-1)"
+        ></div>
+
         <sec-item-detail-panel
           class="sec-review__panel"
+          [style.width.px]="panelWidth()"
           [itemRef]="itemRef"
           (closed)="closeDetail()"
           (moduleSelected)="selectModule($event)"

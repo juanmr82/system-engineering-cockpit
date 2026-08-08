@@ -89,6 +89,20 @@
   border-top: var(--sec-hairline) solid var(--sec-line-soft);
 }
 
+// An attribute the object carries with no value — `""` from DOORS, which means "exists and is
+// empty" and is not the same as absent (CLAUDE.md §11). The row belongs here; what did not work was
+// leaving the value blank, which reads as the panel having failed to show something.
+//
+// Colour, not italic: "never italic" is an explicit Airbus rule with no exception for captions or
+// placeholders (CLAUDE.md §8), and styles.scss enforces it globally with `* { font-style: normal }`.
+// --sec-ink-3 is the non-content ink, which is the same substitution `absent-text` already makes.
+//
+// Scoped under `.sec-detail__facts` for specificity: `fact-rows` styles `dd` as a descendant, so a
+// single class on the same element loses to it and the value would stay in body ink.
+.sec-detail__facts .sec-detail__value--empty {
+  color: var(--sec-ink-3);
+}
+
 // A link that is a button, because following it loads a module rather than navigating a URL.
 .sec-detail__link {
   padding: 0;

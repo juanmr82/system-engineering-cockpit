@@ -1,8 +1,47 @@
 package com.sec.graph.cypher
 
+import com.sec.domain.MetaKind.ATTRIBUTE_SETTING as ATTRIBUTE_SETTING_KIND
+import com.sec.domain.MetaKind.NOTE as NOTE_KIND
+import com.sec.domain.MetaProp.APPLIES_TO_LABELS
+import com.sec.domain.MetaProp.ATTRIBUTE_NAME
+import com.sec.domain.MetaProp.RULE
+import com.sec.domain.MetaProp.TEXT
+import com.sec.domain.MetaProp.VERIFICATION
+import com.sec.domain.MetaProp.VISIBLE
+import com.sec.domain.MetaValue.CURRENT_SCHEMA_VERSION
+import com.sec.domain.MetaValue.MANDATORY_RULE
+import com.sec.domain.NodeLabel.ATTRIBUTE_SETTING
+import com.sec.domain.NodeLabel.META
+import com.sec.domain.NodeLabel.NOTE
+import com.sec.domain.NodeLabel.POLICY
+import com.sec.domain.NodeLabel.SE_ITEM
+import com.sec.domain.NodeLabel.UNDEFINED
+import com.sec.domain.Prop.CREATED_AT
+import com.sec.domain.Prop.CREATED_BY
+import com.sec.domain.Prop.ID
+import com.sec.domain.Prop.META_ID
+import com.sec.domain.Prop.META_KIND
+import com.sec.domain.Prop.MODULE_URL
+import com.sec.domain.Prop.NAME
+import com.sec.domain.Prop.SCHEMA_VERSION
+import com.sec.domain.Prop.SORT_KEY
+import com.sec.domain.Prop.UPDATED_AT
+import com.sec.domain.Prop.UPDATED_BY
+import com.sec.domain.Rel.ATTRIBUTE_SETTING_FOR
+import com.sec.domain.Rel.NOTE_ON
+import com.sec.domain.Rel.POLICY_FOR
+import com.sec.source.doors.DoorsAttr.ID as DOORS_ID
+import com.sec.source.doors.DoorsLabel.MODULE as DOORS_MODULE
+import com.sec.source.doors.DoorsLabel.OBJECT as DOORS_OBJECT
+import com.sec.source.doors.DoorsLabel.REQUIREMENT as DOORS_REQUIREMENT
+import com.sec.source.doors.DoorsRel.REFERS_TO
+
 // Cypher for docs/REQ_REVIEW.md — the Req review table, its references and its comments.
 // Every statement is CYPHER 25-prefixed and parameterised; the transaction timeout is applied to
 // every session in graph/Read.kt and graph/Write.kt, so nothing here can be issued without one.
+//
+// Every graph name is interpolated from a constant (ADR 0010). A bare $NAME is a *name*; the
+// escaped form is a query *parameter*.
 public object ReviewCypher {
 
     // One row per object of a module, in DOORS document order.
@@ -20,33 +59,33 @@ public object ReviewCypher {
     // itself been imported. That caveat is surfaced in the UI, never silently (SE_ITEM_SCHEMA §8.2).
     public const val MODULE_OBJECTS: String = """
         CYPHER 25
-        MATCH (o:DOORSObject {__moduleUrl: ${'$'}moduleUrl})
-        WHERE NOT o:DOORSModule
+        MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
+        WHERE NOT o:$DOORS_MODULE
         WITH o
-        ORDER BY o.__sortKey
+        ORDER BY o.$SORT_KEY
         SKIP ${'$'}skip
         LIMIT ${'$'}limit
         WITH o,
-             [(o)-[:refersTo]->(out:SEItem) | {
-                 ref: out.__id,
-                 id: CASE WHEN out:__UNDEFINED THEN null ELSE coalesce(out.id, out.__name) END,
-                 resolved: NOT out:__UNDEFINED,
-                 moduleUrl: out.__moduleUrl
+             [(o)-[:$REFERS_TO]->(out:$SE_ITEM) | {
+                 ref: out.$ID,
+                 id: CASE WHEN out:$UNDEFINED THEN null ELSE coalesce(out.$DOORS_ID, out.$NAME) END,
+                 resolved: NOT out:$UNDEFINED,
+                 moduleUrl: out.$MODULE_URL
              }] AS outgoing,
-             [(o)<-[:refersTo]-(inc:SEItem) | {
-                 ref: inc.__id,
-                 id: CASE WHEN inc:__UNDEFINED THEN null ELSE coalesce(inc.id, inc.__name) END,
-                 resolved: NOT inc:__UNDEFINED,
-                 moduleUrl: inc.__moduleUrl
+             [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) | {
+                 ref: inc.$ID,
+                 id: CASE WHEN inc:$UNDEFINED THEN null ELSE coalesce(inc.$DOORS_ID, inc.$NAME) END,
+                 resolved: NOT inc:$UNDEFINED,
+                 moduleUrl: inc.$MODULE_URL
              }] AS incoming
-        OPTIONAL MATCH (o)-[:__noteOn]->(n:__Meta:__Note)
+        OPTIONAL MATCH (o)-[:$NOTE_ON]->(n:$META:$NOTE)
         RETURN o                AS object,
                labels(o)        AS labels,
                outgoing         AS outgoing,
                incoming         AS incoming,
-               n.__metaId       AS commentId,
-               n.text           AS commentText,
-               n.__updatedAt    AS commentUpdatedAt
+               n.$META_ID       AS commentId,
+               n.$TEXT          AS commentText,
+               n.$UPDATED_AT    AS commentUpdatedAt
     """
 
     /**
@@ -66,10 +105,10 @@ public object ReviewCypher {
      */
     public const val MANDATORY_POLICIES: String = """
         CYPHER 25
-        MATCH (:DOORSModule {__id: ${'$'}moduleId})-[:__policyFor]->(p:__Meta:__Policy)
-        WHERE p.rule = 'mandatory'
-        RETURN p.attributeName                                AS attributeName,
-               coalesce(p.appliesToLabels, ['DOORSRequirement']) AS appliesToLabels
+        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
+        WHERE p.$RULE = '$MANDATORY_RULE'
+        RETURN p.$ATTRIBUTE_NAME                                    AS attributeName,
+               coalesce(p.$APPLIES_TO_LABELS, ['$DOORS_REQUIREMENT']) AS appliesToLabels
     """
 
     // Names for the modules a page's references point into, fetched once for the whole page rather
@@ -79,15 +118,15 @@ public object ReviewCypher {
     public const val MODULE_NAMES: String = """
         CYPHER 25
         UNWIND ${'$'}moduleIds AS moduleId
-        MATCH (m:DOORSModule {__id: moduleId})
-        RETURN m.__id AS id, m.__name AS name
+        MATCH (m:$DOORS_MODULE {$ID: moduleId})
+        RETURN m.$ID AS id, m.$NAME AS name
     """
 
     // Counted separately from the page so the client can show "n of m" without holding every row.
     public const val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
-        MATCH (o:DOORSObject {__moduleUrl: ${'$'}moduleUrl})
-        WHERE NOT o:DOORSModule
+        MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
+        WHERE NOT o:$DOORS_MODULE
         RETURN count(o) AS total
     """
 
@@ -95,33 +134,33 @@ public object ReviewCypher {
     // render __moduleUrl as a link labelled with the module's name, per the R5 alias map.
     public const val ITEM_DETAIL: String = """
         CYPHER 25
-        MATCH (i:SEItem {__id: ${'$'}itemId})
-        OPTIONAL MATCH (m:DOORSModule {__id: i.__moduleUrl})
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
+        OPTIONAL MATCH (m:$DOORS_MODULE {$ID: i.$MODULE_URL})
         RETURN i          AS item,
                labels(i)  AS labels,
-               m.__name   AS moduleName,
-               m.__id     AS moduleId
+               m.$NAME    AS moduleName,
+               m.$ID      AS moduleId
         LIMIT 1
     """
 
     public const val ITEM_TRACES_OUT: String = """
         CYPHER 25
-        MATCH (:SEItem {__id: ${'$'}itemId})-[:refersTo]->(t:SEItem)
-        RETURN t.__id       AS ref,
-               CASE WHEN t:__UNDEFINED THEN null ELSE coalesce(t.id, t.__name) END AS id,
-               NOT t:__UNDEFINED        AS resolved,
-               t.__moduleUrl            AS moduleUrl
+        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})-[:$REFERS_TO]->(t:$SE_ITEM)
+        RETURN t.$ID        AS ref,
+               CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
+               NOT t:$UNDEFINED         AS resolved,
+               t.$MODULE_URL            AS moduleUrl
         ORDER BY id
         LIMIT ${'$'}limit
     """
 
     public const val ITEM_TRACES_IN: String = """
         CYPHER 25
-        MATCH (:SEItem {__id: ${'$'}itemId})<-[:refersTo]-(t:SEItem)
-        RETURN t.__id       AS ref,
-               CASE WHEN t:__UNDEFINED THEN null ELSE coalesce(t.id, t.__name) END AS id,
-               NOT t:__UNDEFINED        AS resolved,
-               t.__moduleUrl            AS moduleUrl
+        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})<-[:$REFERS_TO]-(t:$SE_ITEM)
+        RETURN t.$ID        AS ref,
+               CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
+               NOT t:$UNDEFINED         AS resolved,
+               t.$MODULE_URL            AS moduleUrl
         ORDER BY id
         LIMIT ${'$'}limit
     """
@@ -136,16 +175,16 @@ public object ReviewCypher {
     public const val UPSERT_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}comments AS c
-        MATCH (i:SEItem {__id: c.itemId})
-        MERGE (i)-[:__noteOn]->(n:__Meta:__Note)
-          ON CREATE SET n.__metaId   = c.metaId,
-                        n.__createdBy = ${'$'}user,
-                        n.__createdAt = ${'$'}now
-        SET n.__metaKind      = 'note',
-            n.__schemaVersion = 1,
-            n.text            = c.text,
-            n.__updatedBy     = ${'$'}user,
-            n.__updatedAt     = ${'$'}now
+        MATCH (i:$SE_ITEM {$ID: c.itemId})
+        MERGE (i)-[:$NOTE_ON]->(n:$META:$NOTE)
+          ON CREATE SET n.$META_ID   = c.metaId,
+                        n.$CREATED_BY = ${'$'}user,
+                        n.$CREATED_AT = ${'$'}now
+        SET n.$META_KIND      = '$NOTE_KIND',
+            n.$SCHEMA_VERSION = $CURRENT_SCHEMA_VERSION,
+            n.$TEXT           = c.text,
+            n.$UPDATED_BY     = ${'$'}user,
+            n.$UPDATED_AT     = ${'$'}now
     """
 
     // Clearing a comment deletes the node rather than storing "", so MATCH (m:__Meta) stays a true
@@ -153,7 +192,7 @@ public object ReviewCypher {
     public const val DELETE_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
-        MATCH (:SEItem {__id: itemId})-[:__noteOn]->(n:__Meta:__Note)
+        MATCH (:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
         DETACH DELETE n
     """
 
@@ -162,47 +201,47 @@ public object ReviewCypher {
     public const val READ_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
-        MATCH (i:SEItem {__id: itemId})-[:__noteOn]->(n:__Meta:__Note)
-        RETURN i.__id       AS ref,
-               n.__metaId   AS metaId,
-               n.text       AS text,
-               n.__updatedAt AS updatedAt
+        MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        RETURN i.$ID        AS ref,
+               n.$META_ID   AS metaId,
+               n.$TEXT      AS text,
+               n.$UPDATED_AT AS updatedAt
     """
 
     // --- Attribute settings (Tier 2, Shape B) ---------------------------------------------------
 
     public const val EXISTING_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:DOORSModule {__id: ${'$'}moduleId})-[:__attributeSettingFor]->(s:__Meta:__AttributeSetting)
-        RETURN s.attributeName AS name,
-               coalesce(s.visible, false)      AS visible,
-               coalesce(s.verification, false) AS verification
+        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        RETURN s.$ATTRIBUTE_NAME AS name,
+               coalesce(s.$VISIBLE, false)      AS visible,
+               coalesce(s.$VERIFICATION, false) AS verification
     """
 
     // One node per (module, attributeName) — MERGE on attributeName is what enforces it, since
     // Community has no composite constraint to lean on.
     public const val UPSERT_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (m:DOORSModule {__id: ${'$'}moduleId})
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
         UNWIND ${'$'}settings AS row
-        MERGE (m)-[:__attributeSettingFor]->(s:__Meta:__AttributeSetting {attributeName: row.attributeName})
-          ON CREATE SET s.__metaId    = row.metaId,
-                        s.__createdBy = ${'$'}user,
-                        s.__createdAt = ${'$'}now
-        SET s.__metaKind      = 'attributeSetting',
-            s.__schemaVersion = 1,
-            s.visible         = row.visible,
-            s.verification    = row.verification,
-            s.__updatedBy     = ${'$'}user,
-            s.__updatedAt     = ${'$'}now
+        MERGE (m)-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING {$ATTRIBUTE_NAME: row.attributeName})
+          ON CREATE SET s.$META_ID    = row.metaId,
+                        s.$CREATED_BY = ${'$'}user,
+                        s.$CREATED_AT = ${'$'}now
+        SET s.$META_KIND      = '$ATTRIBUTE_SETTING_KIND',
+            s.$SCHEMA_VERSION = $CURRENT_SCHEMA_VERSION,
+            s.$VISIBLE        = row.visible,
+            s.$VERIFICATION   = row.verification,
+            s.$UPDATED_BY     = ${'$'}user,
+            s.$UPDATED_AT     = ${'$'}now
     """
 
     // An attribute set back to all-false carries no information, so its node goes rather than
     // lingering as a row of false — same reasoning as an emptied comment.
     public const val DELETE_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:DOORSModule {__id: ${'$'}moduleId})-[:__attributeSettingFor]->(s:__Meta:__AttributeSetting)
-        WHERE s.attributeName IN ${'$'}names
+        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE s.$ATTRIBUTE_NAME IN ${'$'}names
         DETACH DELETE s
     """
 }

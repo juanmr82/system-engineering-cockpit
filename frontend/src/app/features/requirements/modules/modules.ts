@@ -9,7 +9,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridAngular } from 'ag-grid-angular';
-import type { ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
+import type { ColDef, GridApi, GridReadyEvent, IRowNode } from 'ag-grid-community';
 import { secGridOptions } from '../../../core/grid/sec-grid';
 import type { ProblemDetails } from '../../../core/error/problem-details';
 import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
@@ -34,6 +34,30 @@ function extractErrorDetail(error: unknown): string {
     }
   }
   return 'Something went wrong saving these system levels. Please try again.';
+}
+
+/**
+ * Orders two system-level labels, keeping a module with no level at the end.
+ *
+ * Exported so it can be tested as a function: the alternative is driving a header click through
+ * ag-grid's DOM to find out what "descending" does to the unset rows, which tests the grid rather
+ * than the rule.
+ *
+ * `isDescending` is not decoration. ag-grid multiplies a comparator's result by -1 for a
+ * descending sort, so the unset side is pre-inverted here — without that, the modules with no
+ * level would flip to the top the moment the column is clicked a second time. They are *absent*
+ * from the hierarchy rather than at the bottom of it, and the end of the list is where that reads
+ * correctly in both directions.
+ */
+export function compareSystemLevels(a: string, b: string, isDescending: boolean): number {
+  if (a === b) {
+    return 0;
+  }
+  if (!a || !b) {
+    const unsetLast = !a ? 1 : -1;
+    return isDescending ? -unsetLast : unsetLast;
+  }
+  return a.localeCompare(b);
 }
 
 /**
@@ -108,18 +132,28 @@ export class Modules {
   protected readonly getRowId = (params: { data: SearchableModuleRow }): string => params.data.ref;
 
   /**
-   * Four columns, fixed — unlike the review table, this view's shape does not come from the graph.
+   * A fixed column set — unlike the review table, this view's shape does not come from the graph.
    *
-   * Every one still uses `colId` and a `valueGetter` rather than `field`. None of these four names
+   * Every one still uses `colId` and a `valueGetter` rather than `field`. None of these names
    * contains a dot today, but the rule is the rule: a `field` here would be a working example for
    * the next column somebody adds, and the failure it invites is a silently blank cell (ADR 0006).
+   *
+   * **The table opens sorted by system level, L0 first.** That is the order the modules are
+   * *read* in — a segment specification is understood before the subsystem specifications that
+   * refine it — and it is the order the level chips make legible at a glance. Alphabetical by
+   * name was the previous default and put L0 and L4 next to each other by accident of spelling.
+   *
+   * **One sorted column, not two.** Name as an explicit tie-break works, and makes ag-grid render
+   * its multi-sort position badges in the headers — `MODULE 2 ↑`, which reads as a column called
+   * "Module 2". Within a level the order is alphabetical anyway: the server returns modules
+   * ordered by name and `Array.prototype.sort` is stable, so equal levels keep the order they
+   * arrived in. Seen in the browser, not in a stylesheet.
    */
   protected readonly columnDefs: ColDef<SearchableModuleRow>[] = [
     {
       colId: 'name',
       headerName: 'Module',
       width: 320,
-      sort: 'asc',
       cellRenderer: ModuleNameCell,
       cellClass: 'sec-grid__cell sec-grid__cell--custom',
       valueGetter: (params) => params.data?.name ?? '',
@@ -145,22 +179,56 @@ export class Modules {
       tooltipValueGetter: (params) => params.value as string,
     },
     {
+      colId: 'wordExportTitle',
+      headerName: 'Word export title',
+      width: 220,
+      valueGetter: (params) => params.data?.wordExportTitle ?? '',
+      tooltipValueGetter: (params) => params.value as string,
+    },
+    {
+      colId: 'wordExportNumber',
+      headerName: 'Word export number',
+      width: 170,
+      valueGetter: (params) => params.data?.wordExportNumber ?? '',
+    },
+    {
       colId: 'level',
       headerName: 'System level',
       width: 210,
+      sort: 'asc',
       cellRenderer: ModuleLevelCell,
       cellClass: 'sec-grid__cell sec-grid__cell--custom',
       // Sorting by the shown wording, not by the stored code: the code never reaches the user, so
       // ordering by it would be ordering by something invisible (R5). The labels are "L0 – …" …
       // "L4 – …", so this sorts the hierarchy in order as a side effect of how they are worded.
       valueGetter: (params) => params.data?.systemLevel?.label ?? '',
+      // A module with no level set sorts **last**, not first, and stays last when the sort is
+      // reversed. Ascending, "" would otherwise lead the table with the modules that carry the
+      // least information — and this column exists to make the hierarchy readable, so the rows
+      // that are not in it belong at the end of it either way.
+      comparator: (
+        a: string,
+        b: string,
+        _nodeA: IRowNode<SearchableModuleRow>,
+        _nodeB: IRowNode<SearchableModuleRow>,
+        isDescending: boolean,
+      ) => compareSystemLevels(a, b, isDescending),
     },
   ];
 
   protected readonly allRows = computed<SearchableModuleRow[]>(() =>
     (this.api.modules.value()?.rows ?? []).map((row) => ({
       ...row,
-      searchText: normalize([row.name, row.lastModified, row.path, row.systemLevel?.label ?? ''].join(' ')),
+      searchText: normalize(
+        [
+          row.name,
+          row.lastModified,
+          row.path,
+          row.wordExportTitle,
+          row.wordExportNumber,
+          row.systemLevel?.label ?? '',
+        ].join(' '),
+      ),
     })),
   );
 

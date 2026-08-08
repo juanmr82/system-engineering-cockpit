@@ -3,11 +3,12 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { flushGridFrames } from '../../../core/grid/grid-testing';
-import { Modules } from './modules';
+import { Modules, compareSystemLevels } from './modules';
 import type { ModuleListResponse } from './modules.model';
 
-// Two modules whose names differ only by an accent and by case — the pair that proves
-// requirements-modules.md §3's "what the user sees is what gets searched" contract.
+// Three modules, deliberately out of level order and with one level unset, so the default sort
+// has something to do. Two of the names differ only by an accent and by case — the pair that
+// proves requirements-modules.md §3's "what the user sees is what gets searched" contract.
 const RESPONSE: ModuleListResponse = {
   rows: [
     {
@@ -15,6 +16,8 @@ const RESPONSE: ModuleListResponse = {
       name: 'Systemanforderungen Höhenruder',
       lastModified: '30 July 2006',
       path: '/XXX-/Level 1 - System/SRD',
+      wordExportTitle: 'Systemanforderungen Höhenruder',
+      wordExportNumber: 'D-1234-56',
       systemLevel: { code: 'L1', label: 'L1 – System of Systems' },
     },
     {
@@ -22,7 +25,30 @@ const RESPONSE: ModuleListResponse = {
       name: 'Interface Control Document',
       lastModified: '04 November 2022',
       path: '/XXX-/Level 2 - Segment/ICD',
+      // Never exported to Word: the module simply does not carry these, which is an absence and
+      // not a fault, so the cells are empty rather than saying anything.
+      wordExportTitle: '',
+      wordExportNumber: '',
       systemLevel: null,
+    },
+    {
+      ref: 'cmVmLTM',
+      name: 'Customer requirements',
+      lastModified: '12 January 2019',
+      path: '/XXX-/Level 0 - Customer/CRD',
+      wordExportTitle: 'Customer requirements document',
+      wordExportNumber: 'D-0001-00',
+      systemLevel: { code: 'L0', label: 'L0 – Customer' },
+    },
+    // A second L1, so the within-level order has something to preserve.
+    {
+      ref: 'cmVmLTQ',
+      name: 'Thermal control',
+      lastModified: '19 May 2024',
+      path: '/XXX-/Level 1 - System/TCS',
+      wordExportTitle: 'Thermal control system',
+      wordExportNumber: 'D-2000-11',
+      systemLevel: { code: 'L1', label: 'L1 – System of Systems' },
     },
   ],
 };
@@ -61,8 +87,14 @@ describe('Modules', () => {
   const levelSelects = (): HTMLSelectElement[] =>
     Array.from(fixture.nativeElement.querySelectorAll('.sec-module-level-cell__select'));
 
-  // By module rather than by position: the grid sorts on Module ascending, so row order is not
-  // fixture order, and a positional helper quietly tests the wrong row.
+  // The module names in the order the grid actually drew them.
+  const renderedNames = (): string[] =>
+    Array.from(
+      fixture.nativeElement.querySelectorAll('.sec-module-name-cell__name'),
+    ).map((cell) => (cell as HTMLElement).textContent?.trim() ?? '');
+
+  // By module rather than by position: row order is the system level, not fixture order, and a
+  // positional helper quietly tests the wrong row.
   const levelSelectFor = (moduleName: string): HTMLSelectElement =>
     require<HTMLSelectElement>(`[aria-label="System level for ${moduleName}"]`);
 
@@ -119,8 +151,8 @@ describe('Modules', () => {
     const text = renderedText();
     expect(text).toContain('Systemanforderungen Höhenruder');
     expect(text).toContain('Interface Control Document');
-    expect(text).toContain('2 shown');
-    expect(text).toContain('2 imported');
+    expect(text).toContain('4 shown');
+    expect(text).toContain('4 imported');
   });
 
   // The system level is Tier-2 data the application wrote, so the row shows the resolved label
@@ -130,7 +162,7 @@ describe('Modules', () => {
   // every option's label is in the DOM whatever is chosen.
   it('shows the resolved system level, and says so plainly when there is none', () => {
     const selects = levelSelects();
-    expect(selects).toHaveLength(2);
+    expect(selects).toHaveLength(4);
 
     const chosen = selects.map((s) => s.options[s.selectedIndex].textContent?.trim());
     expect(chosen).toContain('L1 – System of Systems');
@@ -218,5 +250,52 @@ describe('Modules', () => {
     await search('no-such-module');
 
     expect(renderedText()).toContain('No modules match "no-such-module"');
+  });
+
+  /**
+   * The table opens in system-level order, L0 first — not alphabetically by name.
+   *
+   * That is the order the modules are read in, and it is why the level column exists. The fixture
+   * arrives L1, unset, L0, L1, so a passing assertion cannot be the server's order coming through.
+   *
+   * The two L1 modules also pin the **within-level** order, which is deliberately *not* an explicit
+   * second sort: a second sorted column makes ag-grid draw its multi-sort position badges in the
+   * headers. `Array.prototype.sort` is stable and the server returns modules ordered by name, so
+   * equal levels stay alphabetical on their own — this is the assertion that says so out loud, and
+   * that would fail if either half of that stopped being true.
+   */
+  it('opens sorted by system level, lowest first, alphabetical within a level', () => {
+    expect(renderedNames()).toEqual([
+      'Customer requirements',
+      'Systemanforderungen Höhenruder',
+      'Thermal control',
+      'Interface Control Document',
+    ]);
+  });
+
+  /**
+   * A module with no level sorts last, and **stays** last when the sort is reversed.
+   *
+   * Asserted on the comparator rather than by clicking the header: ag-grid multiplies a
+   * comparator's result by -1 for a descending sort, so this is a rule about a sign, and driving
+   * it through the grid's DOM would test the grid instead. A positive result means "a after b".
+   */
+  it('sorts a module with no level last in both directions', () => {
+    expect(compareSystemLevels('L0 – Customer', 'L1 – System of Systems', false)).toBeLessThan(0);
+    expect(compareSystemLevels('', 'L4 – Component', false)).toBeGreaterThan(0);
+    // Descending: ag-grid will negate this, so a negative result is what keeps the unset row last.
+    expect(compareSystemLevels('', 'L4 – Component', true)).toBeLessThan(0);
+    expect(compareSystemLevels('L0 – Customer', '', true)).toBeGreaterThan(0);
+  });
+
+  // Two module properties, not object attributes, so they are read by name rather than discovered.
+  // A module never exported to Word carries neither and its cells stay empty (R5: an absence is
+  // not a fault, and gets no wording of its own here).
+  it('shows the Word export title and number, and leaves them empty when unset', () => {
+    const text = renderedText();
+    expect(text).toContain('Word export title');
+    expect(text).toContain('Word export number');
+    expect(text).toContain('D-1234-56');
+    expect(text).toContain('Customer requirements document');
   });
 });

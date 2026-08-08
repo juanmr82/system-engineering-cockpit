@@ -17,12 +17,17 @@ public data class SystemLevelsResponseDto(
     public val levels: List<SystemLevelOptionDto>,
 )
 
+// The Word-export title and number are :DOORSModule properties, not object attributes, so they
+// are read by name rather than discovered. Both default to "" — a module that was never exported
+// to Word simply does not carry them, which is an absence and not a fault.
 @Serializable
 public data class ModuleRowDto(
     public val ref: String,
     public val name: String,
     public val lastModified: String,
     public val path: String,
+    public val wordExportTitle: String,
+    public val wordExportNumber: String,
     public val systemLevel: SystemLevelOptionDto?,
 )
 

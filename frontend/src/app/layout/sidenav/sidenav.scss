@@ -21,7 +21,7 @@
   background: color-mix(in srgb, var(--sec-blue) 6%, white);
   border-top: var(--sec-hairline) solid var(--sec-line-soft);
   border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
-  font-size: 0.9375rem;
+  font-size: var(--sec-text-body);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;

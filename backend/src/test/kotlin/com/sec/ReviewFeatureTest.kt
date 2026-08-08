@@ -524,4 +524,25 @@ class ReviewFeatureTest {
         val placeholder = assertNotNull(reviewProjection.getItemDetail("missing-1"))
         assertNull(placeholder.id)
     }
+
+    /**
+     * An empty attribute reaches the panel as an empty *value*, never as a missing key.
+     *
+     * This is what the panel renders as *Empty*, and it is the whole of what the panel needs: the
+     * attributes **this object carries**. It deliberately does not carry the module's full
+     * attribute set — that meant a module-wide scan for attributes the object does not have, and
+     * measured against the running service it turned an 8ms panel open into 26ms.
+     *
+     * `""` and an absent key stay different things (CLAUDE.md §11): `obj-2` carries
+     * `REQ. Priorität` empty, while `obj-3` does not carry it at all.
+     */
+    @Test
+    fun `item detail keeps an empty attribute as a value, and omits one the object lacks`() = runBlocking {
+        val withEmpty = assertNotNull(reviewProjection.getItemDetail("obj-2"))
+        assertTrue(withEmpty.attributes.containsKey("REQ. Priorität"))
+        assertEquals("", withEmpty.attributes.getValue("REQ. Priorität").toString().trim('\"'))
+
+        val heading = assertNotNull(reviewProjection.getItemDetail("obj-3"))
+        assertFalse(heading.attributes.containsKey("REQ. Priorität"))
+    }
 }

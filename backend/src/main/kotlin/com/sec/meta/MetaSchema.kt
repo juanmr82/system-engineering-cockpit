@@ -1,5 +1,10 @@
 package com.sec.meta
 
+import com.sec.domain.MetaProp.ATTRIBUTE_NAME
+import com.sec.domain.NodeLabel.ATTRIBUTE_SETTING
+import com.sec.domain.NodeLabel.META
+import com.sec.domain.NodeLabel.POLICY
+import com.sec.domain.Prop.META_ID
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,34 +24,45 @@ private val logger = KotlinLogging.logger {}
  * `IF NOT EXISTS`, so this is idempotent.
  */
 public object MetaSchema {
-    // Schema changes cannot share a transaction with anything else, so each runs on its own.
-    private val STATEMENTS: List<String> = listOf(
+    /**
+     * Schema changes cannot share a transaction with anything else, so each runs on its own.
+     *
+     * The labels and property names are interpolated from the constants, the same as every
+     * statement in `graph/cypher/`; the constraint and index *names* stay literal, because those
+     * are this file's own database objects rather than graph vocabulary anything else addresses.
+     *
+     * Public so `GraphNamesTest` can check the labels in them against the constants, the same way
+     * it checks `graph/cypher/` — these statements name `:__Meta` labels too, and a typo in one
+     * creates a constraint on a label nothing else uses instead of failing.
+     */
+    public val statements: List<String> = listOf(
         """
         CYPHER 25
         CREATE CONSTRAINT meta_id_unique IF NOT EXISTS
-        FOR (m:__Meta) REQUIRE m.__metaId IS UNIQUE
+        FOR (m:$META) REQUIRE m.$META_ID IS UNIQUE
         """,
         // Serves the inverse question to EXISTING_MANDATORY_POLICIES: "which modules mark this
         // attribute mandatory" (docs/features/attribute-policy-checks.md §3). Label-property
-        // indexes are per-label, so :__Policy needs its own — :__Meta's would not be used.
+        // indexes are per-label, so the policy label needs its own — the :__Meta index would not
+        // be used for it.
         """
         CYPHER 25
         CREATE INDEX meta_policy_attribute IF NOT EXISTS
-        FOR (p:__Policy) ON (p.attributeName)
+        FOR (p:$POLICY) ON (p.$ATTRIBUTE_NAME)
         """,
         // The same inverse question for the other Shape-B kind: "which modules show this
         // attribute", asked by the summary views in REQ_REVIEW.md §9.3.
         """
         CYPHER 25
         CREATE INDEX meta_attribute_setting IF NOT EXISTS
-        FOR (s:__AttributeSetting) ON (s.attributeName)
+        FOR (s:$ATTRIBUTE_SETTING) ON (s.$ATTRIBUTE_NAME)
         """,
     )
 
     public suspend fun apply(graphDriver: GraphDriver) {
-        STATEMENTS.forEach { statement ->
+        statements.forEach { statement ->
             graphDriver.executeWrite(Query(statement)) { }
         }
-        logger.info { "Applied :__Meta schema (${STATEMENTS.size} statements)" }
+        logger.info { "Applied :$META schema (${statements.size} statements)" }
     }
 }

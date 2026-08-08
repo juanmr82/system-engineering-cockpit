@@ -72,6 +72,7 @@ class ModulesFeatureTest {
                     description: 'A description', moduleFullPath: '/Level 1/' + ${'$'}id,
                     prefix: 'PFX-', created_By: 'alice', created_On: '01-Jan-26',
                     last_Modified_By: 'bob', last_Modified_On: '12 March 2026',
+                    wordDocTitle: 'The elevator SRD', wordDocNumber: 'D-1234-56',
                     url: ${'$'}id, __objectId: 'obj-1'
                 })
                 WITH m
@@ -141,6 +142,37 @@ class ModulesFeatureTest {
         // nothing else — the module node must still be present afterwards.
         graphDriver.executeWrite(Query("CYPHER 25 MATCH (m:__Meta) DETACH DELETE m", emptyMap())) { }
         assertEquals(before, rawModuleProperties(moduleId))
+    }
+
+    /**
+     * The Modules table's two Word-export columns, and `__version` under its own wording.
+     *
+     * Both are read paths with nothing else asserting them end to end. The Word-export values are
+     * :DOORSModule properties rather than object attributes, so they are named in the statement
+     * and would come back null on a typo — silently, as an empty column.
+     *
+     * `__version` is shown as **Version**, not Baseline: a DOORS baseline is a frozen, numbered
+     * release, and this field is which snapshot an object came from. The wording lives in the
+     * alias map, so this asserts what a user reads (R5) rather than what is stored.
+     */
+    @Test
+    fun `a module row carries the Word export fields, and the detail names __version as Version`() = runBlocking {
+        val moduleId = "module-word-export"
+        seedModule(moduleId, emptyList())
+
+        val row = doorsProjection.listModules().single { it.name == moduleId }
+        assertEquals("The elevator SRD", row.wordExportTitle)
+        assertEquals("D-1234-56", row.wordExportNumber)
+
+        val detail = doorsProjection.getModuleDetail(moduleId)
+        val labels = detail?.properties?.map { it.label to it.value }.orEmpty()
+        assertTrue(
+            "Version" to "Current" in labels,
+            "__version must read as Version, with `current` rendered as Current: $labels",
+        )
+        assertTrue("Word export title" to "The elevator SRD" in labels, "$labels")
+        assertTrue("Word export number" to "D-1234-56" in labels, "$labels")
+        assertTrue(labels.none { (label, _) -> label == "Baseline" }, "Baseline is gone: $labels")
     }
 
     // The backend owns :__Meta schema and only that (CLAUDE.md §10). Without the constraint,

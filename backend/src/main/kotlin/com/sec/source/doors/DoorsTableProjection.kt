@@ -109,7 +109,7 @@ public class DoorsTableProjection(private val graphDriver: GraphDriver) {
                     itemId = tableId,
                     doorsId = record.string("tableDoorsId"),
                     objectNumber = record.string("tableObjectNumber").orEmpty(),
-                    labels = setOf(TableGeometry.TABLE_LABEL),
+                    labels = setOf(DoorsLabel.TABLE),
                 )
             }
 

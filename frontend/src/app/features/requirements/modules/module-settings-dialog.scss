@@ -10,13 +10,27 @@
   margin-bottom: 4px;
 }
 
-// A concrete height, not flex alone: the sticky headers inside the tabs need a bounded scroll
-// container to stick to, and both tabs must scroll identically (CLAUDE.md §6).
+// Fills the dialog rather than the fixed 460px it used to be. Tab 2 is now the shared attribute
+// list, and on a 78-attribute module the height is the only thing deciding how much of it is
+// visible — the same reasoning, and the same three declarations, as the review settings dialog.
+//
+// `max-height: none` is load-bearing: Material caps dialog content at 65vh whatever the dialog's
+// own height is. This is our own class on our own element, not a reach into a `.mat-mdc-*`
+// internal.
 .sec-settings__content {
-  height: 460px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   padding-top: 0;
+}
+
+// The same pair the detail panel's tabs use: the group takes the remaining height and each tab's
+// own scroll container works inside it, without a rule reaching into Material's internals.
+.sec-settings__tabs {
+  flex: 1;
+  min-height: 0;
 }
 
 .sec-settings__panel {
@@ -35,10 +49,11 @@
   @include sec.absent-text;
 
   color: var(--sec-ink-2);
-  max-width: 70ch;
+  max-width: 90ch;
 }
 
-// The table sits in its own well inside the panel, the same shape the Modules view uses.
+// The property table sits in its own well inside the panel, the same shape the Modules view uses.
+// Tab 2 has no table of its own any more — the attribute list brings its own well with it.
 .sec-settings__scroll {
   @include sec.table-well;
 }
@@ -47,21 +62,8 @@ table {
   @include sec.data-table($row-height: 34px, $header-height: 34px);
 }
 
-// Ticking this writes Tier-2 data, so it wears the application accent, never a neutral control.
-.sec-settings__attributes mat-checkbox {
-  @include sec.meta-checkbox;
-}
-
 .sec-settings__error {
   @include sec.error-panel;
 
   margin: 12px 0 0;
-}
-
-// An empty attribute set is a normal state (a sanitised export), not a failure — it gets a plain
-// message, never a bare header row that reads as a broken table (R5, §9).
-.sec-settings__empty {
-  @include sec.absent-text;
-
-  padding: 16px;
 }

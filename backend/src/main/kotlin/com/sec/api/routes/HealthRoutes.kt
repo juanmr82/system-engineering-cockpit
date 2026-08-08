@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.respondProblem
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.SystemCypher
@@ -17,11 +18,11 @@ private val logger = KotlinLogging.logger {}
 // restarts on a failed liveness probe but only withholds traffic on a failed readiness probe.
 // /health answers "the process is running"; only /ready touches Neo4j.
 public fun Route.healthRoutes(graphDriver: GraphDriver) {
-    get("/api/v1/health") {
+    get(ApiPaths.HEALTH) {
         call.respondText("ok")
     }
 
-    get("/api/v1/ready") {
+    get(ApiPaths.READY) {
         val reachable = runCatching {
             graphDriver.executeRead(Query(SystemCypher.PING)) { records -> records.isNotEmpty() }
         }.getOrElse { cause ->

@@ -1,0 +1,156 @@
+@use 'mixins' as sec;
+
+// Flex, not grid, and that is the one structural change from the shape this was extracted out of.
+// The header and every row share the same cell classes, so they line up without a table; a grid
+// would need its `grid-template-columns` restated per flag count, and this component renders two
+// columns in one dialog and three in the other.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sec-attr-settings__bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sec-attr-settings__search {
+  width: 320px;
+}
+
+.sec-attr-settings__count {
+  @include sec.stat-readout;
+}
+
+// The well holds the header and the scrolling list, so the header stays put without sticky
+// positioning and the columns cannot drift apart.
+.sec-attr-settings__table {
+  @include sec.table-well;
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.sec-attr-settings__head {
+  @include sec.field-label;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line);
+  background: var(--sec-paper);
+}
+
+.sec-attr-settings__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  min-height: 34px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+  font-size: var(--sec-text-sm);
+
+  &:hover {
+    background: var(--sec-wash);
+  }
+
+  // Ticking one of these writes Tier-2 data, so the control wears the application accent.
+  mat-checkbox {
+    @include sec.meta-checkbox;
+  }
+}
+
+// The view's own columns: shown for orientation, decided in code, so they read as settled rather
+// than as controls someone forgot to enable.
+.sec-attr-settings__row--fixed {
+  color: var(--sec-ink-2);
+  background: var(--sec-wash-cool);
+}
+
+.sec-attr-settings__cell-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+// Each flag column is as wide as its own header needs and no wider — the widths differ because
+// the words do. `flex: none` is what keeps a header and its column the same width when the name
+// column absorbs the slack.
+.sec-attr-settings__flag {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.sec-attr-settings__flag--mandatory {
+  width: 118px;
+}
+
+.sec-attr-settings__flag--visible {
+  width: 140px;
+}
+
+.sec-attr-settings__flag--verification {
+  width: 172px;
+}
+
+.sec-attr-settings__flag-label {
+  line-height: 1.3;
+}
+
+// Quiet by design: these act on everything listed, so they must be findable without inviting a
+// mis-click. Text buttons, not icon buttons, because the words are the affordance.
+.sec-attr-settings__bulk {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--sec-text-micro);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--sec-ink-3);
+
+  button {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--sec-blue-mid);
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      @include sec.focus-ring(1px);
+    }
+  }
+}
+
+.sec-attr-settings__scroll {
+  @include sec.scroll-panel;
+}
+
+.sec-attr-settings__always {
+  @include sec.field-label;
+
+  flex: none;
+}
+
+.sec-attr-settings__empty {
+  @include sec.absent-text;
+
+  padding: 16px;
+}

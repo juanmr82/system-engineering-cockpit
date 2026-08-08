@@ -92,7 +92,7 @@
 // The quiet heading over a block inside a sheet — a table, a panel, a list.
 @mixin section-title {
   margin: 0 0 14px;
-  font-size: 11px;
+  font-size: var(--sec-text-xs);
   font-weight: 600;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -341,7 +341,7 @@
   padding: 2px 7px;
   border: var(--sec-hairline) solid var(--sec-line);
   border-radius: var(--sec-radius);
-  font-size: 11px;
+  font-size: var(--sec-text-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--sec-ink-2);

@@ -246,6 +246,19 @@
               <sec.test.neo4jImage>${neo4j-image.version}</sec.test.neo4jImage>
               <api.version>${api.version}</api.version>
             </systemPropertyVariables>
+            <!--
+              application.yaml resolves "$SEC_NEO4J_USER" / "$SEC_NEO4J_PASSWORD" from the
+              environment eagerly, and fails to load at all when they are unset - deliberately, so
+              a misconfigured deployment dies at startup rather than at the first query. That makes
+              the file unloadable in a test without them, which ConfigArgsTest needs in order to
+              assert against the real packaged configuration rather than a copy of it. These are
+              placeholders: no test opens a connection with them, and every container test supplies
+              the container's own credentials.
+            -->
+            <environmentVariables>
+              <SEC_NEO4J_USER>test-user</SEC_NEO4J_USER>
+              <SEC_NEO4J_PASSWORD>test-password</SEC_NEO4J_PASSWORD>
+            </environmentVariables>
           </configuration>
         </plugin>
 

@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.decodeRef
 import com.sec.api.dto.ModuleTablesResponseDto
 import com.sec.api.respondInvalidRef
@@ -29,7 +30,7 @@ public fun Route.tableRoutes(
     doorsProjection: DoorsProjection,
     tableProjection: DoorsTableProjection,
 ) {
-    route("/api/v1/modules/{ref}/tables") {
+    route("${ApiPaths.MODULES}/${ApiPaths.REF}/tables") {
         get {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
             if (!doorsProjection.moduleExists(moduleId)) {
@@ -43,7 +44,7 @@ public fun Route.tableRoutes(
         }
     }
 
-    route("/api/v1/items/{ref}/table") {
+    route("${ApiPaths.ITEMS}/${ApiPaths.REF}/table") {
         get {
             val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
             val table = tableProjection.getTableFor(itemId)

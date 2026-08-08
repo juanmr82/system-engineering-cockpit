@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.defaultForFilePath
@@ -64,7 +65,7 @@ internal suspend fun respondPackagedUi(call: ApplicationCall): Boolean {
     if (call.request.httpMethod != HttpMethod.Get) return false
 
     val path = call.request.path()
-    if (path.startsWith("/api/")) return false
+    if (path.startsWith("${ApiPaths.PREFIX}/")) return false
 
     // A path whose last segment carries a dot is asking for a FILE, and is answered only by that
     // file. Returning index.html for a missing one - which is what a naive SPA fallback does -

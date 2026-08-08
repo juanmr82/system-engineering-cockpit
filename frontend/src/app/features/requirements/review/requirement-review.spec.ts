@@ -99,8 +99,18 @@ const OBJECTS: ModuleObjectsResponse = {
       requirementLike: false,
       attributes: { 'Object Text': 'Torque limit 40 Nm' },
     }),
+    // A requirement that refines nothing: no outgoing reference at all. The shape the "Requirements
+    // without parents" filter exists to find — either a genuine top-level requirement or one whose
+    // link was never drawn, which is the review that filter is for.
+    row({
+      ref: 'b2JqLTQ',
+      id: 'SRD-4',
+      name: 'An orphan',
+      objectNumber: '3',
+      attributes: { 'Object Text': 'The system shall be orphaned' },
+    }),
   ],
-  total: 4,
+  total: 5,
   truncated: false,
 };
 
@@ -305,8 +315,8 @@ describe('RequirementReview', () => {
   it('hides the parts of a table, and counts only what it shows', () => {
     const text = renderedText();
     expect(text).not.toContain('SRD-9');
-    expect(text).toContain('3 shown');
-    expect(text).toContain('4 in module');
+    expect(text).toContain('4 shown');
+    expect(text).toContain('5 in module');
   });
 
   // DOORS draws a table inside the main text column at its full width, with the surrounding
@@ -356,7 +366,7 @@ describe('RequirementReview', () => {
 
     expect(element().querySelector('sec-doors-table')).toBeNull();
     expect(renderedText()).toContain('SRD-1');
-    expect(renderedText()).toContain('3 shown');
+    expect(renderedText()).toContain('4 shown');
   });
 
   // ADR 0006, the ag-grid trap that costs nothing to hit and gives no sign it was hit: ag-grid
@@ -455,8 +465,9 @@ describe('RequirementReview', () => {
     // claim nothing is being checked.
     expect(renderedText()).toContain('No mandatory attributes');
     // The issues filter stays: a fixed check runs whatever the configuration, so an empty result
-    // is an honest "none found" rather than "none looked for".
-    expect(element().querySelectorAll('.sec-review__filter').length).toBe(2);
+    // is an honest "none found" rather than "none looked for". Three filters now — requirements
+    // only, objects with issues, requirements without parents.
+    expect(element().querySelectorAll('.sec-review__filter').length).toBe(3);
 
     openSpy.mockRestore();
   });
@@ -474,7 +485,7 @@ describe('RequirementReview', () => {
     expect(renderedText()).toContain('SRD-1');
     expect(renderedText()).not.toContain('SRD-2');
     expect(renderedText()).toContain('1 shown');
-    expect(renderedText()).toContain('4 in module');
+    expect(renderedText()).toContain('5 in module');
   });
 
   // §11 O4: a heading is context, not a requirement, and the filter is over loaded rows.
@@ -485,6 +496,32 @@ describe('RequirementReview', () => {
 
     expect(renderedText()).toContain('SRD-1');
     expect(renderedText()).not.toContain('SRD-2');
+  });
+
+  /**
+   * "Requirements without parents": no outgoing reference, so nothing the object refines.
+   *
+   * Three things are asserted at once because each is a way of getting it wrong. SRD-1 *has*
+   * references and every one of them is unresolved — the link was drawn, the module it points into
+   * simply has not been imported — so it is not parentless, and treating it as one would report the
+   * import queue as a requirements finding. SRD-2 is a heading and SRD-998 a table: neither ever
+   * carries a reference, so including them would return most of the module and say nothing.
+   */
+  it('finds the requirements that refine nothing, counting an unimported target as a parent', async () => {
+    const toggles = Array.from(
+      element().querySelectorAll<HTMLInputElement>('.sec-review__filter input'),
+    );
+    toggles[2].click();
+    await settle();
+
+    const text = renderedText();
+    expect(text).toContain('SRD-4');
+    expect(text).not.toContain('SRD-1');
+    expect(text).not.toContain('2.1 Scope');
+    expect(text).toContain('1 shown');
+    // The readout still names the whole module: filtering is not a claim about how many objects
+    // there are.
+    expect(text).toContain('5 in module');
   });
 
   // §5.2: editing marks the row dirty and counts it; typing the original text back is not an edit,

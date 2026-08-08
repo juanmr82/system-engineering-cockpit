@@ -1,0 +1,86 @@
+<div class="sec-attr-settings__bar">
+  <mat-form-field appearance="outline" class="sec-attr-settings__search" subscriptSizing="dynamic">
+    <mat-icon matPrefix svgIcon="search" />
+    <input
+      matInput
+      type="text"
+      placeholder="Search attributes"
+      aria-label="Search attributes"
+      [value]="search()"
+      (input)="search.set($any($event.target).value)"
+    />
+    @if (search()) {
+      <button mat-icon-button matSuffix type="button" aria-label="Clear search" (click)="search.set('')">
+        <mat-icon svgIcon="close" />
+      </button>
+    }
+  </mat-form-field>
+
+  <p class="sec-attr-settings__count">
+    @if (filtering()) {
+      <span><b>{{ filtered().length }}</b> of <b>{{ total() }}</b> attributes</span>
+    } @else {
+      <span><b>{{ total() }}</b> attributes</span>
+    }
+  </p>
+</div>
+
+<!-- The well holds the header and the scrolling list, so the header stays put without sticky
+     positioning and the columns cannot drift apart. -->
+<div class="sec-attr-settings__table">
+  <div class="sec-attr-settings__head" role="row">
+    <span role="columnheader" class="sec-attr-settings__cell-name">Attribute</span>
+    @for (flag of flags(); track flag) {
+      <span role="columnheader" class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
+        <span class="sec-attr-settings__flag-label">{{ label(flag) }}</span>
+        <!-- Bulk actions apply to the rows currently listed, which is what makes them useful
+             next to the search box: filter to "Verification", then tick all of them. -->
+        <span class="sec-attr-settings__bulk">
+          <button type="button" (click)="setAll(flag, true)">All</button>
+          <span aria-hidden="true">·</span>
+          <button type="button" (click)="setAll(flag, false)">None</button>
+        </span>
+      </span>
+    }
+  </div>
+
+  <div class="sec-attr-settings__scroll">
+    <!-- The view's own columns are hidden while searching: they are not attributes, and a
+         search that still shows five unrelated rows reads as a broken filter. -->
+    @if (!filtering()) {
+      @for (column of fixedColumns(); track column.label) {
+        <div class="sec-attr-settings__row sec-attr-settings__row--fixed" role="row">
+          <span class="sec-attr-settings__cell-name">
+            {{ column.label }}
+            <span class="sec-attr-settings__always">always shown</span>
+          </span>
+          @for (flag of flags(); track flag) {
+            <span class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
+              <mat-checkbox [checked]="column.checked[flag]" [disabled]="true" />
+            </span>
+          }
+        </div>
+      }
+    }
+
+    @for (attribute of filtered(); track attribute().value().name) {
+      <div class="sec-attr-settings__row" role="row">
+        <span class="sec-attr-settings__cell-name">{{ attribute().value().name }}</span>
+        @for (flag of flags(); track flag) {
+          <span class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
+            <mat-checkbox [formField]="flagField(attribute, flag)" />
+          </span>
+        }
+      </div>
+    } @empty {
+      <p class="sec-attr-settings__empty">
+        @if (filtering()) {
+          No attribute matches "{{ search() }}".
+        } @else {
+          This module's objects carry no attributes of their own, so there is nothing more to
+          configure.
+        }
+      </p>
+    }
+  </div>
+</div>

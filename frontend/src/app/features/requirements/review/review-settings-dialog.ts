@@ -1,16 +1,17 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { FormField, form, type FieldTree } from '@angular/forms/signals';
+import { form } from '@angular/forms/signals';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import type { ProblemDetails } from '../../../core/error/problem-details';
+import {
+  AttributeSettingsList,
+  type AttributeSettingsField,
+  type AttributeSettingsRow,
+  type FixedColumnRow,
+} from '../../../shared/attribute-settings/attribute-settings-list';
 import { SEC_MODAL_DIALOG } from '../../../shared/dialog/modal-dialog.config';
-import { matches } from '../../../shared/text/normalize';
 import { ModulesApiService } from '../modules/modules-api.service';
 import { ReviewApiService } from './review-api.service';
 
@@ -19,33 +20,16 @@ export interface ReviewSettingsDialogData {
   readonly name: string;
 }
 
-interface AttributeFormRow {
-  name: string;
-  mandatory: boolean;
-  visible: boolean;
-  verification: boolean;
-}
-
-type AttributeField = FieldTree<AttributeFormRow, number>;
-
-/** The three editable flags, so the header's bulk actions can address them by name. */
-type FlagName = 'mandatory' | 'visible' | 'verification';
-
 // The view's own columns (§5, "Fixed columns"). Not DOORS attributes, so they never come back from
 // attribute discovery — the dialog lists them itself, always shown and therefore disabled. They
 // are listed rather than merely described because a reviewer looking for "why can't I hide ID"
 // should find ID where they went looking for it.
-interface FixedColumnRow {
-  readonly label: string;
-  readonly mandatory: boolean;
-}
-
 const FIXED_COLUMNS: readonly FixedColumnRow[] = [
-  { label: 'ID', mandatory: true },
-  { label: 'Type', mandatory: false },
-  { label: 'Name', mandatory: false },
-  { label: 'References', mandatory: false },
-  { label: 'Comment', mandatory: false },
+  { label: 'ID', checked: { mandatory: true, visible: true, verification: false } },
+  { label: 'Type', checked: { mandatory: false, visible: true, verification: false } },
+  { label: 'Name', checked: { mandatory: false, visible: true, verification: false } },
+  { label: 'References', checked: { mandatory: false, visible: true, verification: false } },
+  { label: 'Comment', checked: { mandatory: false, visible: true, verification: false } },
 ];
 
 function extractErrorDetail(error: unknown): string {
@@ -64,23 +48,13 @@ function extractErrorDetail(error: unknown): string {
  * One gesture, one request, one server-side transaction (R7), and `mandatory` writes the *same*
  * stored rule the Modules dialog writes, so a change made in either is visible in the other.
  *
- * Built for the real case rather than the fixture: the reference modules carry 53 and 78
- * attributes, so the list is searchable and each column can be set for everything currently
- * listed. Bulk actions deliberately apply to the *filtered* rows — "search Verification, tick
- * every one" is the operation a reviewer actually performs.
+ * The list itself is `sec-attribute-settings-list`, shared with the Modules dialog's Object
+ * attributes tab — which shows the same rows minus **Shown in table**, because that column
+ * configures *this* view's table and nothing in the Modules view.
  */
 @Component({
   selector: 'sec-review-settings-dialog',
-  imports: [
-    FormField,
-    MatButtonModule,
-    MatCheckboxModule,
-    MatDialogModule,
-    MatFormFieldModule,
-    MatIconModule,
-    MatInputModule,
-    MatProgressBarModule,
-  ],
+  imports: [AttributeSettingsList, MatButtonModule, MatDialogModule, MatProgressBarModule],
   templateUrl: './review-settings-dialog.html',
   styleUrl: './review-settings-dialog.scss',
 })
@@ -105,9 +79,8 @@ export class ReviewSettingsDialog {
   private readonly attributes = this.modulesApi.moduleAttributes(this.data.ref);
 
   protected readonly fixedColumns = FIXED_COLUMNS;
-  protected readonly search = signal('');
 
-  private readonly model = signal<{ attributes: AttributeFormRow[] }>({ attributes: [] });
+  private readonly model = signal<{ attributes: AttributeSettingsRow[] }>({ attributes: [] });
   protected readonly settingsForm = form(this.model);
 
   protected readonly loading = computed(() => this.attributes.isLoading());
@@ -117,20 +90,10 @@ export class ReviewSettingsDialog {
   protected readonly saveError = signal<string | null>(null);
   protected readonly canSave = computed(() => this.settingsForm().dirty() && !this.saving());
 
-  // Reading the form's value keeps this reactive: ticking a box re-runs the filter, so a row never
-  // goes stale against the model it renders.
   protected readonly allRows = computed(() => this.settingsForm().value().attributes);
-  protected readonly total = computed(() => this.allRows().length);
-
-  protected readonly filtered = computed<AttributeField[]>(() => {
-    const term = this.search();
-    const rows = this.allRows();
-    return Array.from(this.settingsForm.attributes).filter((_field, index) =>
-      matches(rows[index]?.name ?? '', term),
-    );
-  });
-
-  protected readonly filtering = computed(() => this.search().trim().length > 0);
+  protected readonly fields = computed<AttributeSettingsField[]>(() =>
+    Array.from(this.settingsForm.attributes),
+  );
 
   constructor() {
     // Seeded programmatically once the resource resolves — a reset of the model rather than an edit
@@ -152,21 +115,6 @@ export class ReviewSettingsDialog {
     });
   }
 
-  /**
-   * Sets one flag on every row currently listed.
-   *
-   * `markAsDirty` is not decoration: writing through the field's value signal updates the model,
-   * but Save is gated on the form's dirty state, and a programmatic write is not an edit through a
-   * bound control. Without it the user's bulk change would be un-saveable.
-   */
-  protected setAll(flag: FlagName, value: boolean): void {
-    for (const field of this.filtered()) {
-      const target = field[flag];
-      target().value.set(value);
-      target().markAsDirty();
-    }
-  }
-
   protected async save(): Promise<void> {
     this.saving.set(true);
     this.saveError.set(null);
@@ -176,7 +124,16 @@ export class ReviewSettingsDialog {
       // view, never the payload. `systemLevel` is omitted rather than sent as null — this dialog
       // does not show it, and sending null would clear the module's classification.
       await this.reviewApi.saveSettings(this.data.ref, {
-        attributeSettings: this.allRows().map((row) => ({ ...row })),
+        // Built field by field rather than spread: Signal Forms tags each row object with a
+        // symbol key of its own. JSON.stringify drops it, so nothing reaches the wire either way —
+        // but a payload that names its four fields is the one that stays right when the row type
+        // grows a fifth.
+        attributeSettings: this.allRows().map((row) => ({
+          name: row.name,
+          mandatory: row.mandatory,
+          visible: row.visible,
+          verification: row.verification,
+        })),
       });
       this.dialogRef.close(true);
     } catch (error) {

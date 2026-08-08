@@ -14,8 +14,10 @@ const detailFor = (id: string, name: string): ItemDetail => ({
   labels: ['DOORSRequirement'],
   moduleRef: 'bW9k',
   moduleName: 'Segment',
-  properties: [{ label: 'Baseline', value: 'Current' }],
-  attributes: { 'Object Text': name },
+  properties: [{ label: 'Version', value: 'Current' }],
+  // `REQ. Priorität` is present and empty — "the attribute exists and is empty", which is not the
+  // same as absent (CLAUDE.md §11). It is listed, with its value named rather than left blank.
+  attributes: { 'Object Text': name, 'REQ. Priorität': '' },
 });
 
 const breakdownFor = (ref: string): BreakdownResponse => ({
@@ -91,6 +93,36 @@ describe('ItemDetailPanel', () => {
   it('shows the attributes first, with the breakdown a tab away', () => {
     expect(tabLabels()).toEqual(['Attributes *', 'Breakdown']);
     expect(host().textContent).toContain('The first requirement');
+  });
+
+  /**
+   * An attribute with no value is **named**, not left as a blank line.
+   *
+   * `""` from DOORS means "the attribute exists and is empty" (CLAUDE.md §11), so the row has always
+   * been in the list — but it rendered as an empty `<dd>`, a label with nothing beside it, which
+   * reads as the panel having failed to show something rather than as an empty attribute.
+   *
+   * The list is the object's own. It is deliberately *not* the module's whole attribute set: that
+   * cost a module-wide scan on every panel open for attributes the object does not have.
+   */
+  it('names an attribute whose value is empty, and lists only the object own attributes', () => {
+    const rows = Array.from(host().querySelectorAll('.sec-detail__facts--attributes > div')).map(
+      (row) => [
+        row.querySelector('dt')?.textContent?.trim(),
+        row.querySelector('dd')?.textContent?.trim(),
+      ],
+    );
+
+    expect(rows).toEqual([
+      ['Object Text', 'The first requirement'],
+      ['REQ. Priorität', 'Empty'],
+    ]);
+  });
+
+  // Never italic (CLAUDE.md §8) — the placeholder is distinguished by the non-content ink instead,
+  // which is the same substitution the `absent-text` mixin already makes.
+  it('marks an empty value by class, so it is quiet rather than italic', () => {
+    expect(host().querySelectorAll('.sec-detail__value--empty').length).toBe(1);
   });
 
   /**

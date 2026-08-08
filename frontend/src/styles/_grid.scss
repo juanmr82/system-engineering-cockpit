@@ -122,6 +122,12 @@
 .sec-grid__header-cell {
   text-transform: uppercase;
   letter-spacing: var(--sec-tracking-label);
+
+  // `wrapHeaderText` is on for every column (core/grid/sec-grid.ts), because a DOORS attribute name
+  // is a phrase and several of them differ only past the point a one-line header would clip. A
+  // header row centres a single line by setting `line-height` to the header height, and that
+  // inherits — so without this the two lines of a wrapped label are set 38px apart.
+  line-height: 1.35;
 }
 
 // Every cell, via `SEC_GRID_DEFAULT_COL_DEF.cellClass`.
@@ -162,8 +168,19 @@
 // padding survived. Two of our own classes outrank it. This is still not a rule targeting an
 // `.ag-*` internal: both selectors here are ours.
 .sec-grid .sec-grid__cell--editor {
-  display: flex;
-  align-items: stretch;
+  // **Block, not flex, and this is the pair to `inline-size: 100%` on the editor's host.**
+  //
+  // The column carries `autoHeight` now, so the row grows to fit a long comment instead of the
+  // comment scrolling inside a fixed-height box. That means ag-grid derives the row height from
+  // this cell's content — so the editor has to be *in flow*. It used to be `position: absolute;
+  // inset: 0`, which contributes no height at all and would collapse the row.
+  //
+  // The reason it was out of flow is real and has to be answered rather than ignored: under
+  // `autoHeight` ag-grid nests cell content in wrappers sized to that content, and a textarea's
+  // intrinsic width is its `cols` — 20 characters — so an in-flow editor shrank to a fraction of
+  // its cell whatever `width: 100%` said. `display: block` here is what gives the host a definite
+  // width to resolve `inline-size: 100%` against, exactly as it does for `--table` below.
+  display: block;
   padding: 0;
 
   // **Never set `position` on a cell.** ag-grid lays every cell out with `position: absolute` and
@@ -171,11 +188,6 @@
   // the cell renders at its static position instead. That is invisible while a column is the only
   // one pinned to its side — the offset is 0 — and puts the cell on top of its neighbour the
   // moment a second one joins it, which is what happened when Issues was added beside Comment.
-  //
-  // No override is needed anyway: an absolutely-positioned element is already a containing block,
-  // so the editor's `position: absolute; inset: 0` resolves against this cell exactly as intended.
-  // That is what lets it escape the content-sized wrappers ag-grid nests cell content in, which
-  // otherwise collapse a textarea to its intrinsic 20-column width whatever `width: 100%` says.
 }
 
 // --- Embedded DOORS tables ---------------------------------------------------------------------
@@ -230,7 +242,10 @@
 }
 
 @each $level, $tint, $size in (1 var(--sec-heading-1) var(--sec-text-lead)),
-  (2 var(--sec-heading-2) 15px), (3 var(--sec-heading-3) var(--sec-text-body)),
+  // 14px is the one size in the ramp with no token: it sits between --sec-text-lead and
+  // --sec-text-body, which is exactly the gap a level-2 heading needs, and a token for one use
+  // would be a token the scale does not need.
+  (2 var(--sec-heading-2) 14px), (3 var(--sec-heading-3) var(--sec-text-body)),
   (4 var(--sec-heading-4) var(--sec-text-body)), (5 var(--sec-heading-5) var(--sec-text-sm)),
   (6 var(--sec-heading-6) var(--sec-text-sm))
 {

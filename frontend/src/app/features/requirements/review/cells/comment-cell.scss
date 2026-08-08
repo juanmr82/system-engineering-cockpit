@@ -1,26 +1,28 @@
 @use 'mixins' as sec;
 
-// Pinned to the cell, which carries the positioning context (`.sec-grid__cell--editor`). Out of
-// flow on purpose: ag-grid's cell-content wrappers size to their content, and in flow this
-// collapses to the textarea's intrinsic 20-column width instead of filling the cell.
+// In flow, filling the cell's width. The pair to `display: block` on `.sec-grid__cell--editor`
+// (styles/_grid.scss): a percentage width needs a definite width to resolve against, and the block
+// cell is what supplies it. `inline-size: 100%` is a percentage and never a measured pixel width,
+// so dragging the column re-wraps the comment and the browser does the reflow.
+//
+// This was `position: absolute; inset: 0` while the column had a fixed row height. It cannot be
+// now: the column carries `autoHeight`, so ag-grid measures this cell to size the row, and an
+// out-of-flow element contributes no height at all.
 :host {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  // Stretch, not centre: the editable area is the cell, so a reviewer clicking anywhere in the
-  // cell lands in the box rather than beside it.
-  align-items: stretch;
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
 }
 
 // A spreadsheet cell, not a form field. It fills the cell edge to edge with a small inset, has no
 // border of its own, and wraps — so the comment is simply *there*, readable at a glance down the
 // column, instead of sitting in a one-line box inside a much larger cell.
 //
-// A textarea rather than an input, because the cells beside it wrap now: a comment that could not
+// A textarea rather than an input, because the cells beside it wrap: a comment that could not
 // would be the only truncated thing on the row.
 .sec-comment-cell__input {
+  display: block;
   width: 100%;
-  height: 100%;
   padding: 9px 10px;
   border: 0;
   background: transparent;
@@ -28,11 +30,16 @@
   font-size: var(--sec-text-sm);
   line-height: var(--sec-leading);
   color: var(--sec-ink);
-  // The drag handle would sit on top of the cell below it, and the cell already sizes to the row.
+  // The drag handle would sit on top of the cell below it, and the height is set from the content
+  // by the component rather than by the user.
   resize: none;
-  // A comment longer than the row its neighbours set scrolls inside the cell rather than being
-  // clipped with no way to reach the rest.
-  overflow-y: auto;
+  // The height comes from `scrollHeight`, which is only the content's height while nothing is
+  // scrolling. A scrollbar here would also mean the row was the wrong height, so it is a bug
+  // rather than a fallback.
+  overflow-y: hidden;
+  // Belt and braces with the measured height: two rows' worth, so an empty comment box is still a
+  // visible target and a one-line comment does not make its row shorter than its neighbours.
+  min-height: 46px;
 
   &::placeholder {
     color: var(--sec-ink-3);

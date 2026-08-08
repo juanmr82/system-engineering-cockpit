@@ -1,5 +1,6 @@
 package com.sec.source.doors
 
+import com.sec.domain.NodeLabel
 import com.sec.domain.TextMarkers
 
 /**
@@ -28,16 +29,9 @@ public object DoorsChecks {
      * DOORSTBD counts: a sanitised export blanks `Object Type`, so every object imports as TBD and
      * excluding it would empty the table on exactly the fixtures people share (CLAUDE.md §10).
      */
-    public val requirementLikeTypes: Set<String> = setOf("DOORSRequirement", "DOORSTBD")
+    public val requirementLikeTypes: Set<String> = setOf(DoorsLabel.REQUIREMENT, DoorsLabel.TBD)
 
-    public val structuralTypes: Set<String> = setOf("DOORSTable", "DOORSTableRow", "DOORSTableCell")
-
-    public const val TBD_LABEL: String = "DOORSTBD"
-
-    /** The DOORS attribute the type labels are derived from. */
-    public const val OBJECT_TYPE_ATTRIBUTE: String = "Object Type"
-
-    public const val UNRESOLVED_LABEL: String = "__UNDEFINED"
+    public val structuralTypes: Set<String> = DoorsLabel.tableStructure
 
     /**
      * Table structure is exempt from the fixed TBD check because DOORS genuinely does not type the
@@ -45,14 +39,14 @@ public object DoorsChecks {
      * an object no import has reached has no `Object Type` to be wrong — reporting either would be
      * reporting on the importer's own bookkeeping.
      */
-    private val tbdCheckExclusions: Set<String> = structuralTypes + UNRESOLVED_LABEL
+    private val tbdCheckExclusions: Set<String> = structuralTypes + NodeLabel.UNDEFINED
 
     /**
      * The wording a reviewer reads. "Object Type" is the DOORS attribute the label came from and
      * "TBD" is that label's alias, so this sentence is displayable under R5 — no `DOORSTBD` and no
      * `__`-prefixed name reaches it.
      */
-    public const val TBD_ISSUE: String = "Object Type shall not be TBD"
+    public const val TBD_ISSUE: String = "${DoorsAttr.OBJECT_TYPE} shall not be TBD"
 
     /** One mandatory-attribute rule: which attribute, and which objects it applies to. */
     public data class MandatoryPolicy(
@@ -67,7 +61,7 @@ public object DoorsChecks {
         labels.any { it in structuralTypes }
 
     public fun isPlaceholder(labels: Collection<String>): Boolean =
-        labels.contains(UNRESOLVED_LABEL)
+        labels.contains(NodeLabel.UNDEFINED)
 
     /**
      * The absent-or-blank rule, in one place because three checks depend on agreeing about it.
@@ -99,7 +93,7 @@ public object DoorsChecks {
         labels: List<String>,
         props: Map<String, Any?>,
     ): List<String> = buildList {
-        if (labels.contains(TBD_LABEL) && labels.none { it in tbdCheckExclusions }) {
+        if (labels.contains(DoorsLabel.TBD) && labels.none { it in tbdCheckExclusions }) {
             add(TBD_ISSUE)
         }
         addAll(missingMandatory(policies, labels, props))
@@ -151,7 +145,7 @@ public object DoorsChecks {
     ): List<String> {
         val carrying = TextMarkers.attributesCarrying(props)
         return if (isStructural(labels)) {
-            carrying.filterNot { it == OBJECT_TYPE_ATTRIBUTE }
+            carrying.filterNot { it == DoorsAttr.OBJECT_TYPE }
         } else {
             carrying
         }

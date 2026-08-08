@@ -30,18 +30,6 @@ import kotlin.math.roundToInt
  */
 public object TableGeometry {
 
-    /**
-     * The only DOORS attribute name this feature is allowed to spell out (§9), here so it is
-     * greppable when a module turns up that names it differently.
-     */
-    public const val OBJECT_TEXT: String = "Object Text"
-
-    // Structural labels. State channel only — none of these strings reaches a user (R5); the
-    // wording comes from Aliases.typeLabels.
-    public const val TABLE_LABEL: String = "DOORSTable"
-    public const val TABLE_ROW_LABEL: String = "DOORSTableRow"
-    public const val TABLE_CELL_LABEL: String = "DOORSTableCell"
-
     /** The header row is the first one (§3.4). Bold in DOORS. */
     private const val HEADER_ROW_NUMBER = 1
 
@@ -186,7 +174,7 @@ public object TableGeometry {
         var rowsSoFar = 0
 
         for (child in source.children) {
-            if (TABLE_ROW_LABEL in child.node.labels) {
+            if (DoorsLabel.TABLE_ROW in child.node.labels) {
                 rows += child
                 rowsSoFar++
                 continue
@@ -205,7 +193,7 @@ public object TableGeometry {
                     "It is drawn as a full-width band in its document-order position.",
                 child.node,
             )
-            if (TABLE_LABEL in child.node.labels) {
+            if (DoorsLabel.TABLE in child.node.labels) {
                 anomalies += nestedTable(child.node)
             }
         }
@@ -213,7 +201,7 @@ public object TableGeometry {
         // A nested table hangs off a cell, so it is found on the way down rather than here.
         source.children
             .flatMap { it.children }
-            .filter { TABLE_LABEL in it.labels }
+            .filter { DoorsLabel.TABLE in it.labels }
             .forEach { anomalies += nestedTable(it) }
 
         return rows to bands
@@ -306,7 +294,7 @@ public object TableGeometry {
 
         row.source.children.forEachIndexed { index, cell ->
             // A nested table is reported, not laid out as a cell of its parent.
-            if (TABLE_CELL_LABEL !in cell.labels) {
+            if (DoorsLabel.TABLE_CELL !in cell.labels) {
                 anomalies += anomaly(
                     TableAnomalyKind.UNEXPECTED_TABLE_CHILD,
                     TableAnomalySeverity.WARN,

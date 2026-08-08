@@ -36,6 +36,16 @@ import type { ModuleObjectsResponse, ReviewComment, ReviewRow } from './review.m
 // treatment rather than fading into the body text it is meant to introduce.
 const MAX_HEADING_LEVEL = 6;
 
+// The detail panel's width, in pixels. The minimum is where the label column of the attribute
+// list stops leaving room for a value; the maximum is what still leaves the table usable, which is
+// the whole reason the panel is beside it rather than over it.
+const PANEL_WIDTH_DEFAULT = 380;
+const PANEL_WIDTH_MIN = 280;
+const PANEL_WIDTH_MAX = 900;
+// One keyboard press of the separator. Coarse enough to cross the range in a sensible number of
+// presses, fine enough to land on a width you meant.
+const PANEL_WIDTH_STEP = 24;
+
 function extractErrorDetail(error: unknown): string {
   if (error instanceof HttpErrorResponse && error.error) {
     const problem = error.error as Partial<ProblemDetails>;
@@ -56,8 +66,10 @@ function extractErrorDetail(error: unknown): string {
  * The table is ag-grid Community (ADR 0006). It was a CSS grid inside a CDK viewport until two
  * real modules arrived carrying 78 and 53 attributes, at which point the identity of a row and
  * the comment box were both scrolled off the right-hand edge and there was no resize and no sort.
- * ID is pinned left and Comment pinned right, so neither can leave the screen however far the
- * attributes run.
+ * **ID is pinned left; nothing is pinned right.** Issues and Comment were, and they scroll now:
+ * two pinned columns took 470px out of the scrollable area, which squeezed the Description column
+ * — the one holding the prose — between two fixed blocks. They keep their place as the last two
+ * columns instead.
  *
  * The comment buffer is this component's own state and dies with it (R7): no store, no staging
  * layer, no global save. Because a table *can* be navigated away from, unlike a modal, this view
@@ -139,7 +151,47 @@ export class RequirementReview {
   /** Narrows the table to objects a consistency check found something wrong with. */
   protected readonly issuesOnly = signal(false);
 
+  /**
+   * Narrows the table to requirements with no outgoing `refersTo` — nothing they refine.
+   *
+   * An outgoing `refersTo` reads as *refines*: `A -[:refersTo]-> B` means A refines B, which is the
+   * convention the Breakdown tab states in words (CLAUDE.md R5). So a requirement with none is one
+   * that decomposes nothing above it — either a genuine top-level requirement or one whose link was
+   * never drawn, and telling those apart is the review this filter exists for.
+   *
+   * **Restricted to requirement-like objects**, whatever "Requirements only" is set to. Headings,
+   * information objects and table structure never carry a `refersTo`, so without the restriction
+   * the filter would return most of the module and say nothing.
+   *
+   * Unresolved targets still count as a parent: the link *was* drawn, the module it points into
+   * simply has not been imported. Reporting those as parentless would be a finding about the import
+   * queue dressed up as a finding about the requirement.
+   */
+  protected readonly withoutParents = signal(false);
+
   protected readonly selectedItem = signal<string | null>(null);
+
+  /**
+   * How wide the detail panel is, dragged by the separator between it and the table.
+   *
+   * A fixed 380px was too narrow for an object carrying a long `Object Text` and too wide for one
+   * carrying almost nothing, and which of those is on screen changes with every click.
+   *
+   * **Component state, not a stored preference.** It outlives opening and closing the panel, which
+   * is what makes dragging it worth doing, and dies with the view. Persisting it would mean browser
+   * storage — which CLAUDE.md §2 does sanction for exactly this kind of per-user, per-machine
+   * preference — but no view in this application writes there yet, and starting is a decision worth
+   * making deliberately rather than as a side effect of a resize handle.
+   */
+  protected readonly panelWidth = signal(PANEL_WIDTH_DEFAULT);
+
+  // The separator reports its own range, so a screen reader reads "380 of 280 to 900" rather than
+  // a bare number with nothing to measure it against.
+  protected readonly panelWidthMin = PANEL_WIDTH_MIN;
+  protected readonly panelWidthMax = PANEL_WIDTH_MAX;
+
+  /** Where the pointer and the panel edge were when the drag began; null when not dragging. */
+  private panelDragFrom: { readonly x: number; readonly width: number } | null = null;
 
   /** True while any column carries a sort, so the reset control can say whether it does anything. */
   protected readonly sorted = signal(false);
@@ -370,11 +422,15 @@ export class RequirementReview {
       },
       {
         colId: 'issues',
-        // Sits immediately before Comment, and pinned with it: a reviewer reading down the
-        // Comment column is the person who needs to know the object is incomplete, and putting
-        // the finding next to the box where they respond to it saves the scroll back.
+        // Second from last, immediately before Comment: a reviewer reading down the Comment column
+        // is the person who needs to know the object is incomplete, and the finding beside the box
+        // where they respond to it saves the scroll back.
+        //
+        // **No longer pinned.** Pinning it and Comment to the right kept both on screen at any
+        // horizontal scroll, at the cost of two columns' width off the scrollable area — which on a
+        // module with 78 attributes left the Description column squeezed between two fixed blocks.
+        // They now scroll with everything else and simply arrive last.
         headerName: 'Issues',
-        pinned: 'right',
         width: 190,
         sortable: false,
         cellRenderer: IssuesCell,
@@ -386,20 +442,21 @@ export class RequirementReview {
       {
         colId: 'comment',
         headerName: 'Comment',
-        // The second column that must never leave the screen. Reading a requirement and writing
-        // the comment on it is the whole job, and with fourteen columns the box sat about nine
-        // columns off the right-hand edge.
-        pinned: 'right',
+        // Last, and no longer pinned — see the note on Issues above.
         width: 280,
         sortable: false,
         cellRenderer: CommentCell,
-        // The one column that opts out of the shared wrap/autoHeight defaults, and it has to.
-        // With `autoHeight` ag-grid nests the cell's content in a flex wrapper sized to that
-        // content, and a textarea's intrinsic width is its `cols` — 20 characters — so the editor
-        // collapsed to half its cell instead of filling it. Nothing is lost: a textarea wraps its
-        // own text, and the row is already as tall as the wrapping columns beside it made it.
-        wrapText: false,
-        autoHeight: false,
+        // `autoHeight` on, like every other column, so a comment longer than the requirement beside
+        // it grows the row instead of scrolling inside a box the reviewer cannot see the bottom of.
+        //
+        // This column used to opt out, and the reason it had to is worth keeping: under `autoHeight`
+        // ag-grid nests the cell's content in wrappers sized to that content, and a textarea's
+        // intrinsic width is its `cols` — 20 characters — so the editor collapsed to a fraction of
+        // its cell. The fix is the one DOORS_TABLES.md already paid for on the table cell: the cell
+        // is `display: block` and the renderer's host is `inline-size: 100%`, so the width comes
+        // from the cell rather than from the content (styles/_grid.scss). `wrapText` is left off:
+        // a textarea wraps its own text, and the property only affects text ag-grid lays out itself.
+        autoHeight: true,
         // Not `--custom`: the comment editor fills its cell edge to edge, so this cell has no
         // padding of its own at all — the editor supplies it (§5.2).
         cellClass: 'sec-grid__cell sec-grid__cell--editor',
@@ -450,10 +507,13 @@ export class RequirementReview {
     const term = normalize(this.debouncedSearch.value() ?? '');
     const requirementsOnly = this.requirementsOnly();
     const issuesOnly = this.issuesOnly();
+    const withoutParents = this.withoutParents();
     return this.allRows().filter(
       (entry) =>
         (!requirementsOnly || entry.row.requirementLike) &&
         (!issuesOnly || entry.row.issues.length > 0) &&
+        (!withoutParents ||
+          (entry.row.requirementLike && entry.row.references.outgoing.length === 0)) &&
         (!term || entry.searchText.includes(term)),
     );
   });
@@ -524,6 +584,45 @@ export class RequirementReview {
   protected resetSort(): void {
     this.gridApi?.applyColumnState({ defaultState: { sort: null } });
     this.sorted.set(false);
+  }
+
+  // --- Detail panel width -----------------------------------------------------------------------
+
+  /**
+   * Pointer events rather than mouse events, and pointer *capture* rather than a document listener.
+   *
+   * Capture is what keeps the drag working when the pointer leaves the 8px handle, which it does
+   * immediately — and it means the move and up events arrive on the handle itself, so there is no
+   * global listener to attach, forget to remove, or fire while another view is on screen.
+   */
+  protected onPanelResizeStart(event: PointerEvent, handle: HTMLElement): void {
+    handle.setPointerCapture(event.pointerId);
+    this.panelDragFrom = { x: event.clientX, width: this.panelWidth() };
+    // Otherwise the browser starts a text selection across the table under the pointer.
+    event.preventDefault();
+  }
+
+  protected onPanelResizeMove(event: PointerEvent): void {
+    const from = this.panelDragFrom;
+    if (from) {
+      // Dragging left widens the panel: it is the right-hand edge of the table being moved.
+      this.setPanelWidth(from.width - (event.clientX - from.x));
+    }
+  }
+
+  protected onPanelResizeEnd(): void {
+    this.panelDragFrom = null;
+  }
+
+  /** The keyboard half of the separator, so the panel is resizable without a pointer. */
+  protected nudgePanelWidth(steps: number): void {
+    this.setPanelWidth(this.panelWidth() + steps * PANEL_WIDTH_STEP);
+  }
+
+  private setPanelWidth(width: number): void {
+    this.panelWidth.set(
+      Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, Math.round(width))),
+    );
   }
 
   // --- Module selection -------------------------------------------------------------------------

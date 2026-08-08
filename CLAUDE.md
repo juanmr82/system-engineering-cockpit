@@ -260,7 +260,7 @@ Reference alias map — extend it here when you add a field, do not invent alias
 |---|---|
 | `__name` | **Name** (contextually *Title* for documents, *Element* for MBSE). **Not shown at all in the Req review table** — that column is **Description**, built from source attributes, see below |
 | `objectNumber` + `Object Heading` (a heading) / `Object Text` (anything else) | **Description** — the Req review table's mandatory third column (`docs/REQ_REVIEW.md` §5). Source data, so it is displayed; the two attributes it consumes are marked `fixed` by the API and cannot also be chosen as columns of their own |
-| `__version` | **Baseline** — `"current"` renders as *Current* |
+| `__version` | **Version** — `"current"` renders as *Current*. Deliberately **not** *Baseline*: a DOORS baseline is a frozen, numbered release of a module, which this is not, and which will need the word when it arrives |
 | `__id`, `__objectUrl` | never shown; opaque `:ref` in routes |
 | `__sortKey` | never shown; silently drives default sort order |
 | `__child` | never shown; silently drives the tree |
@@ -276,6 +276,7 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | the item a Breakdown tree was opened for | **The requirement you opened** — on every copy of it, in words as well as in `--sec-subject` |
 | a `:__Classification` `systemLevel` that is not set | the level badge stays, **empty and outlined**, with *No system level set for this module* on hover. Dropping it un-aligns every id in the column and reads as a fault rather than an absence |
 | `id` in the detail panel | the panel's **heading**. `__name` is its second line — for a requirement that is `Object Text`, which a sanitised export makes identical on every object |
+| an attribute the object carries with **no value** (`""`) | **Empty**, in `--sec-ink-3`, upright — never italic (§8). The row belongs in the list, because `""` means "exists and is empty"; leaving the value blank reads as the panel having failed to show something (`docs/REQ_REVIEW.md` §7) |
 | an item with no incoming `refersTo` in the closure | **No incoming links** — never "no upstream links" |
 | `:__AttributeSetting` `verification: true`, in the Breakdown tab | the **Verification** box; with none flagged, *No verification attribute defined yet for this requirement* — quietly, because it is an absence of configuration, not a finding |
 | `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting** |
@@ -363,6 +364,16 @@ changes when a release adds a source, and putting it in the graph would mean an
 admin-gated write path, an exposure question, and a schema — for something a code review
 already handles better. It stays in `backend/src/main/resources/application.yaml`,
 served read-only at `GET /api/v1/config/navigation`.
+
+**Deployment configuration overlays that file; it never replaces it.** `application.yaml` shipped
+in the jar holds every default and all the plumbing; `-config=<path>` at startup supplies only what
+one environment changes, and `config/ConfigArgs.kt` is what makes that a merge rather than a
+replacement (Ktor's own `-config=` replaces). A per-key `-P:neo4j.uri=…` overrides on top, for a
+container that must not write a file. **An operator's file never contains a module name, a port it
+did not mean to change, or anything a code review owns** — if a deployment file has to state
+`ktor.application.modules`, something has regressed. Credentials stay `$SEC_NEO4J_USER`-style
+environment lookups, which fail to load when unset, on purpose. Adding a REST client is a new
+section in the packaged file, not a new mechanism.
 
 The one exception to "no browser storage" in §11 is this table's last row. That rule
 exists to stop graph data being cached client-side; a boolean about a drawer is not graph
@@ -492,6 +503,7 @@ provides it. Prefer fewer libraries over convenience wrappers.
 com.sec
 ├── Application.kt              ← module wiring only, no logic
 ├── config/                     ← typed config from application.yaml + env
+│                                 ConfigArgs.kt makes -config= an overlay, not a replacement (§2)
 ├── graph/
 │   ├── GraphDriver.kt          ← single Driver instance, app-lifecycle scoped
 │   ├── Read.kt / Write.kt      ← the ONLY places a session is opened
@@ -499,15 +511,60 @@ com.sec
 ├── domain/                     ← SEItem, meta model, source-agnostic
 ├── source/                     ← per-source projections (doors/, windchill/, cameo/)
 ├── meta/                       ← R2 write path, guarded
+├── domain/GraphNames.kt        ← every source-agnostic graph name (ADR 0010) — see below
 ├── domain/Aliases.kt           ← R5 alias map, single source of truth
+├── source/doors/DoorsNames.kt  ← every DOORS name; one such file per source
 ├── meta/MetaSchema.kt          ← :__Meta constraints/indexes, applied at startup (§7)
 ├── api/
+│   ├── ApiPaths.kt             ← /api and /api/v1, once — the routes and the SPA fallback
+│   │                             both depend on them and must not drift
 │   ├── Routes.kt               ← table of contents: registers the files below, nothing else
 │   ├── routes/                 ← one file per feature — ModuleRoutes.kt, ConfigRoutes.kt, ...
 │   ├── ProblemPages.kt         ← StatusPages → RFC 9457, the only error-to-wire mapping
 │   └── dto/                    ← @Serializable wire types
 └── security/                   ← auth, the ad-hoc Cypher guard
 ```
+
+### Names: one declaration each (ADR 0010)
+
+**No Kotlin code addresses the graph with a string literal.** Property names, labels, relationship
+types, `__metaKind` values and meta payload keys each have exactly one declaration:
+
+- `domain/GraphNames.kt` — `Prop`, `Rel`, `NodeLabel`, `MetaKind`, `MetaProp`, `MetaValue`. The
+  `__` namespace, `:SEItem`, `:__UNDEFINED`, all of Tier 2. Source-agnostic, imports nothing.
+- `source/doors/DoorsNames.kt` — `DoorsAttr`, `DoorsModuleAttr`, `DoorsProp`, `DoorsRel`,
+  `DoorsLabel`. **A new source adds its own names file; it never edits another's.**
+
+`props["__id"]` and `labels.contains("DOORSTBD")` are defects. So is a second constant for a name
+that already has one — `__UNDEFINED` was declared twice before this rule existed.
+
+**The Cypher interpolates every one of them — nothing addresses the graph by literal.** Renaming a
+name is one edit, in the file that declares it. Use **single-name imports** so the statements stay
+readable; the constant's simple name is the graph name in SCREAMING_SNAKE, and a collision between
+two vocabularies is resolved by aliasing the import, never by qualifying it in the string.
+
+```kotlin
+import com.sec.domain.Prop.MODULE_URL                       // -> __moduleUrl
+import com.sec.source.doors.DoorsLabel.OBJECT as DOORS_OBJECT
+
+MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})      // a name, then a parameter
+```
+
+`const val` initialisers may interpolate other `const val`s, so the statements stay compile-time
+constants. Two things are deliberately **not** interpolated: `MetaSchema`'s constraint and index
+names, which are its own database objects, and query **parameter** names, which are a contract
+between one statement and its one call site.
+
+**`GraphNamesTest` is what makes that stick, and it must keep passing.** Two checks in opposite
+directions: every name in a *compiled* statement is declared, **and** no graph name appears as a
+literal in a statement's *source* (comments stripped first — comments are where these names belong).
+The second is the one that matters, because a hand-written `__id` compiles to the identical string
+and the first check cannot see it. Adding a Cypher file means adding its statements to that test; a
+completeness check fails if you forget.
+
+**Test fixtures deliberately keep the literals.** A fixture that writes `"Object Text"` and asserts
+the projection read it independently pins the constant's value; building the fixture from the
+constant too would let a wrong constant pass.
 
 ### Non-negotiables
 
@@ -785,7 +842,21 @@ list inside a dialog — it is *data* tables this rule is about.
 - **A cell that must fill its width cannot be a flex box.** `--custom` makes a cell `display: flex`
   so a chip sits at the top of a tall row, and a flex item is sized to its content — so a grid whose
   tracks are fractions collapses to its longest word. `display: block` on the cell, via the
-  two-of-our-own-classes override, plus `inline-size: 100%` on the renderer's host.
+  two-of-our-own-classes override, plus `inline-size: 100%` on the renderer's host. **A `<textarea>`
+  hits this too and harder**: its intrinsic width is its `cols` — 20 characters — so it shrinks to a
+  fraction of its column whatever `width: 100%` says. The same pair fixes both.
+- **A renderer whose height must set the row's has to be in flow.** `position: absolute; inset: 0`
+  is the right shape for a control filling a fixed-height cell, and the wrong one the moment the
+  column carries `autoHeight`: an out-of-flow element contributes no height, so the row collapses.
+  Pick one — a fixed row height and an escaping renderer, or `autoHeight` and a renderer in flow.
+- **Headers wrap by default** (`wrapHeaderText` + `autoHeaderHeight` in `SEC_GRID_DEFAULT_COL_DEF`).
+  A DOORS attribute name is a phrase, and several of a module's differ only past the point a
+  one-line header clips them. Set the header cell's `line-height` too: a header row centres a single
+  line by setting `line-height` to the header height, and that inherits into the wrapped one.
+- **Pin only what a reviewer reads *from* while scrolled elsewhere.** A pinned column takes its
+  width out of the scrollable area permanently. Row identity qualifies; a cell that is empty most of
+  the time does not — Issues and Comment were pinned right and are not any more
+  (`docs/REQ_REVIEW.md` §5).
 - **Do not use ag-grid's cell editing for Tier-2 data.** An editable cell is a second staging
   concept sitting next to the view's own buffer, and R7 allows exactly one. A custom cell renderer
   holding a real control, writing to the component's own `ref`-keyed buffer, is the shape.
@@ -1065,12 +1136,18 @@ section as the contract the shell must continue to satisfy.
   YAML.
 - Ship a hardcoded default `NavGroup[]` in the frontend as the fallback when the config
   endpoint fails. A broken config file must not produce an app with no navigation.
-- Group headers (Requirements, Documents, CAMEO) are the prominent level: `0.9375rem`,
+- Group headers (Requirements, Documents, CAMEO) are the prominent level: `--sec-text-body`,
   semibold, Airbus blue, on a faint tinted background (`color-mix(in srgb, var(--sec-blue)
   8%, white)` — stays in near-white territory, never a saturated fill). Not clickable
   accordions, unless the group grows past ~6 items.
-- Sub-items are the quiet level: `0.8125rem` via the sidenav-scoped
-  `--mat-list-list-item-label-text-size` override, one step down from the group header.
+- Sub-items are the quiet level: `--sec-text-sm`, via the `--mat-list-list-item-label-text-size`
+  override in `_theme.scss`, one step down the scale from the group header.
+
+  Both were fixed `rem` values (`0.9375rem` / `0.8125rem`) and are tokens now, which is the general
+  rule: **no component states a font size of its own.** Every size in the application comes from
+  `--sec-text-*`, which is what made stepping the whole scale down one notch a single edit rather
+  than a sweep. The one size deliberately *not* on the ramp is `--sec-text-label`, held at 10px by
+  rule 4 of §8.
 - Active route is marked with a 3px left rule in `--sec-blue-mid` plus a pale background —
   not a filled pill. M3 nav-list items default `--mat-list-active-indicator-shape` to
   `corner-full` (a pill); the sidenav overrides it to `0` so hover/focus/active states are
@@ -1144,7 +1221,8 @@ inside the shell, not a bare page.
   current API, not a remembered one. Angular 22, Ktor 3.5 and Neo4j driver 6 all changed
   APIs recently.
 - Search for an existing helper before adding one. This codebase should have exactly one
-  graph read path, one graph write path, one meta write path, one HTTP client.
+  graph read path, one graph write path, one meta write path, one HTTP client — and exactly
+  one declaration of every graph name (§5, ADR 0010).
 
 **While writing code**
 
@@ -1196,6 +1274,8 @@ inside the shell, not a bare page.
   `__child` / `__sortKey` (R1–R3).
 - Write anything at all onto a node an importer created (R1).
 - Surface a `__`-prefixed name to the user, or put a raw `__id` in a URL (R5).
+- Write a graph name as a string literal in Kotlin, or declare a second constant for one
+  that already has one (§5, ADR 0010).
 - Add a global save button, a staging layer, or any cross-view dirty state (R7).
 - Introduce a second persistence mechanism — no side database, no local cache of graph
   state, no browser storage of graph data.

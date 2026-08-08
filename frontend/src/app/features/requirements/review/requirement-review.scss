@@ -63,7 +63,7 @@
   border-radius: var(--sec-radius);
   background: var(--sec-highlight-meta);
   color: var(--sec-paper);
-  font-size: 10px;
+  font-size: var(--sec-text-micro);
   font-weight: 700;
   line-height: 15px;
   font-variant-numeric: tabular-nums;
@@ -158,7 +158,41 @@
   @include sec.error-panel;
 }
 
+// The width is bound from the component, so the panel can be dragged wider for an object carrying
+// a long statement and narrower for one carrying almost nothing. Only `flex: none` belongs here —
+// without it the panel would be sized by the flex container rather than by the bound width.
 .sec-review__panel {
-  width: 380px;
   flex: none;
+}
+
+// The drag handle, living inside the 14px gap rather than adding to it: 8px wide with a -3px
+// margin each side leaves the gap unchanged, so turning the panel on does not shift the table.
+//
+// The visible mark is a hairline down the middle, in the same ink as every other separation in the
+// system (CLAUDE.md §8, rule 1). It thickens to the mid blue on hover and focus, which is the only
+// thing that says it is draggable — a permanent grip texture would be chrome on a boundary the
+// reviewer looks past most of the time.
+.sec-review__resizer {
+  flex: none;
+  align-self: stretch;
+  width: 8px;
+  margin-inline: -3px;
+  cursor: col-resize;
+  // Without this the browser claims the gesture for panning and the drag never starts on a
+  // touchscreen or a precision touchpad.
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+
+  &::after {
+    content: '';
+    width: var(--sec-hairline);
+    background: var(--sec-line);
+  }
+
+  &:hover::after,
+  &:focus-visible::after {
+    width: 2px;
+    background: var(--sec-blue-mid);
+  }
 }

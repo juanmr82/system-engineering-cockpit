@@ -11,7 +11,9 @@
   } @else if (loadError()) {
     <p class="sec-settings__error">Couldn't load this module's settings. Close and try again.</p>
   } @else {
-    <mat-tab-group [preserveContent]="true" (selectedTabChange)="onTabChange($event)">
+    <!-- preserveContent keeps tab 2's search term while the user looks at tab 1, and keeps the
+         sticky header on tab 1's table measured (CLAUDE.md §6). -->
+    <mat-tab-group class="sec-settings__tabs" [preserveContent]="true">
       <mat-tab label="Module properties">
         <div class="sec-settings__panel">
           <mat-form-field appearance="outline" class="sec-settings__level">
@@ -44,30 +46,12 @@
       <mat-tab label="Object attributes">
         <div class="sec-settings__panel">
           <p class="sec-settings__hint">
-            Mandatory attributes are checked on the requirements of this module. Headings,
-            information objects and tables are not checked.
+            Mandatory attributes are checked on the requirements of this module — headings,
+            information objects and tables are not checked. Verification attributes are the ones
+            that show how a requirement will be met.
           </p>
 
-          <div class="sec-settings__scroll">
-            @if (attributeFields().length === 0) {
-              <p class="sec-settings__empty">No requirement attributes</p>
-            } @else {
-              <table #attributesTable mat-table [dataSource]="attributeFields()" class="sec-settings__attributes">
-                <ng-container matColumnDef="name">
-                  <th mat-header-cell *matHeaderCellDef>Attribute name</th>
-                  <td mat-cell *matCellDef="let attr">{{ attr().value().name }}</td>
-                </ng-container>
-                <ng-container matColumnDef="mandatory">
-                  <th mat-header-cell *matHeaderCellDef>Mandatory attribute</th>
-                  <td mat-cell *matCellDef="let attr">
-                    <mat-checkbox [formField]="attr.mandatory" />
-                  </td>
-                </ng-container>
-                <tr mat-header-row *matHeaderRowDef="attributeColumns; sticky: true"></tr>
-                <tr mat-row *matRowDef="let row; columns: attributeColumns"></tr>
-              </table>
-            }
-          </div>
+          <sec-attribute-settings-list [fields]="fields()" [flags]="flags" />
         </div>
       </mat-tab>
     </mat-tab-group>

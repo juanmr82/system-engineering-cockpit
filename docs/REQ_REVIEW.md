@@ -63,6 +63,32 @@ Save/Cancel, sized in the dialog itself.
 - If a module ever exceeds a few thousand objects this moves server-side; the API shape in §8
   already allows it (`q` parameter), the frontend simply does not use it yet.
 
+### 4.1 Filter checkboxes
+
+Three, in the same bar, all narrowing the loaded rows and none re-querying. They combine with each
+other and with the search, and none of them touches the "n in module" readout — filtering is not a
+claim about how many objects there are.
+
+| Checkbox | Keeps | Notes |
+|---|---|---|
+| **Requirements only** | `requirementLike` | headings, information objects and table structure are context, not requirements (§11 O4) |
+| **Objects with issues** | a non-empty Issues list | unconditional — see §5.3 |
+| **Requirements without parents** | `requirementLike` **and** no outgoing `refersTo` | below |
+
+**Requirements without parents.** An outgoing `refersTo` reads as *refines* — `A -[:refersTo]-> B`
+means A refines B, the display convention the Breakdown tab states in words (CLAUDE.md R5) — so a
+requirement with none decomposes nothing above it. That is either a genuine top-level requirement or
+one whose link was never drawn, and telling those two apart is the review this filter exists for.
+Two parts of the rule are not negotiable:
+
+- **Requirement-like only**, whatever *Requirements only* is set to. Headings, information objects
+  and table structure never carry a `refersTo`, so without the restriction the filter returns most
+  of the module and says nothing.
+- **An unresolved target still counts as a parent.** The link *was* drawn; the module it points into
+  simply has not been imported yet. Reporting those as parentless would be a finding about the
+  import queue dressed up as a finding about the requirement — the same trap §5.1 guards against
+  for incoming links.
+
 ---
 
 ## 5. Table (4)
@@ -74,8 +100,8 @@ ID │ Type │ Description │ <visible attributes, module attribute order> │
 ```
 
 **References, Issues and Comment are always the last three, in that order**, regardless of the
-settings dialog. `Issues` and `Comment` are pinned right together — the finding and the box where
-a reviewer responds to it belong side by side.
+settings dialog. The finding and the box where a reviewer responds to it belong side by side, and
+that is what the *order* is for — neither is pinned. See the note under Behaviour.
 
 ### Fixed columns
 
@@ -115,10 +141,23 @@ Consequences that are part of the contract:
   grid inside a CDK viewport until two real modules arrived carrying 78 and 53 attributes; at
   fourteen columns the identity of a row and the comment box had both left the screen, and there
   was no resize and no sort. What that decision buys, and what this section now requires:
-  - **ID is pinned left and Comment is pinned right.** Neither may leave the screen however far
-    the attributes run. These two pins are the whole reason for the change; do not unpin either
-    one to make room.
+  - **ID is pinned left. Nothing is pinned right.** The identity of a row may never leave the
+    screen, however far the attributes run — that pin is the whole reason for the change and is
+    not to be given up to make room.
+
+    Issues and Comment *were* pinned right, and are not any more. Two pinned columns take their
+    470px out of the scrollable area permanently, and on a module with 78 attributes that squeezed
+    Description — the one column holding the prose — between two fixed blocks. They keep their
+    place as the last two columns instead, which is what the order above is for. **Their content
+    is what makes this affordable:** an Issues cell is empty on a clean object, and a Comment is
+    empty until someone writes one, so unlike ID neither is something a reviewer is reading *from*
+    while scrolled elsewhere.
   - **Columns resize**, so `Object Text` — a full requirement statement — can be opened up.
+  - **Headers wrap** (`wrapHeaderText` + `autoHeaderHeight`, in `SEC_GRID_DEFAULT_COL_DEF`, so
+    every table in the application gets it). A DOORS attribute name is a phrase — "AR-BS Required
+    Verification", "SYS. Rationale for Allocation" — and several of a module's differ only past
+    the point a one-line header clips them. The header row grows once, at the top, rather than per
+    row. The pair works exactly as `wrapText` and `autoHeight` do: either alone does nothing.
   - **Rows and columns are both virtualized.** Row virtualization was always needed at ~1 000
     objects; column virtualization is what makes ticking forty attributes survivable.
   - **Exactly one column has `flex`, and it is Description.** Every other column carries an
@@ -128,9 +167,9 @@ Consequences that are part of the contract:
       Widening one visibly shrank its neighbours, and shrinking the column before Comment pulled
       a further column into view.
     - *No column flexes* — a module with **no visible attributes** (SRD) totals 1 200px of columns
-      in a 1 588px grid, and the 388px left over sits between References and the pinned Comment,
-      bounded by a rule on each side and carrying the row background. It reads as a real, empty,
-      unnamed column. A module with eight attribute columns overflows instead and never shows it,
+      in a 1 588px grid, and the 388px left over sits between the last column and the right-hand
+      edge, bounded by a rule on each side and carrying the row background. It reads as a real,
+      empty, unnamed column. A module with eight attribute columns overflows instead and never shows it,
       which is why this only appears on some modules.
     - *One flex column* is self-limiting rather than a compromise, because flex only distributes
       **leftover** space. When the table overflows there is none, so Description sits at its
@@ -242,6 +281,20 @@ where the cell starts. It is not a form field sitting inside a much larger cell:
 column of boxed outlines is chrome, not information, so the edit affordance appears on hover and
 focus instead of being drawn permanently. A textarea rather than an input because every cell
 beside it wraps now (§5) — a comment that could not would be the only truncated thing on the row.
+
+**The box grows to its text, and the row grows with it.** A textarea has a fixed height whatever it
+contains, so a long comment used to scroll inside a cell with no sign there was more of it and no
+way to see the bottom without clicking in. The renderer measures its content and states the height;
+the column carries `autoHeight`, so ag-grid takes that into the row height alongside the wrapped
+Description beside it. Two things this depends on, both easy to undo by accident:
+
+- **The editor is in flow** (`display: block` on the cell, `inline-size: 100%` on the renderer's
+  host, `styles/_grid.scss`). It was `position: absolute; inset: 0` while the row height was fixed,
+  and an out-of-flow element contributes no height at all — `autoHeight` would collapse the row.
+- **The cell is not a flex box.** Under `autoHeight` ag-grid nests cell content in wrappers sized to
+  that content, and a textarea's intrinsic width is its `cols` — 20 characters — so an in-flow
+  editor in a flex cell shrinks to a fraction of its column whatever `width: 100%` says. This is the
+  same pairing `docs/DOORS_TABLES.md` §6.6 already paid for on the table cell.
 
 Editing marks the row dirty. A dirty comment wears the Tier-2 accent as a **left rule and a wash**
 rather than a full border — there is no border to thicken, and a rule reads down a column of them.
@@ -377,6 +430,18 @@ columns:
 | Attribute | Mandatory | Visible | Verification |
 |---|---|---|---|
 
+**The list itself lives in `shared/attribute-settings/attribute-settings-list`, not in this
+dialog.** The Modules settings dialog's *Object attributes* tab renders the same component with
+`flags = ['mandatory', 'verification']` and no fixed columns
+(`features/requirements-modules.md` §4.2) — *Shown in table* configures **this** view's table, and
+the Modules view has none, so offering it there would be offering a setting with no visible effect.
+
+What the shared component owns: the search box, the `n of m` count, the per-column **All** /
+**None** bulk actions, the fixed-column rows, and the row grid. What each dialog owns: its heading,
+its one line of supporting text, and what Save posts. The wording of the three flags is stated once,
+in that component, from the server's alias map (`Aliases.attributeSettingLabels`) — which is how the
+two dialogs came to describe one stored flag with one set of words.
+
 - Attribute list from `GET /api/v1/modules/{ref}/attributes`, discovered at runtime, namespace
   filtered.
 - **`Object Heading` and `Object Text` come back `fixed`** and render with *Visible* checked and
@@ -389,7 +454,9 @@ columns:
   settings dialog writes (`attribute-policy-checks.md`): one `:__Meta:__Policy` per
   `(module, attributeName)`, `rule: mandatory`, `appliesToLabels: ['DOORSRequirement']`.
   **Do not create a second policy shape or a second write path.** Opening this dialog after
-  changing the setting in Modules must show the change.
+  changing the setting in Modules must show the change. Both dialogs now also post the same
+  *payload* — the absolute `attributeSettings` list — so there is one write shape as well as one
+  stored shape.
 - **Visible** — the attribute becomes a column in table (4) for this module, for everyone, and
   comes back the next time the module is selected (§2).
 - **Verification** — marks the attribute as verification-relevant. Consumed later by analytics,
@@ -409,8 +476,28 @@ columns:
 ## 7. Detail panel (right)
 
 - Opens on click of a row's `ID` or of any id in the References column.
-- Shows the object's attributes (namespace filtered, aliased) plus the module it belongs to —
+- Shows the object's own attributes (namespace filtered, aliased) plus the module it belongs to —
   `__moduleUrl` rendered as the module's `__name`, as a link (R5 alias map).
+- **An attribute with no value reads `Empty`**, in the non-content ink, upright — never italic
+  (CLAUDE.md §8; the same substitution the `absent-text` mixin already makes, and the reason
+  `styles.scss` carries a global `font-style: normal`).
+
+  `""` from DOORS means "the attribute exists and is empty", which is not the same as absent
+  (CLAUDE.md §11) — so the row was always in the list. What did not work was rendering the value as
+  an empty `<dd>`: a label with nothing beside it reads as the panel having failed to show
+  something, not as an empty attribute.
+
+  > **The panel lists the object's attributes, not the module's, and that is a decision.** Listing
+  > the module's whole discovered set was built and reverted: it made the panel read identically on
+  > every object, at the cost of a module-wide scan on every open — **8ms → 26ms, measured against
+  > the running service** — to name attributes the object does not have. An absent attribute is not
+  > a finding a reviewer acts on; an empty one they were already looking at is.
+- **The panel is resizable**, by a `separator` between it and the table: pointer-drag or arrow keys,
+  280–900px, default 380. A fixed width was too narrow for an object carrying a long `Object Text`
+  and too wide for one carrying almost nothing, and which of those is on screen changes with every
+  click. The width is **component state** — it outlives opening and closing the panel and dies with
+  the view. Persisting it would mean browser storage, which CLAUDE.md §2 does sanction for exactly
+  this kind of preference, but no view writes there yet and starting is a decision of its own.
 - Closed manually by the user; also closes when another view is selected or another module is
   loaded. Opening it changes neither table selection nor scroll position.
 - Clicking an unresolved (`__UNDEFINED`) target does not open the panel — show a short message
@@ -426,7 +513,7 @@ Reuses the existing surface; three additions.
 GET  /api/v1/modules                          ← selector
 GET  /api/v1/modules/{ref}/attributes         ← attribute list + mandatory/visible/verification
 GET  /api/v1/modules/{ref}/objects            ← NEW: rows, document order, paged, optional q
-GET  /api/v1/items/{ref}                      ← detail panel
+GET  /api/v1/items/{ref}                      ← detail panel — one read, ~8ms; keep it that way
 GET  /api/v1/items/{ref}/traces               ← outgoing refersTo
 GET  /api/v1/items/{ref}/traces?direction=in  ← NEW: incoming, with the incompleteness caveat
 POST /api/v1/modules/{ref}/comments           ← NEW: save icon — all dirty comments, one txn
@@ -446,6 +533,15 @@ meta writer** as `POST /items/{ref}/annotations`. One meta write path, several e
 
 An empty `text` means delete. The response returns the saved comments with their `metaId`,
 `updatedBy` and `updatedAt` so the table can clear dirty state without a reload.
+
+`GET /items/{ref}` is **one** indexed read and must stay one. Its `attributes` bag is what this
+object carries — `""` included, so an empty value stays distinguishable from a key that is not
+there, and the panel renders it as *Empty* (§7).
+
+Do not add the module's attribute set to it. That was built and reverted: the discovery query scans
+every object of the module, which took the endpoint from **8ms to 26ms** on every panel open. If a
+future feature genuinely needs that list beside an item, `GET /modules/{ref}/attributes` already
+serves it and can be asked for separately.
 
 Row payload — the attribute bag is a `Map<String, JsonElement>`, never a per-module DTO:
 

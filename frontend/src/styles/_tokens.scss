@@ -91,12 +91,21 @@
   --sec-font: 'Inter', 'Segoe UI', roboto, arial, helvetica, sans-serif;
   --sec-font-mono: consolas, 'Courier New', monospace;
 
-  --sec-text-title: 21px; // view title
-  --sec-text-lead: 16px; // dialog title, section headline
-  --sec-text-body: 14px; // the base size — data and copy
-  --sec-text-sm: 13px; // dense table cells, panel copy
-  --sec-text-xs: 11.5px; // counts, hints, secondary metadata
-  --sec-text-micro: 10.5px; // in-badge text
+  // The scale, stepped down one notch from where it started (14px body → 13px). This is a data
+  // tool at compact density and the tables are the product: a step down puts roughly one more
+  // requirement on screen per view without taking the body copy below the 13px where Inter's
+  // x-height starts to cost legibility. **Change the scale here, never a size in a component** —
+  // every size in the application derives from these seven values, which is what makes a change
+  // like this one edit rather than a sweep.
+  --sec-text-title: 19px; // view title
+  --sec-text-lead: 15px; // dialog title, section headline
+  --sec-text-body: 13px; // the base size — data and copy
+  --sec-text-sm: 12px; // dense table cells, panel copy
+  --sec-text-xs: 11px; // counts, hints, secondary metadata
+  --sec-text-micro: 10px; // in-badge text
+  // The one size that did **not** step down. Rule 4 of the style fixes non-content text at 10px
+  // (CLAUDE.md §8), and a letter-spaced uppercase micro-label is already at the floor of what is
+  // readable — every column header in the application is set in it.
   --sec-text-label: 10px; // uppercase micro-labels
 
   --sec-leading: 1.55;

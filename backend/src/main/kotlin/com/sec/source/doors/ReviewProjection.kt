@@ -9,6 +9,8 @@ import com.sec.api.dto.ReferencesDto
 import com.sec.api.dto.ReviewRowDto
 import com.sec.api.dto.TracesResponseDto
 import com.sec.domain.Aliases
+import com.sec.domain.NodeLabel
+import com.sec.domain.Prop
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ReviewCypher
@@ -103,6 +105,15 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         return copy(moduleName = namesById[moduleId])
     }
 
+    /**
+     * One item for the detail panel (§7): **one** read, and it stays one.
+     *
+     * The panel shows the attributes this object carries — an empty value included, rendered as
+     * *Empty* rather than as a blank line. It deliberately does **not** show the module's whole
+     * attribute set: that took a module-wide scan for attributes this object does not have, and
+     * measured against the running service it turned an 8ms panel open into 26ms for a list nobody
+     * asked for.
+     */
     public suspend fun getItemDetail(itemId: String): ItemDetailDto? =
         graphDriver.executeRead(Query(ReviewCypher.ITEM_DETAIL, mapOf("itemId" to itemId))) { records ->
             records.firstOrNull()?.toItemDetail()
@@ -142,16 +153,16 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         val commentId = get("commentId").takeUnless { it.isNull() }?.asString()
 
         return ReviewRowDto(
-            ref = Ref.encode(props["__id"]?.toString().orEmpty()),
+            ref = Ref.encode(props[Prop.ID]?.toString().orEmpty()),
             // `id` is DOORS's own module-local identifier: display only, never a key (R6).
-            id = props["id"]?.toString().orEmpty(),
-            name = props["__name"]?.toString().orEmpty(),
+            id = props[DoorsAttr.ID]?.toString().orEmpty(),
+            name = props[Prop.NAME]?.toString().orEmpty(),
             // The outline number is display data, not the sort key: it is the first half of a
             // heading's Description. Rows still arrive in `__sortKey` order (§5).
-            objectNumber = props["objectNumber"]?.toString().orEmpty(),
-            type = Aliases.renderType(props["__typeRaw"]?.toString(), labels),
+            objectNumber = props[DoorsAttr.OBJECT_NUMBER]?.toString().orEmpty(),
+            type = Aliases.renderType(props[Prop.TYPE_RAW]?.toString(), labels),
             labels = labels,
-            level = (props["objectLevel"] as? Number)?.toInt() ?: 1,
+            level = (props[DoorsAttr.OBJECT_LEVEL] as? Number)?.toInt() ?: 1,
             requirementLike = DoorsChecks.isRequirementLike(labels),
             issues = DoorsChecks.issuesFor(policies, labels, props),
             attributes = attributeBag(props),
@@ -176,13 +187,13 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         val props = node.asMap()
         val moduleId = get("moduleId").takeUnless { it.isNull() }?.asString()
 
-        // The identity triple rendered through the alias map, so the panel shows "Baseline:
+        // The identity triple rendered through the alias map, so the panel shows "Version:
         // Current" rather than a property called __version.
         val properties = buildList {
-            props["__version"]?.let {
+            props[Prop.VERSION]?.let {
                 add(
                     ModulePropertyDto(
-                        label = Aliases.propertyLabels.getValue("__version"),
+                        label = Aliases.propertyLabels.getValue(Prop.VERSION),
                         value = Aliases.renderVersionValue(it.toString()),
                     ),
                 )
@@ -190,12 +201,12 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         }
 
         return ItemDetailDto(
-            ref = Ref.encode(props["__id"]?.toString().orEmpty()),
+            ref = Ref.encode(props[Prop.ID]?.toString().orEmpty()),
             // Display only, never a key (R6). Absent on a placeholder, and on a module — neither
             // has a DOORS object id, and neither may fall back to __name (R5).
-            id = props["id"]?.toString().takeIf { DoorsChecks.UNRESOLVED_LABEL !in labels },
-            name = props["__name"]?.toString().orEmpty(),
-            type = Aliases.renderType(props["__typeRaw"]?.toString(), labels),
+            id = props[DoorsAttr.ID]?.toString().takeIf { NodeLabel.UNDEFINED !in labels },
+            name = props[Prop.NAME]?.toString().orEmpty(),
+            type = Aliases.renderType(props[Prop.TYPE_RAW]?.toString(), labels),
             labels = labels,
             moduleRef = moduleId?.let(Ref::encode),
             moduleName = get("moduleName").takeUnless { it.isNull() }?.asString(),
@@ -233,16 +244,16 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * The dynamic DOORS attribute bag.
      *
      * The `__` filter is R5's runtime namespace filter applied server-side, so no requirements
-     * table can sprout a `__sortKey` column the moment a new module is imported. `id`,
-     * `objectNumber` and `objectLevel` are excluded because they are already dedicated columns —
-     * the same exclusion list as attribute discovery, kept identical on purpose.
+     * table can sprout a `__sortKey` column the moment a new module is imported. [DoorsAttr]'s
+     * structural three are excluded because they are already dedicated columns — and it is the
+     * *same set object* attribute discovery filters on, so the two cannot drift apart.
      *
      * `""` is preserved as an empty string, never dropped: from DOORS that means "attribute exists
      * and is empty", which is different from absent (CLAUDE.md §11).
      */
     private fun attributeBag(props: Map<String, Any?>): Map<String, JsonElement> =
         props
-            .filterKeys { !it.startsWith("__") && it !in RESERVED_KEYS }
+            .filterKeys { !it.startsWith(Prop.NAMESPACE) && it !in DoorsAttr.structural }
             .mapValues { (_, value) -> value.toJson() }
 
     private fun Any?.toJson(): JsonElement =
@@ -255,6 +266,5 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
     private companion object {
         const val DEFAULT_PAGE = 2_000
-        val RESERVED_KEYS = setOf("id", "objectNumber", "objectLevel")
     }
 }

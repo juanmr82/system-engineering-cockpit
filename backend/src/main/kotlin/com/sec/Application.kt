@@ -2,6 +2,7 @@ package com.sec
 
 import com.sec.api.configureProblemDetails
 import com.sec.api.configureRouting
+import com.sec.config.ConfigArgs
 import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaSchema
@@ -29,7 +30,11 @@ private val logger = KotlinLogging.logger {}
 
 // EngineMain reads ktor.application.modules / ktor.deployment.* from application.yaml,
 // which is what makes environment.config see neo4j.* and navigation.* below.
-public fun main(args: Array<String>): Unit = EngineMain.main(args)
+//
+// ConfigArgs turns `-config=<path>` into an overlay on the packaged application.yaml instead of a
+// replacement for it, so a deployment file states only what its environment changes. Every other
+// flag stays EngineMain's — `-port=`, `-host=`, and the per-key `-P:neo4j.uri=…` override.
+public fun main(args: Array<String>): Unit = EngineMain.main(ConfigArgs.withPackagedDefaults(args))
 
 // Module wiring only — no business logic here (CLAUDE.md §5).
 public fun Application.module() {

@@ -31,7 +31,10 @@ describe('ReviewSettingsDialog', () => {
 
   const element = (): HTMLElement => fixture.nativeElement;
   const renderedText = (): string => element().textContent ?? '';
-  const rows = (): HTMLElement[] => Array.from(element().querySelectorAll('.sec-review-settings__row'));
+  // The list is `shared/attribute-settings/`, so the selectors are its, not this dialog's — which
+  // is the point: this spec asserts the dialog wires the shared list correctly and the shared
+  // list's own behaviour is asserted through the two dialogs that use it.
+  const rows = (): HTMLElement[] => Array.from(element().querySelectorAll('.sec-attr-settings__row'));
 
   const require = <T extends HTMLElement>(selector: string): T => {
     const found = element().querySelector<T>(selector);
@@ -48,7 +51,7 @@ describe('ReviewSettingsDialog', () => {
   };
 
   const search = async (term: string): Promise<void> => {
-    const input = require<HTMLInputElement>('.sec-review-settings__search input');
+    const input = require<HTMLInputElement>('.sec-attr-settings__search input');
     input.value = term;
     input.dispatchEvent(new Event('input'));
     await settle();
@@ -56,7 +59,7 @@ describe('ReviewSettingsDialog', () => {
 
   /** The "All" or "None" button of one flag column, addressed by the column's position. */
   const bulk = async (column: number, action: 'All' | 'None'): Promise<void> => {
-    const heads = Array.from(element().querySelectorAll('.sec-review-settings__bulk'));
+    const heads = Array.from(element().querySelectorAll('.sec-attr-settings__bulk'));
     const buttons = Array.from(heads[column].querySelectorAll('button'));
     const button = buttons.find((candidate) => candidate.textContent?.trim() === action);
     button?.click();
@@ -98,7 +101,7 @@ describe('ReviewSettingsDialog', () => {
     expect(renderedText()).toContain('5 attributes');
 
     // One header for the whole list — the two-table shape produced a second one mid-list.
-    expect(element().querySelectorAll('.sec-review-settings__head').length).toBe(1);
+    expect(element().querySelectorAll('.sec-attr-settings__head').length).toBe(1);
   });
 
   it('searches attribute names case- and accent-insensitively', async () => {

@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.decodeRef
 import com.sec.api.dto.ModuleAttributesResponseDto
 import com.sec.api.dto.ModuleListResponseDto
@@ -29,7 +30,7 @@ import io.ktor.server.routing.route
 // The DOORS-specific module projection (CLAUDE.md §5 "API shape"). Handlers delegate to
 // source/ and meta/ — they hold no logic beyond turning a sealed outcome into a status code.
 public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: MetaWriter) {
-    route("/api/v1/modules") {
+    route(ApiPaths.MODULES) {
         get {
             call.respond(ModuleListResponseDto(doorsProjection.listModules()))
         }

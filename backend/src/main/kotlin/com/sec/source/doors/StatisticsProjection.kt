@@ -12,6 +12,7 @@ import com.sec.api.dto.ParentageDto
 import com.sec.api.dto.RequirementStatisticsDto
 import com.sec.api.dto.SystemLevelOptionDto
 import com.sec.domain.Cycles
+import com.sec.domain.NodeLabel
 import com.sec.domain.Ref
 import com.sec.domain.SystemLevel
 import com.sec.graph.GraphDriver
@@ -334,7 +335,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 ref = Ref.encode(get("id").asString("")),
                 // Display only, never a key (R6). Absent on a placeholder, and never falls back
                 // to __name, which would put an internal value where an id is expected (R5).
-                id = optionalString("sourceId").takeIf { DoorsChecks.UNRESOLVED_LABEL !in labels },
+                id = optionalString("sourceId").takeIf { NodeLabel.UNDEFINED !in labels },
                 name = get("name").asString(""),
                 moduleRef = moduleId?.let(Ref::encode),
                 moduleName = optionalString("moduleName"),

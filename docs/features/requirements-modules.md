@@ -66,18 +66,33 @@ Consequences to honour throughout:
 | Module | `DOORSModule.__name` | plus the settings icon button |
 | Last modified | `DOORSModule.last_Modified_On` | **free text from DOORS, not ISO-8601.** Display verbatim, sort as a string. Never construct a `Date` from it. |
 | Path | `DOORSModule.moduleFullPath` | |
+| Word export title | `DOORSModule.wordDocTitle` | A module property, not an object attribute, so it is read by name and never appears in attribute discovery. Absent ⇒ empty cell, no wording |
+| Word export number | `DOORSModule.wordDocNumber` | as above |
 | Level | `(m)-[:__classifiedAs]->(:__Meta:__Classification {scheme:'systemLevel'})` | **Tier-2 data.** Absent ⇒ em dash. |
 
 Behaviour:
 
 - **Search bar** — filters live as the user types, no Enter, no button. Debounce 200 ms
   (Angular 22 `debounced`). Case- and accent-insensitive substring match over the
-  **rendered** values of all four columns, so what the user sees is what gets searched.
+  **rendered** values of every column, so what the user sees is what gets searched.
   Normalise each row once (`toLocaleLowerCase()` + NFD accent strip) and memoise it on the
   row model — do not re-normalise on every keystroke.
 - **Table** — **ag-grid Community** (`../adr/0006-ag-grid-community-for-tables.md`), compact
-  density (`-2`), sortable and resizable on all four columns, `tabular-nums`. Default sort:
-  `Module` ascending. This view does not need pinning or column virtualization; it is on the grid
+  density (`-2`), sortable and resizable on every column, `tabular-nums`. **Default sort: system
+  level ascending, L0 first.** That is the order the modules are read in — a segment specification
+  before the subsystem specifications that refine it — and it is what the level column exists to
+  make legible; alphabetical-by-name put L0 and L4 side by side by accident of spelling.
+
+  **One sorted column, not two.** Naming `Module` as an explicit tie-break works and makes ag-grid
+  draw its multi-sort position badges in the headers — `MODULE 2 ↑`, which reads as a column called
+  *Module 2*. It is not needed: the server returns modules ordered by `__name` and
+  `Array.prototype.sort` is stable, so equal levels stay alphabetical on their own. The spec asserts
+  the full rendered order over two same-level modules, so neither half of that can quietly stop
+  being true. A module with **no level set sorts last, and stays last when the sort is
+  reversed**: it is absent from the hierarchy rather than at the bottom of it. That takes an
+  explicit comparator, because ag-grid negates a comparator's result for a descending sort — it is
+  `compareSystemLevels` in `modules.ts`, exported and unit-tested rather than driven through the
+  grid's DOM. This view does not need pinning or column virtualization; it is on the grid
   so that the application has **one** table system, and so a reviewer moving between here and Req
   review meets one set of column behaviours. `Last modified` sorts as the string DOORS gave us —
   it is free text, not ISO-8601, and is never parsed into a `Date`.
@@ -205,19 +220,36 @@ The module name sits above the tab group as read-only text (label from the alias
 
 ### 4.2 Tab 2 — Object attributes
 
-- Two columns: **Attribute name** and **Mandatory attribute** (a checkbox).
-- Header row fixed at the top of the scrolling panel; the list scrolls beneath it.
+**This tab is `shared/attribute-settings/attribute-settings-list`, the same component the Req
+review settings dialog is built from** (`REQ_REVIEW.md` §6) — search box, count, per-column
+bulk **All** / **None**, and one row per discovered attribute. It was a bare two-column
+`mat-table` before, which meant finding one attribute among 78 by scrolling.
+
+- Two flag columns: **Mandatory** and **Verification attribute**.
+- **Shown in table is deliberately absent.** It configures the Req review table's columns, and
+  there is no such table in this view — offering it here would be offering a setting whose effect
+  is nowhere on screen. The flag is still *carried* in the model and posted back unchanged, so
+  opening this dialog cannot clear what the review dialog set. There is a spec for exactly that.
+- No fixed-column rows either, for the same reason: those are the review table's own columns.
 - The list is the **DOORS attributes of the objects inside this module** — the un-prefixed
   keys only. `__`-prefixed keys and the source-native metadata keys (`id`, `objectNumber`,
   `objectLevel`) are filtered out server-side (R5), never in the template.
-- Ticked = a `mandatory` policy exists for that attribute; unticked = none. Render the
-  checkbox in the Tier-2 accent `#0077C8`.
+- Ticked = a `mandatory` policy exists for that attribute; unticked = none. The checkboxes wear the
+  Tier-2 accent `#0077C8`.
 - One line of supporting text under the tab, sentence case: *"Mandatory attributes are
-  checked on the requirements of this module. Headings, information objects and tables are
-  not checked."* The scope is stored on the policy, not chosen here — see
+  checked on the requirements of this module — headings, information objects and tables are
+  not checked. Verification attributes are the ones that show how a requirement will be met."*
+  The scope is stored on the policy, not chosen here — see
   `docs/features/attribute-policy-checks.md`.
-- Sort alphabetically. Expect roughly 78 rows for the reference module, so a plain
-  scrolling table is fine; do not reach for virtual scrolling yet.
+- Sort alphabetically. Roughly 78 rows for the reference module, which is why the search box is
+  not optional.
+
+**Save posts the absolute state of every attribute** (`attributeSettings`), the same payload the
+review dialog posts, in the same transaction as the system level. It replaced a mandatory-only
+*diff*, which sent only what changed and therefore left an untouched policy's `__updatedAt` alone.
+That property is genuinely lost, and it was the cheaper thing to lose: two write shapes for one
+stored rule, edited through one shared component, is how the two dialogs come to mean different
+things by Save.
 
 **Attribute discovery.** All objects in a module carry the same attribute set, so a sample
 is enough — but sample a handful rather than exactly one, because the importer *omits*
@@ -490,9 +522,10 @@ never italic, compact density on both tables, tabular numerals, M3 tokens only �
 
 1. Menu item **Requirements → Modules** routes to `/requirements/modules`; the table lists
    every `DOORSModule`.
-2. Typing in the search bar filters live, without Enter, matching all four columns.
-3. All four columns sort; **Last modified** sorts as a string and displays exactly as
-   stored.
+2. Typing in the search bar filters live, without Enter, matching every column.
+3. Every column sorts; **Last modified** sorts as a string and displays exactly as
+   stored. The table *opens* sorted by system level, L0 first, and a module with no level is
+   last in both sort directions.
 4. The gear icon opens a modal dialog that cannot be dismissed by ESC, backdrop click,
    dragging or minimising — only Save or Cancel.
 5. The dialog has two tabs; **Save and Cancel remain visible and functional on both**, and a

@@ -11,6 +11,8 @@ import type { ItemDetail } from './review.model';
 interface AttributeEntry {
   readonly label: string;
   readonly value: string;
+  /** True when this object has no value for the attribute — the panel says so in words. */
+  readonly empty: boolean;
 }
 
 // The detail panel of the Req review view (REQ_REVIEW.md §7). It owns its own request, keyed by
@@ -30,14 +32,25 @@ export class ItemDetailPanel {
 
   protected readonly detail = httpResource<ItemDetail>(() => ReviewApiService.itemUrl(this.itemRef()));
 
-  // The dynamic attribute bag is Record<string, unknown>: narrowed here, at the point of use, and
-  // rendered in the order the server sent it. An empty string is a value ("the attribute exists
-  // and is empty") and renders as an empty cell rather than being dropped.
+  /**
+   * The attributes this object carries, in the order the server sent them.
+   *
+   * The dynamic attribute bag is `Record<string, unknown>`, narrowed here at the point of use.
+   *
+   * **An empty value is kept and named.** `""` from DOORS means "the attribute exists and is empty",
+   * which is not the same as absent (CLAUDE.md §11) — so it has always been listed, but it rendered
+   * as an empty `<dd>`: a label with nothing beside it, which reads as the panel having failed to
+   * show something. `empty` is what lets the template write *Empty* there instead.
+   *
+   * Deliberately **not** the module's whole attribute set. That was tried: it meant a module-wide
+   * scan on every panel open — 8ms to 26ms, measured against the running service — to list
+   * attributes the object does not have.
+   */
   protected readonly attributes = computed<AttributeEntry[]>(() =>
-    Object.entries(this.detail.value()?.attributes ?? {}).map(([label, value]) => ({
-      label,
-      value: value === null || value === undefined ? '' : String(value),
-    })),
+    Object.entries(this.detail.value()?.attributes ?? {}).map(([label, value]) => {
+      const rendered = value === null || value === undefined ? '' : String(value);
+      return { label, value: rendered, empty: rendered === '' };
+    }),
   );
 
   protected readonly properties = computed(() => this.detail.value()?.properties ?? []);

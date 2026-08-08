@@ -3,6 +3,225 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-08 (session 13) — graph names, the two settings dialogs, the Modules table
+
+Four requests. All verified in the browser against the live SRD and Segment modules, and against
+the API for the read paths. **Nothing was written to the graph** — both settings dialogs were opened
+read-only and closed with Cancel, and Save stayed disabled throughout.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **Every graph name is now interpolated into the Cypher**, not just the DOORS attribute names. 234 literals gone from eight statement files | `graph/cypher/*`, `meta/MetaSchema.kt`, ADR 0010 amendment |
+| 2.1 | **`__version` reads *Version*, not *Baseline*** — one edit, in `Aliases.kt` | `domain/Aliases.kt` |
+| 2.2 | **The Modules dialog's *Object attributes* tab is the review dialog's list**, extracted to a shared component: search box, count, bulk All/None — minus *Shown in table* | `shared/attribute-settings/` |
+| 3 | **The Modules table opens sorted by system level**, L0 first, unset last in both directions | `modules.ts` |
+| 4 | **Two new columns: Word export title and number** (`wordDocTitle` / `wordDocNumber`) | `ModuleCypher`, `ModuleRowDto`, `modules.ts` |
+
+### 1 is a reversal of ADR 0010, on purpose
+
+The first pass interpolated only `DoorsAttr` and left `__id` and `:DOORSRequirement` spelled out,
+because renaming those is gated on a Python change and a re-import anyway. That priced the rename
+and ignored the price of finding it — 58 occurrences of `__id` alone.
+
+**What made it readable is single-name imports**, which the original write-up never considered:
+`$MODULE_URL`, not `${Prop.MODULE_URL}`. The rejected-alternatives section of ADR 0010 rejected the
+qualified form, and it was right to. The amendment at the foot of that ADR records both.
+
+**`GraphNamesTest` changed direction and this is the part to keep.** It now also reads the statement
+*source* and fails on any graph name written as a literal, comments stripped first. The forward
+check cannot see a hand-written `__id` — it compiles to the same string — so without the inverse
+check the interpolation would erode one statement at a time. It caught a real one immediately:
+`__Meta` in a `MetaSchema` log message.
+
+One bug worth remembering, found while writing that test: **`Path` implements `Iterable<Path>`**, so
+`listOfPaths + aPath` picks the `Iterable` overload and appends `src`, `main`, `kotlin`, … instead
+of the file. It surfaced as `AccessDeniedException: src`, which names a directory and explains
+nothing. `+ listOf(path)`.
+
+### 2.2 changed what the Modules dialog's Save does, and that is a real trade
+
+It used to post a mandatory-only **diff**, so an untouched policy kept its original `__updatedAt`.
+It now posts the **absolute** `attributeSettings` list, like the review dialog — so a save rewrites
+`__updatedAt` on every currently-mandatory attribute. That property is genuinely lost.
+
+It was the cheaper thing to lose: two write shapes for one stored rule, edited through one shared
+component, is how two dialogs come to mean different things by Save. If the audit timestamps ever
+matter, the fix is server-side — skip a write whose values are unchanged — not a second payload.
+
+**The hazard this created, and the spec that guards it:** the Modules dialog cannot show
+*Shown in table*, but it posts every attribute. If it sent `visible: false` for the flag it does not
+render, opening Module settings to change a system level would silently clear the review table's
+columns. It carries the loaded value back untouched, and
+`module-settings-dialog.spec.ts` asserts the exact posted body.
+
+That file is also **the first spec the Modules settings dialog has ever had** — worth knowing given
+the unexplained data loss recorded further down, which involved the other settings dialog.
+
+### What the browser found, and what it changed
+
+The 88vh dialog with the flex-filling `mat-tab-group` works, both tabs. The flex row layout lines
+up at two columns and at three. Both new Modules columns carry real values.
+
+**One thing only the browser could have shown.** With `Module` as an explicit sort tie-break,
+ag-grid draws its multi-sort *position badges* in the headers — the table read `MODULE 2 ↑` and
+`SYSTEM LEVEL 1 ↑`, and "Module 2" looks like the column's name. The tie-break is gone: the server
+already returns modules ordered by `__name` and `Array.prototype.sort` is stable, so within a level
+the order is alphabetical without asking for it. `modules.spec.ts` now carries two same-level
+modules so that dependency is pinned rather than assumed.
+
+The API side was checked separately, without a browser, because it is the real test of the Cypher
+rewrite — a mis-spelled interpolated name returns **zero rows silently** rather than failing. Every
+read endpoint answers, and the statistics numbers are unchanged from session 12: 903 items, 516
+requirements, 147 orphans, 461 links. The **write** statements were deliberately not exercised
+against the live graph; the 68 container tests cover those.
+
+### Deliberately not done
+
+- `MandatoryAttributesDiffDto` and the `mandatoryAttributes` field are still on the endpoint and no
+  client sends them any more. Left in place rather than removed in the same change — the API shape
+  is documented in `CLAUDE.md` §5 and deleting it is its own decision.
+- Query **parameter** names (`row.attributeName`, `${'$'}moduleUrl`) are still literals on both
+  sides. They are not graph names; they are a contract between one statement and its one call site.
+  Worth a pass one day, not this one.
+
+---
+
+## State as of 2026-08-08 (session 12) — Req review table, six UI changes
+
+All six verified **in the browser against the live Segment module**, not only by spec. Nothing was
+written to the graph: the comment buffer was emptied before leaving, and the settings dialog was not
+opened (see the warning further down — that dialog is still suspect).
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **Issues and Comment are no longer pinned right.** They keep their place as the last two columns. Two pins took 470px out of the scrollable area and squeezed Description between two fixed blocks. **ID stays pinned left** — row identity may still never leave the screen | `requirement-review.ts` |
+| 2 | **The detail panel is resizable**, 280–900px, pointer-drag or arrow keys on a `role="separator"`. Component state, not persisted — see below | `requirement-review.{ts,html,scss}` |
+| 2.1 | **An attribute with no value reads *Empty*** instead of a blank line | `item-detail-panel.*` |
+| 3 | **The comment box grows to its text and the row grows with it** | `comment-cell.*`, `_grid.scss` |
+| 4 | **Column headers wrap** — `wrapHeaderText` + `autoHeaderHeight` in the shared `defaultColDef`, so every table gets it | `core/grid/sec-grid.ts` |
+| 5 | **"Requirements without parents" filter** — requirement-like, no outgoing `refersTo`. 147 of Segment's 903 | `requirement-review.{ts,html}` |
+| 6 | **The type scale stepped down one notch** (body 14 → 13px) | `styles/_tokens.scss` |
+
+### The three that are more than they look
+
+**2.1 was one line in the end, after a wrong turn worth recording.** The complaint was that empty
+attribute values "were not displayed". They were — `""` means "exists and is empty" and the row was
+always in the list — but the value rendered as an empty `<dd>`, a label with nothing beside it,
+which reads as the panel having failed. Naming it *Empty* is the whole fix.
+
+I first read it as "list every attribute the module has, filled or not", built that
+(`ItemDetailDto.moduleAttributes`, fed by `discoverAttributeNames`), and **reverted it**: the
+discovery query scans every object of the module, and measured against the running service it took
+the endpoint from **8ms to 26ms on every panel open** — for attributes the object does not have.
+`REQ_REVIEW.md` §7 and §8 now say so, so nobody adds it back.
+
+**"Empty" is upright grey, not italic**, which is not what was asked for. "Never italic" is an
+explicit Airbus rule with no exception for placeholders (§8), `styles.scss` enforces it globally
+with `* { font-style: normal }`, and the `absent-text` mixin already made exactly this substitution
+for exactly this reason. One line in `item-detail-panel.scss` if that call is ever reversed.
+
+**3 is the one with a trap in it.** The comment column used to opt out of `autoHeight` for a real
+reason, and the reason still holds: under `autoHeight` ag-grid nests cell content in wrappers sized
+to that content, and a textarea's intrinsic width is its `cols` — 20 characters. The fix is the pair
+`DOORS_TABLES.md` §6.6 already paid for on the table cell: `display: block` on the cell,
+`inline-size: 100%` on the renderer's host. The editor also had to come **in flow** — it was
+`position: absolute; inset: 0`, which contributes no height, so `autoHeight` would have collapsed
+the row to nothing. Both are commented at the site.
+
+### Deliberately not done
+
+- **The panel width is not persisted.** It outlives opening and closing the panel and dies with the
+  view. Persisting means browser storage, which CLAUDE.md §2 *does* sanction for this kind of
+  preference — but no view writes there yet, and starting is a decision of its own.
+### Verified
+
+`mvn verify` 88 ✓ · `mvn -Pdocker test` 67 ✓ (+1) · `npm run lint` ✓ · `npm test` 119 ✓ (+3) ·
+`npm run build` ✓.
+
+---
+
+## State as of 2026-08-08 (end of session 11) — backend refactor, items 1, 2 and 6
+
+`docs/REFACTOR_BACKEND.md` items **1, 2 and 6 are done**.
+Items 3, 7, 8, 9 and 10 are still open; 4, 5a and 5b stay decided-but-unimplemented.
+
+**Read `docs/adr/0010-graph-names-as-constants.md` before touching any name in the backend.**
+`CLAUDE.md` §5 now carries the rule as a non-negotiable.
+
+### What changed
+
+Three new files, and every call site rewired to them:
+
+```
+backend/src/main/kotlin/com/sec/
+  domain/GraphNames.kt        ← Prop, Rel, NodeLabel, MetaKind, MetaProp, MetaValue
+  source/doors/DoorsNames.kt  ← DoorsAttr, DoorsModuleAttr, DoorsProp, DoorsRel, DoorsLabel
+  api/ApiPaths.kt             ← /api and /api/v1
+  config/ConfigArgs.kt        ← makes -config= an overlay on the packaged application.yaml
+backend/src/test/kotlin/com/sec/
+  domain/GraphNamesTest.kt    ← 5 tests, the naming guard
+  config/ConfigArgsTest.kt    ← 7 tests, pins Ktor's merge semantics as well as our transform
+```
+
+Three duplicate declarations are gone: `__UNDEFINED` existed twice (`DoorsChecks.UNRESOLVED_LABEL`
+and a private one in `BreakdownProjection`), the `DOORSTable*` labels twice (`TableGeometry` and
+`DoorsChecks.structuralTypes`), and the `['id','objectNumber','objectLevel']` exclusion list three
+times — with a comment claiming they were "kept identical on purpose", which is what you write when
+nothing enforces it. They are now the same object.
+
+### The judgement call, and the reason it is safe
+
+**Cypher interpolates the DOORS *attribute* names and nothing else.** Labels and `__` names stay
+spelled out. The line is who can rename the thing: a DOORS administrator can rename `Object Text`
+with no importer change at all, while `__id` is gated on a Python change and a full re-import.
+
+What buys back the difference is **`GraphNamesTest`** — it reads every statement in `graph/cypher/`
+plus `MetaSchema.statements` and fails on any name the constants do not declare. Verified by
+breaking it deliberately: `:SEItem` → `:SEItm` and `__id` → `__idd` produced two named failures. If
+you add a Cypher file, add its statements to that test; a completeness check fails if you forget.
+
+### Item 6: `-config=` works, and now *merges*
+
+No `-c` flag: Ktor 3.5.1's `EngineMain` already takes `-config=<path>`. Everything here was
+verified by running the shaded jar, not read out of documentation.
+
+Stock `-config=` **replaces** the packaged `application.yaml`, so a file without a `ktor:` block
+died with *"Neither port nor sslPort specified"* — which would have forced every operator's file to
+carry `com.sec.ApplicationKt.module`. Repeated `-config=` flags, though, **merge deep with the last
+one winning**, and `-config=application.yaml` resolves the packaged file *from the classpath* (a
+file of that name in the working directory does **not** shadow it — tested).
+
+`config/ConfigArgs.kt` inserts that first path. Six lines, pure function on the argument array. A
+deployment file now states only what its environment changes:
+
+```
+java -jar backend-0.1.0-all.jar -config=/etc/sec/sec.yaml     # no ktor: block needed
+```
+
+`-P:neo4j.uri=…` also works, as a per-key override for containers.
+
+**The trap if you touch this:** the packaged `application.yaml` resolves `$SEC_NEO4J_USER` eagerly
+and **fails to load at all** when it is unset — deliberately. That is why surefire now supplies
+placeholder `SEC_NEO4J_*` values: `ConfigArgsTest` asserts against the real packaged file, not a
+copy, and could not load it otherwise.
+
+### Verified
+
+| | Status |
+|---|---|
+| `mvn verify` | **green — 88 tests** (was 76; +5 `GraphNamesTest`, +7 `ConfigArgsTest`) |
+| `mvn -Pdocker test` | **green — 66 container tests**, which is what actually proves the interpolated Cypher still runs |
+| The guard test | **proved to fail**, not assumed to — see above |
+| `-config=` | **run** against the jar: replace-not-merge proved first, then the merge, then a single-flag overlay with no `ktor:` block. No stray JVM left running — checked |
+| The graph | **untouched.** Nothing was written to it and no importer ran |
+
+The stale-`KotlinCompileDaemon` trap hit again on the first compile. Killing them fixed it
+immediately, exactly as the recipe below says.
+
+**Nothing was committed.** Sessions 9, 10 and 11 are all still uncommitted.
+
+---
+
 ## State as of 2026-08-08 (end of session 10) — DOORS tables
 
 **Requirements → Req review now draws a module's embedded DOORS tables**, in the Description column

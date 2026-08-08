@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.dto.SystemLevelOptionDto
 import com.sec.api.dto.SystemLevelsResponseDto
 import com.sec.domain.SystemLevel
@@ -14,7 +15,7 @@ import io.ktor.server.routing.route
 // the same for every user and change only when we ship (CLAUDE.md §2, "Where state lives"), so
 // they are cacheable and never come from the graph.
 public fun Route.configRoutes() {
-    route("/api/v1/config") {
+    route(ApiPaths.CONFIG) {
         get("/system-levels") {
             call.response.header(HttpHeaders.CacheControl, "max-age=3600")
             call.respond(

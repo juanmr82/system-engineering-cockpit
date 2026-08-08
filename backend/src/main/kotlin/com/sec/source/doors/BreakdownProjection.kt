@@ -5,6 +5,8 @@ import com.sec.api.dto.BreakdownEdgeDto
 import com.sec.api.dto.BreakdownNodeDto
 import com.sec.api.dto.BreakdownResponseDto
 import com.sec.api.dto.SystemLevelOptionDto
+import com.sec.domain.NodeLabel
+import com.sec.domain.Prop
 import com.sec.domain.Ref
 import com.sec.domain.SystemLevel
 import com.sec.graph.GraphDriver
@@ -281,7 +283,7 @@ public class BreakdownProjection(private val graphDriver: GraphDriver) {
     // Not `id()`: the driver's `Node` already has one, it returns the internal element id, and a
     // member always wins over an extension — so the map would have been keyed by the wrong thing
     // with no compiler complaint (R6: a source identifier is never our key, and neither is Neo4j's).
-    private fun Node.nodeKey(): String = get("__id").asString("")
+    private fun Node.nodeKey(): String = get(Prop.ID).asString("")
 
     private fun Record.toNodeRow(): NodeRow {
         val node: Node = get("node").asNode()
@@ -309,12 +311,12 @@ public class BreakdownProjection(private val graphDriver: GraphDriver) {
     }
 
     private fun NodeRow.toDto(id: String, verificationAttributes: List<String>): BreakdownNodeDto {
-        val resolved = UNRESOLVED_LABEL !in labels
+        val resolved = NodeLabel.UNDEFINED !in labels
         return BreakdownNodeDto(
             ref = Ref.encode(id),
             // A placeholder's __name is its __id spelled out, so there is no display id to send
             // (R5) — the wording and the module name are the whole of what the UI can show.
-            id = if (resolved) props["id"]?.toString() ?: props["__name"]?.toString() else null,
+            id = if (resolved) props[DoorsAttr.ID]?.toString() ?: props[Prop.NAME]?.toString() else null,
             level = levelCode?.let(SystemLevel::fromCode)?.let { SystemLevelOptionDto(it.code, it.label) },
             description = if (resolved) describe() else "",
             resolved = resolved,
@@ -338,14 +340,17 @@ public class BreakdownProjection(private val graphDriver: GraphDriver) {
      * `review-table.model.ts`'s `describe()`; if one changes, so does the other.
      */
     private fun NodeRow.describe(): String =
-        if (HEADING_LABEL in labels) {
-            listOf(props["objectNumber"]?.toString().orEmpty(), props["Object Heading"]?.toString().orEmpty())
+        if (DoorsLabel.HEADING in labels) {
+            listOf(
+                props[DoorsAttr.OBJECT_NUMBER]?.toString().orEmpty(),
+                props[DoorsAttr.OBJECT_HEADING]?.toString().orEmpty(),
+            )
                 .filter { it.isNotEmpty() }
                 .joinToString(" ")
         } else {
             // Absent falls back to the name; present-but-"" renders empty, because from DOORS that
             // means "the attribute exists and is empty" (CLAUDE.md §11).
-            props["Object Text"]?.toString() ?: props["__name"]?.toString().orEmpty()
+            props[DoorsAttr.OBJECT_TEXT]?.toString() ?: props[Prop.NAME]?.toString().orEmpty()
         }
 
     public companion object {
@@ -363,8 +368,5 @@ public class BreakdownProjection(private val graphDriver: GraphDriver) {
         // Per-level statement cap, expressed per admitted node rather than as a flat number so it
         // scales with maxNodes instead of silently becoming the real bound at large ones.
         private const val EDGES_PER_NODE = 8L
-
-        private const val HEADING_LABEL = "DOORSHeading"
-        private const val UNRESOLVED_LABEL = "__UNDEFINED"
     }
 }

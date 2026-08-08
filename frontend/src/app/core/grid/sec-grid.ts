@@ -49,6 +49,16 @@ export const SEC_GRID_DEFAULT_COL_DEF: ColDef = {
   // `wrapText` has nothing to grow for: they are one setting in two properties.
   wrapText: true,
   autoHeight: true,
+  // The same argument, applied to the header. A DOORS attribute name is a phrase — "REQ. Verifi-
+  // cation Method", "SYS. Rationale for Allocation" — and truncating it to one line leaves several
+  // columns whose headers differ only past the ellipsis. The pair works the way `wrapText` and
+  // `autoHeight` do: `wrapHeaderText` alone clips at the fixed header height, and
+  // `autoHeaderHeight` alone has nothing to grow for.
+  //
+  // The header row grows to its tallest label and every column keeps the same header height, so
+  // this costs vertical space once, at the top, rather than per row.
+  wrapHeaderText: true,
+  autoHeaderHeight: true,
   // The header cell is ag-grid's own DOM, so it cannot be reached from a component stylesheet.
   // `headerClass` is the public way in: the class is ours, declared in styles/_grid.scss, and no
   // rule anywhere targets an .ag-* internal.

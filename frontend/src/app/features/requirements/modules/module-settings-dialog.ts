@@ -1,8 +1,7 @@
-import { Component, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
-import { FormField, form, type FieldTree } from '@angular/forms/signals';
+import { FormField, form } from '@angular/forms/signals';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import {
   MAT_DIALOG_DATA,
   MatDialog,
@@ -12,9 +11,15 @@ import {
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
-import { MatTable, MatTableModule } from '@angular/material/table';
-import { MatTabsModule, type MatTabChangeEvent } from '@angular/material/tabs';
+import { MatTableModule } from '@angular/material/table';
+import { MatTabsModule } from '@angular/material/tabs';
 import type { ProblemDetails } from '../../../core/error/problem-details';
+import {
+  AttributeSettingsList,
+  type AttributeFlagName,
+  type AttributeSettingsField,
+  type AttributeSettingsRow,
+} from '../../../shared/attribute-settings/attribute-settings-list';
 import { SEC_MODAL_DIALOG } from '../../../shared/dialog/modal-dialog.config';
 import { ModulesApiService } from './modules-api.service';
 
@@ -23,19 +28,16 @@ export interface ModuleSettingsDialogData {
   readonly name: string;
 }
 
-interface AttributeFormRow {
-  name: string;
-  mandatory: boolean;
-}
-
 interface SettingsFormModel {
   systemLevel: string | null;
-  attributes: AttributeFormRow[];
+  attributes: AttributeSettingsRow[];
 }
 
-// The array-item field tree, pinned to the numeric key an array index produces — keeps
-// attributeFields() and the #attributesTable view query in agreement.
-type AttributeField = FieldTree<AttributeFormRow, number>;
+// **Shown in table** is deliberately absent. It configures the Req review table's columns, and
+// this dialog belongs to the Modules view, which has no such table — offering it here would be
+// offering a setting whose effect is nowhere on screen. The flag is still *carried* in the model
+// and posted back unchanged, so opening this dialog cannot clear what the review dialog set.
+const MODULE_FLAGS: readonly AttributeFlagName[] = ['mandatory', 'verification'];
 
 function extractErrorDetail(error: unknown): string {
   if (error instanceof HttpErrorResponse && error.error) {
@@ -53,9 +55,9 @@ function extractErrorDetail(error: unknown): string {
 @Component({
   selector: 'sec-module-settings-dialog',
   imports: [
+    AttributeSettingsList,
     FormField,
     MatButtonModule,
-    MatCheckboxModule,
     MatDialogModule,
     MatFormFieldModule,
     MatProgressBarModule,
@@ -72,8 +74,11 @@ export class ModuleSettingsDialog {
   static open(dialog: MatDialog, data: ModuleSettingsDialogData) {
     return dialog.open<ModuleSettingsDialog, ModuleSettingsDialogData, boolean>(ModuleSettingsDialog, {
       ...SEC_MODAL_DIALOG,
-      width: '760px',
-      height: '620px',
+      width: '880px',
+      maxWidth: '94vw',
+      // Tall for the same reason the review settings dialog is: tab 2 is a list of up to ~80
+      // attributes, and the height is the only thing deciding how many are visible at once.
+      height: '88vh',
       data,
     });
   }
@@ -87,12 +92,10 @@ export class ModuleSettingsDialog {
   protected readonly systemLevels = this.api.systemLevels;
 
   protected readonly propertyColumns = ['label', 'value'] as const;
-  protected readonly attributeColumns = ['name', 'mandatory'] as const;
+  protected readonly flags = MODULE_FLAGS;
 
   private readonly model = signal<SettingsFormModel>({ systemLevel: null, attributes: [] });
   protected readonly settingsForm = form(this.model);
-
-  private initialMandatory = new Set<string>();
 
   protected readonly loading = computed(() => this.detail.isLoading() || this.attributes.isLoading());
   protected readonly loadError = computed(() => this.detail.error() ?? this.attributes.error());
@@ -102,9 +105,10 @@ export class ModuleSettingsDialog {
   protected readonly saveError = signal<string | null>(null);
   protected readonly canSave = computed(() => this.settingsForm().dirty() && !this.saving());
 
-  // mat-tab-group measures lazily, so a sticky header rendered while its tab was hidden gets wrong
-  // offsets; the header is re-measured on the first switch to tab 2 (CLAUDE.md §6).
-  private readonly attributesTable = viewChild<MatTable<AttributeField>>('attributesTable');
+  protected readonly allRows = computed(() => this.settingsForm().value().attributes);
+  protected readonly fields = computed<AttributeSettingsField[]>(() =>
+    Array.from(this.settingsForm.attributes),
+  );
 
   constructor() {
     // Seeds the form once both resources resolve. A programmatic reset, not an edit through a
@@ -115,24 +119,16 @@ export class ModuleSettingsDialog {
       if (!detail || !attributes) {
         return;
       }
-      this.initialMandatory = new Set(
-        attributes.attributes.filter((attribute) => attribute.mandatory).map((attribute) => attribute.name),
-      );
       this.model.set({
         systemLevel: detail.systemLevel,
-        attributes: attributes.attributes.map((attribute) => ({ ...attribute })),
+        attributes: attributes.attributes.map((attribute) => ({
+          name: attribute.name,
+          mandatory: attribute.mandatory,
+          visible: attribute.visible,
+          verification: attribute.verification,
+        })),
       });
     });
-  }
-
-  protected attributeFields(): AttributeField[] {
-    return Array.from(this.settingsForm.attributes);
-  }
-
-  protected onTabChange(event: MatTabChangeEvent): void {
-    if (event.index === 1) {
-      this.attributesTable()?.updateStickyHeaderRowStyles();
-    }
   }
 
   protected async save(): Promise<void> {
@@ -140,18 +136,27 @@ export class ModuleSettingsDialog {
     this.saveError.set(null);
 
     const value = this.settingsForm().value();
-    const currentlyMandatory = new Set(
-      value.attributes.filter((attribute) => attribute.mandatory).map((attribute) => attribute.name),
-    );
-    // Only the diff goes to the server, so the audit timestamps stay meaningful — an untouched
-    // policy keeps its original __updatedAt (requirements-modules.md §5.3).
-    const add = [...currentlyMandatory].filter((name) => !this.initialMandatory.has(name));
-    const remove = [...this.initialMandatory].filter((name) => !currentlyMandatory.has(name));
 
     try {
+      // The absolute state of every attribute, the same payload the review settings dialog posts,
+      // reaching the same guarded meta writer in the same transaction as the system level.
+      //
+      // This replaced a mandatory-only *diff*, which sent just what the user changed and so left
+      // an untouched policy's `__updatedAt` alone. Two write shapes for one stored rule was the
+      // higher price: the two dialogs now edit the same flags through the same component, and one
+      // of them silently meaning something different by Save is exactly the bug that costs a day.
       await this.api.saveSettings(this.data.ref, {
         systemLevel: value.systemLevel,
-        mandatoryAttributes: { add, remove },
+        // Built field by field rather than spread: Signal Forms tags each row object with a
+        // symbol key of its own. JSON.stringify drops it, so nothing reaches the wire either way —
+        // but a payload that names its four fields is the one that stays right when the row type
+        // grows a fifth.
+        attributeSettings: value.attributes.map((row) => ({
+          name: row.name,
+          mandatory: row.mandatory,
+          visible: row.visible,
+          verification: row.verification,
+        })),
       });
       this.dialogRef.close(true);
     } catch (error) {

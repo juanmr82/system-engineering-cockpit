@@ -15,6 +15,10 @@ export interface ModuleRow {
   readonly name: string;
   readonly lastModified: string;
   readonly path: string;
+  // Module properties, not object attributes: a module that was never exported to Word carries
+  // neither, and the server sends "" for it — an absence, not a fault.
+  readonly wordExportTitle: string;
+  readonly wordExportNumber: string;
   readonly systemLevel: SystemLevelOption | null;
 }
 

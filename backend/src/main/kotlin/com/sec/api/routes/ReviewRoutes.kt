@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.decodeRef
 import com.sec.api.dto.CommentDto
 import com.sec.api.dto.SaveCommentsRequestDto
@@ -31,7 +32,7 @@ public fun Route.reviewRoutes(
     breakdownProjection: BreakdownProjection,
     metaWriter: MetaWriter,
 ) {
-    route("/api/v1/modules/{ref}") {
+    route("${ApiPaths.MODULES}/${ApiPaths.REF}") {
         get("/objects") {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
             if (!doorsProjection.moduleExists(moduleId)) {
@@ -107,7 +108,7 @@ public fun Route.reviewRoutes(
         }
     }
 
-    route("/api/v1/items/{ref}") {
+    route("${ApiPaths.ITEMS}/${ApiPaths.REF}") {
         get {
             val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
             val detail = reviewProjection.getItemDetail(itemId)

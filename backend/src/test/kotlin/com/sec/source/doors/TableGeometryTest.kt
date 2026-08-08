@@ -92,7 +92,7 @@ class TableGeometryTest {
     @Test
     fun `a table with no cells is reported empty rather than left silent`() {
         val view = TableGeometry.assemble(
-            TableGeometry.SourceTable(table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL)),
+            TableGeometry.SourceTable(table = obj("T", "2.1.0-1", DoorsLabel.TABLE)),
         )
 
         assertEquals(0, view.rowCount)
@@ -125,10 +125,10 @@ class TableGeometryTest {
     @Test
     fun `a hole in the middle of a row is a missing cell, and the cells after it do not shift left`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         cell("C1", "2.1.0-1.0-1.0-1", "a1"),
                         // no ordinal 2 — the cell was deleted in DOORS
@@ -164,10 +164,10 @@ class TableGeometryTest {
     @Test
     fun `two cells claiming one column keep both, and the collision is an error`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         cell("C1", "2.1.0-1.0-1.0-1", "first"),
                         cell("C2", "2.1.0-1.0-1.0-1", "second"),
@@ -188,10 +188,10 @@ class TableGeometryTest {
     @Test
     fun `a cell whose outline number cannot be parsed keeps its arrival position`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         cell("C1", "2.1.0-1.0-1.0-1", "a1"),
                         cell("C2", "nonsense", "a2"),
@@ -214,10 +214,10 @@ class TableGeometryTest {
     @Test
     fun `an agreeing exported index raises nothing`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL, exportedRowIndex = 0),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW, exportedRowIndex = 0),
                     children = listOf(
                         cell("C1", "2.1.0-1.0-1.0-1", "a1", exportedRowIndex = 0, exportedColumnIndex = 0),
                         cell("C2", "2.1.0-1.0-1.0-2", "a2", exportedRowIndex = 0, exportedColumnIndex = 1),
@@ -232,10 +232,10 @@ class TableGeometryTest {
     @Test
     fun `a disagreeing exported index is reported, and the outline number still decides`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(cell("C1", "2.1.0-1.0-1.0-1", "a1", exportedColumnIndex = 4)),
                 ),
             ),
@@ -260,10 +260,10 @@ class TableGeometryTest {
     @Test
     fun `cells arriving out of ordinal order are placed by ordinal and the disagreement is reported`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         cell("C2", "2.1.0-1.0-1.0-2", "second"),
                         cell("C1", "2.1.0-1.0-1.0-1", "first"),
@@ -284,10 +284,10 @@ class TableGeometryTest {
     @Test
     fun `an empty Object Text stays empty and never falls back to a name or an id`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         cell("C1", "2.1.0-1.0-1.0-1", ""),
                         cell("C2", "2.1.0-1.0-1.0-2", null),
@@ -308,10 +308,10 @@ class TableGeometryTest {
     @Test
     fun `multi-line cell text keeps its newlines`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(cell("C1", "2.1.0-1.0-1.0-1", "line one\nline two")),
                 ),
             ),
@@ -325,10 +325,10 @@ class TableGeometryTest {
     @Test
     fun `a child of the table that is not a row becomes a band in its document-order position`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(cell("C1", "2.1.0-1.0-1.0-1", "a1")),
                 ),
                 TableGeometry.SourceChild(
@@ -349,16 +349,16 @@ class TableGeometryTest {
     @Test
     fun `a nested table is reported rather than flattened`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(
                         obj(
                             "C1",
                             "2.1.0-1.0-1.0-1",
-                            TableGeometry.TABLE_CELL_LABEL,
-                            TableGeometry.TABLE_LABEL,
+                            DoorsLabel.TABLE_CELL,
+                            DoorsLabel.TABLE,
                         ),
                     ),
                 ),
@@ -396,10 +396,10 @@ class TableGeometryTest {
     @Test
     fun `a table whose every cell is empty falls back to equal fractions rather than dividing by zero`() {
         val source = TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = listOf(
                 TableGeometry.SourceChild(
-                    node = obj("R1", "2.1.0-1.0-1", TableGeometry.TABLE_ROW_LABEL),
+                    node = obj("R1", "2.1.0-1.0-1", DoorsLabel.TABLE_ROW),
                     children = listOf(cell("C1", "2.1.0-1.0-1.0-1", ""), cell("C2", "2.1.0-1.0-1.0-2", "")),
                 ),
             ),
@@ -466,7 +466,7 @@ class TableGeometryTest {
     ) = obj(
         id,
         objectNumber,
-        TableGeometry.TABLE_CELL_LABEL,
+        DoorsLabel.TABLE_CELL,
         text = text,
         exportedRowIndex = exportedRowIndex,
         exportedColumnIndex = exportedColumnIndex,
@@ -475,7 +475,7 @@ class TableGeometryTest {
     /** One row at [rowNumber] whose cells hold [texts], numbered from column 1. */
     private fun row(rowNumber: Int, vararg texts: String) =
         TableGeometry.SourceChild(
-            node = obj("R$rowNumber", "2.1.0-1.0-$rowNumber", TableGeometry.TABLE_ROW_LABEL),
+            node = obj("R$rowNumber", "2.1.0-1.0-$rowNumber", DoorsLabel.TABLE_ROW),
             children = texts.mapIndexed { index, text ->
                 cell("R${rowNumber}C${index + 1}", "2.1.0-1.0-$rowNumber.0-${index + 1}", text)
             },
@@ -483,7 +483,7 @@ class TableGeometryTest {
 
     private fun tableOf(vararg rows: TableGeometry.SourceChild) =
         TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = rows.toList(),
         )
 
@@ -491,14 +491,14 @@ class TableGeometryTest {
     private fun table(rows: Int, columns: Int): TableGeometry.SourceTable {
         val children = (1..rows).map { r ->
             TableGeometry.SourceChild(
-                node = obj("R$r", "2.1.0-1.0-$r", TableGeometry.TABLE_ROW_LABEL),
+                node = obj("R$r", "2.1.0-1.0-$r", DoorsLabel.TABLE_ROW),
                 children = (1..columns).map { c ->
                     cell(if (rows == 1 && columns == 1) "C1" else "R${r}C$c", "2.1.0-1.0-$r.0-$c", "r${r}c$c")
                 },
             )
         }
         return TableGeometry.SourceTable(
-            table = obj("T", "2.1.0-1", TableGeometry.TABLE_LABEL),
+            table = obj("T", "2.1.0-1", DoorsLabel.TABLE),
             children = children,
         )
     }

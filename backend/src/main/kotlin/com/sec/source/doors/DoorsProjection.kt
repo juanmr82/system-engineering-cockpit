@@ -6,6 +6,7 @@ import com.sec.api.dto.ModulePropertyDto
 import com.sec.api.dto.ModuleRowDto
 import com.sec.api.dto.SystemLevelOptionDto
 import com.sec.domain.Aliases
+import com.sec.domain.Prop
 import com.sec.domain.Ref
 import com.sec.domain.SystemLevel
 import com.sec.graph.GraphDriver
@@ -91,7 +92,7 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
                 // `Object Heading`, everything else shows `Object Text` (REQ_REVIEW.md §5).
                 // Offering them as optional columns would let a module show the same sentence
                 // twice, in a table whose whole problem was already too many columns.
-                fixed = name in DESCRIPTION_ATTRIBUTES,
+                fixed = name in DoorsAttr.description,
             )
         }
     }
@@ -109,6 +110,8 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
             name = get("name").asString(),
             lastModified = get("lastModified").asString(""),
             path = get("path").asString(""),
+            wordExportTitle = get("wordExportTitle").asString(""),
+            wordExportNumber = get("wordExportNumber").asString(""),
             systemLevel = level?.let { SystemLevelOptionDto(it.code, it.label) },
         )
     }
@@ -119,10 +122,10 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
         val props = module.asMap()
 
         val ordered = mutableListOf<ModulePropertyDto>()
-        if (props.containsKey("__version")) {
-            val raw = props["__version"]?.toString().orEmpty()
+        if (props.containsKey(Prop.VERSION)) {
+            val raw = props[Prop.VERSION]?.toString().orEmpty()
             ordered += ModulePropertyDto(
-                label = Aliases.propertyLabels.getValue("__version"),
+                label = Aliases.propertyLabels.getValue(Prop.VERSION),
                 value = Aliases.renderVersionValue(raw),
             )
         }
@@ -134,7 +137,7 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
 
         return ModuleDetailDto(
             ref = Ref.encode(moduleId),
-            name = props["__name"]?.toString().orEmpty(),
+            name = props[Prop.NAME]?.toString().orEmpty(),
             systemLevel = levelCode,
             properties = ordered,
         )
@@ -144,10 +147,5 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
         // A cap on distinct attribute names, not on objects read. The reference modules carry 53
         // and 78; this is the "Community has no query governor" safety net, not a working limit.
         const val MAX_ATTRIBUTES = 500
-
-        // The two attributes the review table's Description column is made of. They are still
-        // discovered and still listed in the settings dialog — as checked-and-disabled rows, so a
-        // reviewer can see *why* they cannot be turned off (REQ_REVIEW.md §5, §6).
-        val DESCRIPTION_ATTRIBUTES = setOf("Object Heading", "Object Text")
     }
 }

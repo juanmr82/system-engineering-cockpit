@@ -1,5 +1,6 @@
 package com.sec.api.routes
 
+import com.sec.api.ApiPaths
 import com.sec.api.respondProblem
 import com.sec.domain.Ref
 import com.sec.source.doors.StatisticsProjection
@@ -21,7 +22,7 @@ import io.ktor.server.routing.route
  * rather than assumed (§13 criterion 14).
  */
 public fun Route.statisticsRoutes(statisticsProjection: StatisticsProjection) {
-    route("/api/v1/statistics/requirements") {
+    route("${ApiPaths.STATISTICS}/requirements") {
         get {
             when (val scope = call.moduleScope()) {
                 is ModuleScope.Malformed -> call.respondMalformedModule()
