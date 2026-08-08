@@ -289,18 +289,19 @@ describe('Modules', () => {
   });
 
   /**
-   * The gear comes before the name, so every row's icon is at the same x.
+   * The name reads first and the gear is pushed to the cell's right edge, so every row's icon is at
+   * the same x.
    *
-   * Trailing the name, it landed wherever that row's text happened to end — a ragged column of
-   * buttons that reads as a layout fault rather than as a control. Asserted on DOM order because
-   * that is what produces the alignment; there is no width here to measure in jsdom.
+   * Trailing the name *directly*, it landed wherever that row's text happened to end — a ragged
+   * column of buttons that reads as a layout fault rather than as a control. What aligns them is
+   * `margin-inline-start: auto` on a full-width cell, which jsdom cannot measure; the DOM order and
+   * the class are what this can assert, and they are what the rule is applied to.
    */
-  it('puts the settings gear before the module name', () => {
+  it('reads the name first and puts the settings gear last in the cell', () => {
     const cell = require<HTMLElement>('.sec-module-name-cell');
-    const children = Array.from(cell.children).map((child) => child.tagName.toLowerCase());
 
-    expect(children[0]).toBe('button');
-    expect(cell.querySelector('.sec-module-name-cell__name')).toBe(cell.children[1]);
+    expect(cell.children[0]).toBe(cell.querySelector('.sec-module-name-cell__name'));
+    expect(cell.children[cell.children.length - 1]?.tagName.toLowerCase()).toBe('button');
   });
 
   // Two module properties, not object attributes, so they are read by name rather than discovered.

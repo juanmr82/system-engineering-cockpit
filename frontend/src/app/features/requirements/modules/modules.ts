@@ -153,6 +153,11 @@ export class Modules {
     {
       colId: 'name',
       headerName: 'Module',
+      // Row identity, pinned left, so the module a row is about stays on screen when the table is
+      // scrolled sideways — the same reason the review table pins its ID column, and the same test
+      // CLAUDE.md §6 sets: pin what a reviewer reads *from* while looking elsewhere. It stays
+      // resizable; see autoSizeNameColumn() for why that does not fight the auto-sizing.
+      pinned: 'left',
       cellRenderer: ModuleNameCell,
       cellClass: 'sec-grid__cell sec-grid__cell--custom',
       valueGetter: (params) => params.data?.name ?? '',
@@ -358,26 +363,20 @@ export class Modules {
   }
 
   /**
-   * Widens the Module column to fit the longest name currently drawn.
+   * Widens the Module column to fit the longest name, **once**, when the data first lands.
    *
-   * Called on first render and again whenever the row set changes, because searching changes which
-   * names are in the table and a column left at the unfiltered width reads as a stray gap.
+   * Deliberately not re-run when the row set changes. Searching filters the rows, so re-sizing on
+   * every keystroke would snap the column back and forth — and, worse, would silently undo a width
+   * the user had dragged for themselves. Sizing once and then leaving it alone is what lets the
+   * column stay resizable, which is the escape hatch for the limitation below.
    *
    * **ag-grid measures rendered cells only**, so with more modules than fit on screen a longer name
    * further down is not accounted for until it is scrolled into view. That is a real limit and an
    * acceptable one here — this is a list of modules, not of requirements — and `maxWidth` plus the
    * renderer's ellipsis mean the failure is a truncated name, never a broken layout.
    */
-  private autoSizeNameColumn(): void {
-    this.gridApi?.autoSizeColumns(['name']);
-  }
-
   protected onFirstDataRendered(): void {
-    this.autoSizeNameColumn();
-  }
-
-  protected onRowDataUpdated(): void {
-    this.autoSizeNameColumn();
+    this.gridApi?.autoSizeColumns(['name']);
   }
 
   protected retry(): void {

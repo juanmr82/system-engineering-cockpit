@@ -1,7 +1,9 @@
 <span class="sec-module-name-cell">
-  <!-- The gear leads, so every row's icon sits at the same x. Trailing the name put it wherever
-       that row's text happened to end, which reads as a ragged column of misplaced buttons rather
-       than as a control. The name is what varies in length, so the name is what goes second. -->
+  <span class="sec-module-name-cell__name">{{ name() }}</span>
+  <!-- Pushed to the cell's right edge by `margin-inline-start: auto`, not left sitting after the
+       text. Trailing the name directly, the gear landed wherever that row's text happened to end —
+       a ragged column of buttons. Against the right edge of a content-sized column every row's
+       gear is at the same x, and the name still comes first, which is the order it reads in. -->
   <button
     mat-icon-button
     type="button"
@@ -12,5 +14,4 @@
   >
     <mat-icon svgIcon="gearbox" />
   </button>
-  <span class="sec-module-name-cell__name">{{ name() }}</span>
 </span>

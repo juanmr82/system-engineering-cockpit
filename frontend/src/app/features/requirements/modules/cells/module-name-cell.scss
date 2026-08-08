@@ -8,11 +8,9 @@
   min-width: 0;
 }
 
-// Name and gear share a baseline: the button is a peer of the text, not a floating overlay.
 .sec-module-name-cell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
 }
 
@@ -22,10 +20,31 @@
   white-space: nowrap;
   font-weight: 600;
   color: var(--sec-blue);
+  // Reserves the gear's width. The gear is out of flow and therefore invisible to
+  // autoSizeColumns(), so without this the column would be sized to the text alone and the two
+  // would overlap. This padding is in flow, so it is measured.
+  padding-inline-end: 30px;
 }
 
+// Pinned to the **cell's** right edge, so every row's gear is at the same x whatever the length of
+// its name. Trailing the text directly, it landed wherever that row happened to end — a ragged
+// column of buttons that reads as a layout fault rather than as a control.
+//
+// This is the technique CLAUDE.md §6 describes: ag-grid lays every cell out with
+// `position: absolute`, so the cell is already a containing block and a renderer can pin itself to
+// it. It is what makes the alignment possible **without touching an `.ag-*` internal** — ag-grid
+// puts two shrink-to-content wrappers (`.ag-cell-wrapper`, `.ag-cell-value`) between the cell and
+// this component, both `position: static`, so an in-flow `margin-inline-start: auto` has only the
+// text's own width to push against and does nothing. Verified in the browser, not assumed.
+//
+// `inset-block` + `margin-block: auto` centres it vertically without a magic offset, and keeps it
+// centred when another column wraps and grows the row.
 .sec-module-name-cell__settings {
   @include sec.compact-icon-button;
 
+  position: absolute;
+  inset-inline-end: 6px;
+  inset-block: 0;
+  margin-block: auto;
   flex: none;
 }

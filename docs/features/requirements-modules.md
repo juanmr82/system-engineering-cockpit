@@ -63,7 +63,7 @@ Consequences to honour throughout:
 
 | Column | Source | Notes |
 |---|---|---|
-| Module | `DOORSModule.__name` | **the settings gear leads, the name follows** — trailing the name it sat wherever that row's text ended, a ragged column of buttons. Sized to its content (`autoSizeColumns`), so a name is never truncated; that needs `wrapText: false` **and** `autoHeight: false`, because ag-grid cannot auto-size an auto-height column and fails at it silently (`CLAUDE.md` §6) |
+| Module | `DOORSModule.__name` | **Pinned left** — row identity, so it survives a sideways scroll, the same rule the review table's ID column follows. The settings gear is **pinned to the cell's right edge**, not trailing the text, where it sat wherever that row's name ended. Sized to its content (`autoSizeColumns`, once, on first render so a manual resize is not undone), so a name is never truncated; that needs `wrapText: false` **and** `autoHeight: false`, because ag-grid cannot auto-size an auto-height column and fails at it silently (`CLAUDE.md` §6) |
 | Last modified | `DOORSModule.last_Modified_On` | **free text from DOORS, not ISO-8601.** Display verbatim, sort as a string. Never construct a `Date` from it. |
 | Path | `DOORSModule.moduleFullPath` | |
 | Word export title | `DOORSModule.wordDocTitle` | A module property, not an object attribute, so it is read by name and never appears in attribute discovery. Absent ⇒ empty cell, no wording |

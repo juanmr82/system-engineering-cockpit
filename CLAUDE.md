@@ -849,6 +849,15 @@ list inside a dialog — it is *data* tables this rule is about.
   is the right shape for a control filling a fixed-height cell, and the wrong one the moment the
   column carries `autoHeight`: an out-of-flow element contributes no height, so the row collapses.
   Pick one — a fixed row height and an escaping renderer, or `autoHeight` and a renderer in flow.
+- **A renderer never fills its cell, and cannot be made to from the outside.** ag-grid puts two
+  shrink-to-content wrappers — `.ag-cell-wrapper` and `.ag-cell-value` — between the cell and the
+  component, on *every* column, and both are `position: static`. So `flex: 1` or `inline-size: 100%`
+  on the host stretches it only inside a wrapper that is already the width of the text, and an
+  in-flow `margin-inline-start: auto` has nothing to push against. There is no our-class handle on
+  either wrapper. **To align anything to the cell's edge, pin it to the cell**: the cell is
+  `position: absolute`, so it is already a containing block, and `position: absolute` +
+  `inset-inline-end` on the element resolves against the full cell width. An out-of-flow element is
+  invisible to `autoSizeColumns()`, so reserve its width with padding on an in-flow sibling.
 - **`autoHeight` silently disables `autoSizeColumns()` for that column.** With `autoHeight` on, a
   cell's width stops being a function of its content, so ag-grid has nothing to measure — and it
   says nothing: no warning, no error, no exception, the column simply keeps the width it had. Since
