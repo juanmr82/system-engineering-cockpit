@@ -748,6 +748,12 @@ table { @include sec.data-table; }
   scoped and semantically named, while the values that must not drift — table density, the
   Tier-2 accent, the bounded scroll container `position: sticky` depends on — live in one
   place. Add to `_mixins.scss` the second time a pattern appears; do not copy it.
+- **A value two rules must agree on is a Sass variable in `_mixins.scss`, not a number in each.**
+  `$compact-icon-hit-size` is the case that prompted it: the Modules gear is positioned out of
+  flow, so a sibling's padding has to hold its width open, and the button's size and the
+  reservation were two independent `30px`. Nothing tests that kind of coupling — jsdom has no
+  layout — so a drift between them is invisible until someone looks at the page. Export the
+  variable, use it as the mixin's default, and let the other rule read it.
 - **Colour tokens are never `@use`d.** `_tokens.scss` emits the `--sec-*` custom properties
   once, globally, from `styles.scss`. Components reference `var(--sec-blue)` and never
   redeclare a token or hardcode a hex.

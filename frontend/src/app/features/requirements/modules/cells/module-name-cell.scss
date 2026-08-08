@@ -23,7 +23,12 @@
   // Reserves the gear's width. The gear is out of flow and therefore invisible to
   // autoSizeColumns(), so without this the column would be sized to the text alone and the two
   // would overlap. This padding is in flow, so it is measured.
-  padding-inline-end: 30px;
+  //
+  // Exactly the button's hit size, from the same variable the button gets it from — not a constant
+  // that happens to match. The visible gap between the text and the gear is then whatever the
+  // cell's own padding exceeds the gear's inset (11px - 6px = 5px), which is why no fudge factor
+  // belongs in this value.
+  padding-inline-end: sec.$compact-icon-hit-size;
 }
 
 // Pinned to the **cell's** right edge, so every row's gear is at the same x whatever the length of

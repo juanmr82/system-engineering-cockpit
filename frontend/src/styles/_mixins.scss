@@ -430,7 +430,16 @@
 // An icon button sized to sit inline with body text without inflating the row. The touch target is
 // switched off because Material's default 48px overlay would break vertical alignment in a
 // compact table row.
-@mixin compact-icon-button($icon-size: 18px, $hit-size: 30px) {
+// The hit area of a compact icon button, as a variable and not only as a default argument.
+//
+// A layout that has to *reserve room* for one of these — the Modules table's settings gear is
+// positioned out of flow, so its width has to be held open by a sibling's padding — can then
+// reserve exactly its width instead of repeating the number. Two independent 30s that have to be
+// kept in step by hand is the kind of coupling nothing tests: jsdom has no layout, so a drift
+// between them is invisible until someone looks at the page.
+$compact-icon-hit-size: 30px !default;
+
+@mixin compact-icon-button($icon-size: 18px, $hit-size: $compact-icon-hit-size) {
   --mat-icon-button-icon-size: #{$icon-size};
   --mat-icon-button-state-layer-size: #{$hit-size};
   --mat-icon-button-touch-target-display: none;
