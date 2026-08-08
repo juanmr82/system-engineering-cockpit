@@ -153,10 +153,24 @@ export class Modules {
     {
       colId: 'name',
       headerName: 'Module',
-      width: 320,
       cellRenderer: ModuleNameCell,
       cellClass: 'sec-grid__cell sec-grid__cell--custom',
       valueGetter: (params) => params.data?.name ?? '',
+      // Sized to its content by autoSizeNameColumn() rather than to a fixed 320px, so a module
+      // name is never truncated to an ellipsis.
+      //
+      // **Both overrides of the shared default are required, and the second one is not obvious.**
+      // `wrapText: false` because this column is an identifier read at a glance, not prose. And
+      // `autoHeight: false` because **ag-grid cannot auto-size a column that has autoHeight**: the
+      // cell's width stops being a function of its content, so autoSizeColumns() measures nothing
+      // and returns silently — no warning, no error, the column simply keeps its width. Measured
+      // in the browser: 200px with autoHeight on, 128px with it off, same data.
+      wrapText: false,
+      autoHeight: false,
+      minWidth: 120,
+      // One pathological name may not push every other column off the screen. Past this the
+      // renderer's own `text-overflow: ellipsis` takes over again, which is the right failure.
+      maxWidth: 560,
     },
     {
       colId: 'lastModified',
@@ -341,6 +355,29 @@ export class Modules {
 
   protected onGridReady(event: GridReadyEvent<SearchableModuleRow>): void {
     this.gridApi = event.api;
+  }
+
+  /**
+   * Widens the Module column to fit the longest name currently drawn.
+   *
+   * Called on first render and again whenever the row set changes, because searching changes which
+   * names are in the table and a column left at the unfiltered width reads as a stray gap.
+   *
+   * **ag-grid measures rendered cells only**, so with more modules than fit on screen a longer name
+   * further down is not accounted for until it is scrolled into view. That is a real limit and an
+   * acceptable one here — this is a list of modules, not of requirements — and `maxWidth` plus the
+   * renderer's ellipsis mean the failure is a truncated name, never a broken layout.
+   */
+  private autoSizeNameColumn(): void {
+    this.gridApi?.autoSizeColumns(['name']);
+  }
+
+  protected onFirstDataRendered(): void {
+    this.autoSizeNameColumn();
+  }
+
+  protected onRowDataUpdated(): void {
+    this.autoSizeNameColumn();
   }
 
   protected retry(): void {

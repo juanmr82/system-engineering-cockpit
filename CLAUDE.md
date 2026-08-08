@@ -849,6 +849,17 @@ list inside a dialog — it is *data* tables this rule is about.
   is the right shape for a control filling a fixed-height cell, and the wrong one the moment the
   column carries `autoHeight`: an out-of-flow element contributes no height, so the row collapses.
   Pick one — a fixed row height and an escaping renderer, or `autoHeight` and a renderer in flow.
+- **`autoHeight` silently disables `autoSizeColumns()` for that column.** With `autoHeight` on, a
+  cell's width stops being a function of its content, so ag-grid has nothing to measure — and it
+  says nothing: no warning, no error, no exception, the column simply keeps the width it had. Since
+  `autoHeight` is on in `SEC_GRID_DEFAULT_COL_DEF`, **a column that is to be sized to its content
+  must turn it off**, together with `wrapText`. Measured on the Modules table: 200px with
+  `autoHeight` on, 128px with it off, same rows. The trap is that 200px is also ag-grid's default
+  column width, so the call looks like it worked.
+- **`autoSizeColumns()` measures rendered rows only.** A longer value below the fold is not
+  accounted for until it is scrolled into view. Fine for a list of modules; not a sizing strategy
+  for a table of requirements. Pair it with a `maxWidth` so one pathological value cannot push
+  every other column off screen, and leave the renderer's `text-overflow: ellipsis` as the floor.
 - **Headers wrap by default** (`wrapHeaderText` + `autoHeaderHeight` in `SEC_GRID_DEFAULT_COL_DEF`).
   A DOORS attribute name is a phrase, and several of a module's differ only past the point a
   one-line header clips them. Set the header cell's `line-height` too: a header row centres a single

@@ -1,5 +1,7 @@
 <span class="sec-module-name-cell">
-  <span class="sec-module-name-cell__name">{{ name() }}</span>
+  <!-- The gear leads, so every row's icon sits at the same x. Trailing the name put it wherever
+       that row's text happened to end, which reads as a ragged column of misplaced buttons rather
+       than as a control. The name is what varies in length, so the name is what goes second. -->
   <button
     mat-icon-button
     type="button"
@@ -10,4 +12,5 @@
   >
     <mat-icon svgIcon="gearbox" />
   </button>
+  <span class="sec-module-name-cell__name">{{ name() }}</span>
 </span>
