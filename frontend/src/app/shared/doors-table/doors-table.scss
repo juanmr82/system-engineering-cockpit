@@ -1,0 +1,171 @@
+// A DOORS table in the paper style (docs/DOORS_TABLES.md §5.2, CLAUDE.md §8).
+//
+// The whole layout is one CSS grid whose track list arrives as --sec-doors-table-tracks. Nothing
+// here is measured in TypeScript: when the containing column changes width the fraction tracks
+// recompute and every cell re-wraps for free. Setting an explicit width anywhere in this file — or
+// computing one in the component — is the single change that turns a resize from a browser reflow
+// into a measure/write cycle (§6.6).
+//
+// Every colour is a --sec-* token. No hex is written here and none may be.
+
+.sec-doors-table {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink);
+}
+
+// --- Findings -------------------------------------------------------------------------------
+
+.sec-doors-table__caption {
+  display: flex;
+  justify-content: flex-end;
+  margin-block-end: 4px;
+}
+
+.sec-doors-table__warning {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--sec-ink);
+  }
+
+  // Red is spent on the one thing that is actually wrong rather than on every finding. A short row
+  // is a fact about the export; a duplicate ordinal is a defect that mislays a requirement.
+  &--error {
+    color: var(--sec-highlight-error);
+  }
+}
+
+.sec-doors-table__anomalies {
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  list-style: none;
+  // A left rule, not a fill — the house rule for an accent panel (CLAUDE.md §8).
+  border-inline-start: var(--sec-rail) solid var(--sec-line);
+  background: var(--sec-wash-cool);
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+}
+
+.sec-doors-table__anomaly {
+  display: flex;
+  gap: 8px;
+  padding-block: 2px;
+
+  &--error {
+    border-inline-start-color: var(--sec-highlight-error);
+    color: var(--sec-highlight-error);
+  }
+}
+
+.sec-doors-table__anomaly-id {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--sec-ink-3);
+}
+
+// --- The grid -------------------------------------------------------------------------------
+
+.sec-doors-table__scroll {
+  // The table, and only the table, scrolls. The surrounding columns must stay put (§6.6).
+  overflow: auto;
+  overscroll-behavior: contain;
+
+  // **A bound on the figure, and a deliberate departure from §6.5.** That section says never to
+  // split a table across a viewport boundary — written for a document view with a virtual
+  // scroller, where splitting one would break subgrid alignment. Here the table lives in a single
+  // row of a flat list, and an unbounded one takes the whole module's scrollbar with it: the
+  // reference module's largest table measured 25 000 pixels in a 380px column, which is not a
+  // readable figure and is not a usable list either.
+  //
+  // Bounded, it is a figure you scroll *within*, and every row after it is reachable again.
+  max-block-size: 70vh;
+}
+
+.sec-doors-table__grid {
+  display: grid;
+  grid-template-columns: var(--sec-doors-table-tracks, minmax(0, 1fr));
+  // Fluid until the cells stop being readable, then wide enough to scroll. This is a *ratio* the
+  // browser resolves, not a measured width: --sec-doors-table-columns is a count from the data.
+  // §6.6 suggests 4.5rem as the floor. Measured against real cell text that is a sentence rather
+  // than a value, 4.5rem puts one short word on a line and stands a 41-row table 25 000px tall.
+  // 8rem is the width at which a wrapped sentence still reads as a sentence.
+  inline-size: max(100%, calc(var(--sec-doors-table-columns, 1) * 8rem));
+  border-block-start: var(--sec-hairline) solid var(--sec-line);
+  border-inline-start: var(--sec-hairline) solid var(--sec-line);
+}
+
+// `display: contents` is what lets a role="row" element exist without becoming a grid item of its
+// own — the cells participate in the outer grid directly, which is the only way the vertical rules
+// line up between bands. Modern engines keep the ARIA role.
+.sec-doors-table__row,
+.sec-doors-table__band {
+  display: contents;
+}
+
+.sec-doors-table__cell {
+  // MANDATORY, and half of the pair that makes shrinking work — the other half is `minmax(0, …)`
+  // on every track. A grid item defaults to min-width: auto and will refuse to shrink below its
+  // longest word, which is exactly how a table grows past its container and never comes back.
+  min-inline-size: 0;
+  padding: 4px 8px;
+  border-inline-end: var(--sec-hairline) solid var(--sec-line);
+  border-block-end: var(--sec-hairline) solid var(--sec-line);
+  // Object Text carries real newlines out of the DXL and must keep them.
+  white-space: pre-wrap;
+  // Long ids, URLs and German compounds must not blow the column out...
+  overflow-wrap: anywhere;
+  // ...but ordinary words are not broken, and normative requirement text is never hyphenated.
+  word-break: normal;
+  hyphens: none;
+  text-wrap: pretty;
+  line-height: var(--sec-leading);
+  // A short cell sits at the top of a tall band, matching DOORS.
+  align-content: start;
+}
+
+// **The first row is not drawn differently, on purpose.** §1.7 records that DOORS bolds it, and an
+// earlier version did too — bold plus a heavier rule beneath. It reads as a heading inside a
+// document that already has headings, and on a sanitised export where every cell holds the same
+// sentence it emphasises nothing. The row keeps its `columnheader` role, so a screen reader is
+// still told what it is; only the paint is gone.
+
+// A structural gap: no object exists here. Texture rather than colour — it is built from the same
+// hairline token as the borders, so it reads as "no sheet here" rather than as a status. Merged
+// cells are never inferred, so this is genuinely an absence and a finding names it above.
+.sec-doors-table__cell--absent {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 5px,
+    var(--sec-line-soft) 5px 6px
+  );
+}
+
+.sec-doors-table__band-cell {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+  padding: 4px 8px;
+  border-inline-end: var(--sec-hairline) solid var(--sec-line);
+  border-block-end: var(--sec-hairline) solid var(--sec-line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: var(--sec-leading);
+  color: var(--sec-ink-2);
+}
+
+.sec-doors-table__empty {
+  margin: 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-3);
+}

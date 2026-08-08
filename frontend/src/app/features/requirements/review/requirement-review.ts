@@ -17,16 +17,18 @@ import { secGridOptions } from '../../../core/grid/sec-grid';
 import type { ProblemDetails } from '../../../core/error/problem-details';
 import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
+import type { DoorsTableView, ModuleTablesResponse } from '../../../shared/doors-table/doors-table.model';
 import { normalize } from '../../../shared/text/normalize';
 import { ModulesApiService } from '../modules/modules-api.service';
 import { CommentCell } from './cells/comment-cell';
 import { IdCell } from './cells/id-cell';
 import { IssuesCell } from './cells/issues-cell';
 import { ReferencesCell } from './cells/references-cell';
+import { TableCell } from './cells/table-cell';
 import { ItemDetailPanel } from './item-detail-panel';
 import { ReviewApiService } from './review-api.service';
 import { ReviewSettingsDialog } from './review-settings-dialog';
-import { describe, isHeading, isTableElement, refGroup, renderValue } from './review-table.model';
+import { describe, isHeading, isTable, isTablePart, refGroup, renderValue } from './review-table.model';
 import type { RefGroup, ReviewCellContext, TableRow } from './review-table.model';
 import type { ModuleObjectsResponse, ReviewComment, ReviewRow } from './review.model';
 
@@ -116,6 +118,21 @@ export class RequirementReview {
     return ref ? `/api/v1/modules/${ref}/attributes` : undefined;
   });
 
+  /**
+   * The module's embedded tables, already reconstructed (`docs/DOORS_TABLES.md` §4.3).
+   *
+   * A second request rather than part of `/objects`, because a table is a *different shape* from a
+   * row — a dense matrix with its own geometry and its own findings — and because the flat list
+   * loads and stays useful whether or not this one answers.
+   *
+   * It takes no parameters: a table draws its cells' `Object Text` and nothing else, so it does not
+   * depend on which attributes the view is showing (§6.3 is not implemented).
+   */
+  protected readonly tables = httpResource<ModuleTablesResponse>(() => {
+    const ref = this.moduleRef();
+    return ref ? ReviewApiService.tablesUrl(ref) : undefined;
+  });
+
   protected readonly search = signal('');
   private readonly debouncedSearch = debounced(this.search, 250);
   protected readonly requirementsOnly = signal(false);
@@ -161,6 +178,12 @@ export class RequirementReview {
     if (data.headingLevel > 0) {
       return ['sec-grid__row--heading', `sec-grid__row--h${Math.min(data.headingLevel, MAX_HEADING_LEVEL)}`];
     }
+    // A table is neither a requirement nor muted context. It is a figure: it gets its own class so
+    // the cell can drop its padding, and it is deliberately *not* dimmed — the numbers in it are
+    // as normative as the sentences around it.
+    if (data.table) {
+      return ['sec-grid__row--table'];
+    }
     return data.row.requirementLike ? [] : ['sec-grid__row--context'];
   };
 
@@ -188,6 +211,19 @@ export class RequirementReview {
       .filter((attribute) => attribute.visible && !attribute.fixed)
       .map((a) => a.name),
   );
+
+  /**
+   * The module's tables, keyed by the ref of the object that owns each one.
+   *
+   * `hasValue()` guards the read: `resource.value()` **throws** while the resource is in an error
+   * state, and an unguarded read inside a computed the template consumes tears down the whole view.
+   * A failed tables request must cost the tables and nothing else — the requirements stay on screen.
+   */
+  private readonly tablesByRef = computed<ReadonlyMap<string, DoorsTableView>>(() => {
+    const loaded = this.tables.hasValue() ? this.tables.value().tables : [];
+    return new Map(loaded.map((table) => [table.ref, table]));
+  });
+
 
   /**
    * The grid's columns, rebuilt whenever the module's visible attribute set changes.
@@ -225,15 +261,23 @@ export class RequirementReview {
         // column six there is nothing on a row saying which requirement it is.
         pinned: 'left',
         width: 140,
-        cellRenderer: IdCell,
+        // Blank for a table — and blank in the *value*, not just hidden by the renderer, so a copy
+        // and any future export agree with the screen. DOORS shows nothing in the ID column for a
+        // table, its rows or its cells (`docs/DOORS_TABLES.md` §6.3); the id is still on every
+        // cell's tooltip and behind the "Table object IDs" toggle.
+        cellRendererSelector: (params) => (params.data?.table ? undefined : { component: IdCell }),
         cellClass: 'sec-grid__cell sec-grid__cell--custom',
-        valueGetter: (params) => params.data?.row.id ?? '',
+        valueGetter: (params) => (params.data?.table ? '' : (params.data?.row.id ?? '')),
       },
       {
         colId: 'type',
         headerName: 'Type',
         width: 120,
-        valueGetter: (params) => params.data?.row.type ?? '',
+        // Blank for a table, as it is in DOORS. A table object carries an `Object Type` — usually
+        // TBD, because DOORS does not type the parts of an embedded table — and printing it says
+        // nothing about the figure on the row and reads as a finding about it. Blanked in the
+        // *value*, like the ID column, so a copy agrees with the screen.
+        valueGetter: (params) => (params.data?.table ? '' : (params.data?.row.type ?? '')),
       },
       {
         colId: 'description',
@@ -246,6 +290,18 @@ export class RequirementReview {
         // to be a column. `minWidth` is what keeps it honest when the table does overflow.
         flex: 1,
         minWidth: 380,
+        // A table is drawn *here*, in the main text column at its full width, which is exactly
+        // where DOORS draws it (`docs/DOORS_TABLES.md` §1). Only the rows that are a table get the
+        // renderer; every other row keeps the plain text ag-grid lays out itself.
+        cellRendererSelector: (params) => (params.data?.table ? { component: TableCell } : undefined),
+        // Two of our own classes, because the cell has to stop being a flex box for the table to
+        // fill it rather than shrink to its longest word — and ag-grid's own rule is injected after
+        // ours (styles/_grid.scss).
+        cellClass: (params) =>
+          params.data?.table ? 'sec-grid__cell sec-grid__cell--table' : 'sec-grid__cell',
+        // Still a value, even where a renderer draws the cell: it is what a copy picks up and what
+        // the search matches on. For a table that is its cell text, read left to right, top to
+        // bottom — the same words a reviewer would search for.
         valueGetter: (params) => params.data?.description ?? '',
         // Document order, which is `__sortKey` order — the segment-wise numeric expansion of the
         // outline number, so 4.3.2 sorts before 4.3.2-0 before 4.3.2-1. Comparing the outline
@@ -259,7 +315,23 @@ export class RequirementReview {
         // part (CLAUDE.md §11). The value is addressed by index.
         headerName: name,
         width: 200,
-        valueGetter: (params) => params.data?.cells[index] ?? '',
+        /**
+         * The object's own value — and **empty for a table**, deliberately.
+         *
+         * A table's attribute values belong to its individual bands, and the whole table occupies
+         * one row here, so there is nothing outside it for them to line up with. Collapsing them
+         * into this cell was tried and is untenable: the reference module's largest table carries
+         * 247 values for one attribute, of which exactly one is distinct, and the cell measured
+         * 9 000 pixels tall.
+         *
+         * They are not dropped. They are drawn *inside* the table, as trailing columns aligned to
+         * the band each one belongs to — which is what §6.3 is actually protecting. See the note
+         * on `DoorsTable.attributes`.
+         */
+        valueGetter: (params) => {
+          const data = params.data;
+          return !data || data.table ? '' : (data.cells[index] ?? '');
+        },
       })),
       {
         colId: 'references',
@@ -337,17 +409,28 @@ export class RequirementReview {
 
   protected readonly allRows = computed<TableRow[]>(() => {
     const columns = this.attributeColumns();
+    const tables = this.tablesByRef();
     return (this.objects.value()?.rows ?? [])
-      // Table structure is hidden for now (§5). Filtered here rather than in `filtered` so the
-      // "n shown" readout counts what is actually on screen.
-      .filter((row) => !isTableElement(row))
+      // The rows and cells *inside* a table are hidden: the table they belong to is drawn on its
+      // container's row, so showing them as well would print every cell twice (§5). Filtered here
+      // rather than in `filtered` so the "n shown" readout counts what is actually on screen.
+      .filter((row) => !isTablePart(row))
       .map((row, order) => {
         const cells = columns.map((name) => renderValue(row.attributes[name]));
-        const description = describe(row);
+        const table = isTable(row) ? (tables.get(row.ref) ?? null) : null;
+        // A table's Description *value* is its cell text in reading order — what a copy picks up
+        // and what the search matches, since the drawn table is markup the search cannot see.
+        const description = table
+          ? table.rows
+              .flatMap((band) => band.cells.map((cell) => cell.text))
+              .filter(Boolean)
+              .join(' ')
+          : describe(row);
         return {
           row,
           cells,
           description,
+          table,
           headingLevel: isHeading(row) ? row.level : 0,
           // The index into the server's order, which is document order. Captured here because it
           // is the only place that order is still known — once ag-grid sorts, it is gone.
@@ -593,6 +676,8 @@ export class RequirementReview {
           // hand: newly mandatory attributes reported nothing, and un-ticked ones kept reporting.
           this.attributes.reload();
           this.objects.reload();
+          // Not the tables: their content is `Object Text` and geometry, neither of which the
+          // attribute settings dialog can change.
           // Pending comments are keyed by object ref and are held in this component, not on the
           // rows, so they survive both reloads untouched (§6).
           this.snackBar.open('Attribute settings saved', 'Dismiss', { duration: 4000 });
@@ -603,5 +688,7 @@ export class RequirementReview {
   protected retry(): void {
     this.objects.reload();
     this.attributes.reload();
+    this.tables.reload();
   }
+
 }

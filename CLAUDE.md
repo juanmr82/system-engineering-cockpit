@@ -267,7 +267,9 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `__moduleUrl` | rendered as the parent module's `__name`, as a link |
 | `__typeRaw` | **Type** — preferred over the label chip when present |
 | `:__UNDEFINED` | the *Not yet imported* state, with the owning module named |
-| `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; drive table layout |
+| `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; a **cross-check** on table geometry, never the source of it (`docs/DOORS_TABLES.md` §2.1) |
+| a `DOORSTable`'s reconstructed geometry | drawn as the table itself, in the Description column, with the **ID and Type columns blank** for it — as in DOORS. A cell shows its `Object Text` and nothing else: no id, no other attribute, no weight on the first row |
+| a table's findings | **n findings on this table**, a disclosure above it. Computed on read, never stored (R2) |
 | `refersTo` | **References** (outgoing) |
 | `refersTo` **in the Breakdown tab only** | **refines ‹parent id›** — `A -[:refersTo]-> B` reads as *A refines B*, at every level, and the row names B. A display convention of that one tab, stated visibly in it, and never to be confused with an authored `:__Meta:__Link` carrying `semantics: 'refines'` (`docs/requirement-breakdown-tree.md` §2). A requirement with several parents is drawn under each of them, so naming the parent is what tells two copies apart (§10.1) |
 | a `refersTo` the Breakdown tree cannot follow | **loops back to ‹id›** — the branch stops rather than repeating |
@@ -555,6 +557,8 @@ POST /api/v1/modules/system-levels      ← the Modules table's batch save; span
 POST /api/v1/modules/{ref}/comments     ← every dirty comment for one module, one txn
 GET  /api/v1/modules/{ref}/attributes   ← runtime attribute discovery, namespace filtered
 GET  /api/v1/modules/{ref}/checks/attribute-policy
+GET  /api/v1/modules/{ref}/tables      ← reconstructed DOORS tables, no parameters
+GET  /api/v1/items/{ref}/table         ← the table a table, row or cell belongs to
 GET  /api/v1/statistics/requirements     ← Statistics view; ?module={ref} scopes it
 GET  /api/v1/statistics/requirements/cycles  ← loop detection, its own endpoint so Band 4 loads apart
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
@@ -771,6 +775,17 @@ list inside a dialog — it is *data* tables this rule is about.
 - **ag-grid's stylesheet is injected at runtime, after ours.** At equal specificity it wins, so
   overriding one of its structural rules (cell padding, for instance) needs two of our own classes
   — `.sec-grid .sec-grid__cell--x`, never an `.ag-*` name.
+- **`autoHeight` measures a cell once, when it is created.** A renderer whose content arrives later
+  — from a second request, say — is measured while it is still empty, and the row stays at its
+  default height with the content spilling over every row beneath it. `resetRowHeights()` is *not*
+  the fix: ag-grid rejects it for an auto-height column, in as many words, in the console. Measure
+  the content and state it — a `ResizeObserver` calling `node.setRowHeight()` then
+  `api.onRowHeightChanged()` — and guard against the observer feeding itself by doing nothing when
+  the height is unchanged, and deferring the write to the next frame.
+- **A cell that must fill its width cannot be a flex box.** `--custom` makes a cell `display: flex`
+  so a chip sits at the top of a tall row, and a flex item is sized to its content — so a grid whose
+  tracks are fractions collapses to its longest word. `display: block` on the cell, via the
+  two-of-our-own-classes override, plus `inline-size: 100%` on the renderer's host.
 - **Do not use ag-grid's cell editing for Tier-2 data.** An editable cell is a second staging
   concept sitting next to the view's own buffer, and R7 allows exactly one. A custom cell renderer
   holding a real control, writing to the component's own `ref`-keyed buffer, is the shape.

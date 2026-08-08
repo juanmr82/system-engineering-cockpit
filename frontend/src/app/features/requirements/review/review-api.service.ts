@@ -22,6 +22,12 @@ export class ReviewApiService {
     return `/api/v1/items/${itemRef}`;
   }
 
+  // The module's embedded tables, already reconstructed (docs/DOORS_TABLES.md §4.3). The visible
+  // attribute columns ride along as repeated `attrs` parameters, set by the caller.
+  static tablesUrl(moduleRef: string): string {
+    return `/api/v1/modules/${moduleRef}/tables`;
+  }
+
   // Every dirty comment for one module, one request, one server-side transaction. Partial success
   // is impossible: on failure nothing is written and the edits stay on screen (§5.2).
   saveComments(moduleRef: string, body: SaveCommentsRequest): Promise<SaveCommentsResponse> {

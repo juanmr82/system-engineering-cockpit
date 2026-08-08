@@ -173,12 +173,28 @@ Consequences that are part of the contract:
   rail or a rule, never a background"; see CLAUDE.md §8, where the amendment is recorded.
 - `DOORSInformation` stays muted, for the separate reason that it is context and must not be read
   as a requirement.
-- **Table structure is hidden.** `DOORSTable`, `DOORSTableRow` and `DOORSTableCell` are filtered
-  out of the view — 273 of Segment's 903 objects — because each carries a fragment that only means
-  anything laid out as a table, and in a flat list they are noise between the requirements. This
-  is a **view filter, not a data decision**: they are still imported, still in the graph, still
-  reachable, and the "n in module" readout still counts them. Rendering tables properly is its own
-  feature and is not specified here yet.
+- **An embedded table is drawn in the Description column, on the row of its `DOORSTable` object.**
+  That is where DOORS itself draws it: inside the main text column, at that column's full width,
+  with the surrounding display columns continuing to the left and right. The geometry is
+  reconstructed server-side and fetched from `GET /api/v1/modules/{ref}/tables`; the whole feature
+  is specified in `docs/DOORS_TABLES.md`.
+- **`DOORSTableRow` and `DOORSTableCell` stay hidden** — 273 of Segment's 903 objects. Each is a
+  fragment that only means anything laid out as a table, and the table they belong to is already
+  drawn on its container's row, so listing them as well would print every cell twice. This is a
+  **view filter, not a data decision**: they are still imported, still in the graph, still
+  reachable, and the "n in module" readout still counts them.
+- **The ID and Type columns are blank on a table's row**, as they are in DOORS. A table object
+  carries an `Object Type` — usually TBD, because DOORS does not type the parts of an embedded
+  table — and printing it says nothing about the figure on the row. Both are blanked in the
+  column's *value*, so a copy agrees with the screen. The DOORS id of each cell stays on its
+  tooltip.
+- **A table shows its cells' `Object Text` and nothing else.** The attribute columns are empty on
+  its row: an attribute value that happens to sit on a cell or a row object is not carried out
+  beside the table (`DOORS_TABLES.md` §6.3 is deliberately not implemented), and the first row is
+  not styled differently from the rest.
+- **Links on cell objects are not surfaced yet.** A `DOORSTableCell` can carry `refersTo` in either
+  direction and the graph has them; showing and following them from inside a drawn table is a
+  feature of its own and is **to be done**.
 
 ### 5.1 References column (4.1)
 

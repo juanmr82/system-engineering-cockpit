@@ -9,6 +9,7 @@ import { vi } from 'vitest';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { flushGridFrames } from '../../../core/grid/grid-testing';
 import { RequirementReview } from './requirement-review';
+import type { ModuleTablesResponse } from '../../../shared/doors-table/doors-table.model';
 import type { ModuleObjectsResponse, ReviewRow, SaveCommentsResponse } from './review.model';
 
 const MODULE_REF = 'bW9kdWxlLTE';
@@ -75,21 +76,78 @@ const OBJECTS: ModuleObjectsResponse = {
       },
       comment: { metaId: 'meta-1', text: 'Checked at review', updatedAt: '2026-08-05T10:00:00Z' },
     }),
-    // Table structure: 273 of Segment's 903 objects are these, and each carries a fragment that
-    // only means anything laid out as a table. Hidden for now (§5).
+    // The container object of an embedded table. It stays in the list — the table is drawn on
+    // this row, in the Description column, where DOORS draws it (DOORS_TABLES.md §1).
+    row({
+      ref: 'dGFibGUtMQ',
+      id: 'SRD-998',
+      name: 'SRD-998',
+      objectNumber: '2.2',
+      type: 'Table',
+      labels: ['SEItem', 'DOORSObject', 'DOORSTBD', 'DOORSTable'],
+      requirementLike: false,
+      attributes: {},
+    }),
+    // A fragment of that table. Filtered out: the table it belongs to is already drawn above, so
+    // showing this as well would print the same cell twice (§5).
     row({
       ref: 'b2JqLTM',
       id: 'SRD-9',
       name: 'A table cell',
-      objectNumber: '2.2',
+      objectNumber: '2.2.0-1',
       labels: ['SEItem', 'DOORSObject', 'DOORSTableCell'],
       requirementLike: false,
       attributes: { 'Object Text': 'Torque limit 40 Nm' },
     }),
   ],
-  total: 3,
+  total: 4,
   truncated: false,
 };
+
+// The reconstructed table for SRD-998, as the server assembles it (DOORS_TABLES.md §4.2). One of
+// its cells carries a value for a visible attribute column, which the outer column has to surface
+// rather than drop (§6.3).
+const TABLES: ModuleTablesResponse = {
+  tables: [
+    {
+      ref: 'dGFibGUtMQ',
+      objectNumber: '2.2',
+      id: 'SRD-998',
+      rowCount: 2,
+      columnCount: 2,
+      headerRowCount: 1,
+      columnWeights: [1, 1],
+      rows: [
+        {
+          rowNumber: 1,
+          isHeader: true,
+          present: true,
+          ref: 'cm93LTE',
+          id: 'SRD-1171',
+          cells: [
+            { columnNumber: 1, present: true, ref: 'Y2VsbC0x', id: 'SRD-1172', text: 'Parameter' },
+            { columnNumber: 2, present: true, ref: 'Y2VsbC0y', id: 'SRD-1173', text: 'Value' },
+          ],
+        },
+        {
+          rowNumber: 2,
+          isHeader: false,
+          present: true,
+          ref: 'cm93LTI',
+          id: 'SRD-1181',
+          cells: [
+            { columnNumber: 1, present: true, ref: 'Y2VsbC0z', id: 'SRD-1182', text: 'Torque limit' },
+            { columnNumber: 2, present: true, ref: 'Y2VsbC00', id: 'SRD-1183', text: '40 Nm' },
+          ],
+        },
+      ],
+      extraBands: [],
+      anomalies: [],
+    },
+  ],
+};
+
+const NO_TABLES: ModuleTablesResponse = { tables: [] };
 
 const ATTRIBUTES = {
   attributes: [
@@ -154,7 +212,25 @@ describe('RequirementReview', () => {
   // input to the view's behaviour, not a fixture detail: a module with no mandatory attribute
   // renders a different bar from one that has them, and `moduleRef` is seeded from the route
   // snapshot once, so a mounted component cannot be moved to a different module's data.
-  const mount = async (attributes: typeof ATTRIBUTES): Promise<void> => {
+  /**
+   * Answer the tables request.
+   *
+   * Deliberately no `whenStable()` in here. An outstanding HttpClient request is a pending task, so
+   * awaiting stability with the tables request in flight never resolves — the hook times out
+   * instead of failing usefully. Flush, let the effects run, and flush again in case the resource
+   * re-issued.
+   */
+  const flushTables = async (tables: ModuleTablesResponse): Promise<void> => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      httpTesting
+        .match((request) => request.url.endsWith('/tables'))
+        .forEach((request) => request.flush(tables));
+      harness.detectChanges();
+      await flushGridFrames();
+    }
+  };
+
+  const mount = async (attributes: typeof ATTRIBUTES, tables = TABLES): Promise<void> => {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
@@ -182,6 +258,7 @@ describe('RequirementReview', () => {
       .match('/api/v1/config/system-levels')
       .forEach((request) => request.flush({ levels: [] }));
 
+    await flushTables(tables);
     await settle();
   };
 
@@ -222,12 +299,64 @@ describe('RequirementReview', () => {
 
   // §5: table structure is hidden for now. It is a view filter, not a data decision — the row is
   // still imported and still in the graph.
-  it('hides table structure, and counts only what it shows', () => {
+  // The rows and cells of a table are hidden because the table itself is drawn on its container's
+  // row — showing them as well would print every cell twice (DOORS_TABLES.md §1, REQ_REVIEW.md §5).
+  // The "n in module" readout still counts them: this is a view filter, not a data decision.
+  it('hides the parts of a table, and counts only what it shows', () => {
     const text = renderedText();
     expect(text).not.toContain('SRD-9');
-    expect(text).not.toContain('Torque limit 40 Nm');
-    expect(text).toContain('2 shown');
-    expect(text).toContain('3 in module');
+    expect(text).toContain('3 shown');
+    expect(text).toContain('4 in module');
+  });
+
+  // DOORS draws a table inside the main text column at its full width, with the surrounding
+  // columns continuing on either side (DOORS_TABLES.md §1). So does this.
+  it('draws an embedded table in the Description column, with table semantics', () => {
+    const table = require<HTMLElement>('sec-doors-table [role="table"]');
+
+    expect(table.querySelectorAll('[role="columnheader"]').length).toBe(2);
+    expect(table.textContent).toContain('Parameter');
+    expect(table.textContent).toContain('Torque limit');
+    expect(table.textContent).toContain('40 Nm');
+  });
+
+  /**
+   * The ID and Type columns are blank for a table, as they are in DOORS.
+   *
+   * A table object carries an `Object Type` — usually TBD, because DOORS does not type the parts of
+   * an embedded table — and printing it says nothing about the figure on the row. No cell id is on
+   * screen either: the id lives on the tooltip, which is the only way to tell which object a cell
+   * is when an import goes wrong.
+   */
+  it('leaves the ID and Type columns blank for a table, and prints no cell ids', () => {
+    const text = renderedText();
+
+    expect(text).not.toContain('SRD-998');
+    expect(text).not.toContain('SRD-1172');
+    // 'Table' is this row's type, and the fixture is the only place that word could come from.
+    expect(text).not.toContain('Table');
+  });
+
+  // A table shows its cells' `Object Text` and nothing else — §6.3's outer display columns are not
+  // implemented, so the attribute columns are empty on a table's row rather than carrying values
+  // from inside it.
+  it('draws nothing but cell text, and leaves the attribute columns empty', () => {
+    const table = require<HTMLElement>('sec-doors-table');
+
+    expect(table.textContent).toContain('Torque limit');
+    expect(table.textContent).not.toContain('SYS. Rationale');
+    expect(element().querySelectorAll('.sec-doors-table__cell--outer').length).toBe(0);
+  });
+
+  // An empty or failed tables response costs the tables and nothing else: the requirements stay on
+  // screen, and the `DOORSTable` row falls back to its ordinary Description text rather than a hole.
+  it('still lists the module when it has no tables', async () => {
+    TestBed.resetTestingModule();
+    await mount(ATTRIBUTES, NO_TABLES);
+
+    expect(element().querySelector('sec-doors-table')).toBeNull();
+    expect(renderedText()).toContain('SRD-1');
+    expect(renderedText()).toContain('3 shown');
   });
 
   // ADR 0006, the ag-grid trap that costs nothing to hit and gives no sign it was hit: ag-grid
@@ -345,7 +474,7 @@ describe('RequirementReview', () => {
     expect(renderedText()).toContain('SRD-1');
     expect(renderedText()).not.toContain('SRD-2');
     expect(renderedText()).toContain('1 shown');
-    expect(renderedText()).toContain('3 in module');
+    expect(renderedText()).toContain('4 in module');
   });
 
   // §11 O4: a heading is context, not a requirement, and the filter is over loaded rows.

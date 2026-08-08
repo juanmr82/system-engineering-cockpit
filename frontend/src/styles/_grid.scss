@@ -178,6 +178,37 @@
   // otherwise collapse a textarea to its intrinsic 20-column width whatever `width: 100%` says.
 }
 
+// --- Embedded DOORS tables ---------------------------------------------------------------------
+//
+// A table is drawn inside the Description column at the column's full width, which is where DOORS
+// draws it (docs/DOORS_TABLES.md §1). Two rules make that work, and both are about *width*.
+//
+// Written as a descendant of `.sec-grid` for specificity, the same reason `--editor` is: ag-grid's
+// stylesheet is injected into the head at runtime, after ours, so at equal specificity it wins.
+// Two of our own classes outrank it, and neither selector names an `.ag-*` internal.
+.sec-grid .sec-grid__cell--table {
+  // Not `flex`. `--custom` makes a cell a flex box so a chip sits at the top of a tall row, but a
+  // flex item is sized to its content — and a grid whose tracks are fractions has no content width
+  // to be sized to, so the table collapsed to its longest word. Block, and the table's own
+  // `inline-size: 100%` resolves against a definite width.
+  display: block;
+  // The table draws its own hairlines edge to edge; the cell's horizontal padding would leave a
+  // gutter on one side of the figure and not the other.
+  padding-inline: 0;
+  padding-block: 6px;
+
+  // **Never set `position` here.** ag-grid lays every cell out with `position: absolute` plus an
+  // inline offset, and overriding it silently discards that offset (see `--editor` above). No
+  // override is needed: the width comes from the cell being block, not from escaping it.
+}
+
+// A table row is a figure, not a requirement and not muted context — it carries no tint and no
+// dimming of its own. The class exists so the row is addressable at all; today it says only that
+// the cell's own vertical rhythm is the table's.
+.sec-grid__row--table .sec-grid__cell {
+  padding-block: 6px;
+}
+
 // Information objects are context, not requirements: muted so they are not read as one (§5).
 .sec-grid__row--context {
   color: var(--sec-ink-2);

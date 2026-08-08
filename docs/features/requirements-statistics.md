@@ -102,7 +102,16 @@ acceptable and is bounded by the read transaction timeout that `graph/Read.kt` a
 
 Per the decision in §12.2 this metric is the **literal text**, not the `DOORSTBD` label.
 
-- Every non-`__` **string** attribute value on an item is scanned.
+- Every non-`__` **string** attribute value on an item is scanned, with **one exemption**:
+  `Object Type` is not scanned on table structure (`DOORSTable`, `DOORSTableRow`,
+  `DOORSTableCell`). DOORS does not type the parts of an embedded table, so that attribute reads
+  the literal string `TBD` on every one of them — on the reference module, 425 objects, which was
+  the entire metric. It is the same fact `DoorsChecks.tbdCheckExclusions` already excuses from the
+  fixed check in the Req review Issues column, and scanning the *value* was letting it back in
+  through a second door, so the two views disagreed about the same module.
+  The exemption is that attribute on those labels and nothing wider: every other attribute on a
+  table object is still scanned, and `Object Type` is still scanned everywhere else — a
+  requirement DOORS never typed is a real open point.
 - Match is case-insensitive, bounded by non-letters on both sides, and tolerates a plural:
   `TBD`, `TBC`, `TBDs`, `tbd`. It does not match inside a word.
 - An item counts **once** towards the Census tile however many markers it carries, and **once per

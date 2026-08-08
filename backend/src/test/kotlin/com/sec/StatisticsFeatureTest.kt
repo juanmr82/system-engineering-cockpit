@@ -83,7 +83,8 @@ class StatisticsFeatureTest {
      *                    L1-3                          ← orphan, blank Rationale, "TBD" in text
      *                    L1-4 ⇄ L1-5                   ← a two-node loop
      *                    L1-6 ⇄ HEAD-2                 ← a loop through a non-requirement
-     *                    HEAD-1, CELL-1                ← heading and table structure
+     *                    HEAD-1, CELL-1                ← heading, and a table cell DOORS left
+     *                                                    untyped: `Object Type` reads TBD
      *  module-none       NONE-1                        ← no system level: excluded from the ratio
      * ```
      */
@@ -151,10 +152,10 @@ class StatisticsFeatureTest {
                     __sortKey: '000008', id: 'L1-H2', objectNumber: '8', objectLevel: 1,
                     `Object Heading`: 'Interfaces'
                 })
-                CREATE (c1:DOORSObject:DOORSTableCell:SEItem {
+                CREATE (c1:DOORSObject:DOORSTableCell:DOORSTBD:SEItem {
                     __id: 'l1-cell-1', __moduleUrl: ${'$'}l1, __name: 'cell', __version: 'current',
                     __sortKey: '000009', id: 'L1-C1', objectNumber: '9', objectLevel: 2,
-                    `Object Text`: 'a value'
+                    `Object Text`: 'a value', `Object Type`: 'TBD'
                 })
 
                 CREATE (n1:DOORSObject:DOORSRequirement:SEItem {
@@ -291,6 +292,21 @@ class StatisticsFeatureTest {
         val module = moduleOf(levelledModule)
         assertEquals(1, module.completeness.itemsWithOpenPoints)
         assertEquals(listOf("Object Text"), module.openPointsByAttribute.map { it.attribute })
+    }
+
+    /**
+     * DOORS does not type the parts of an embedded table, so every cell and row arrives with
+     * `Object Type` reading "TBD". The fixed check already excuses that (`DoorsChecks`
+     * `tbdCheckExclusions`); scanning the attribute's *value* let it back in, and on the reference
+     * module it was the entire metric — 425 of 425 open points were a table cell's own type.
+     *
+     * The cell in the fixture carries exactly that. It must not reach either number.
+     */
+    @Test
+    fun `a table cell's own Object Type is not an open point`() {
+        val module = moduleOf(levelledModule)
+        assertFalse(module.openPointsByAttribute.any { it.attribute == "Object Type" })
+        assertEquals(1, module.completeness.itemsWithOpenPoints)
     }
 
     // Criterion 7 — the distinction the whole flag exists for.

@@ -1,3 +1,4 @@
+import type { DoorsTableView } from '../../../shared/doors-table/doors-table.model';
 import type { Reference, ReviewRow } from './review.model';
 
 // The row shape the grid actually renders, and the small amount of work done once at load rather
@@ -30,27 +31,48 @@ export interface TableRow {
    * comparison here would be a second implementation of it that could drift from the first.
    */
   readonly order: number;
+  /**
+   * The reconstructed table this row *is*, for a `DOORSTable` object — null for everything else.
+   *
+   * A table is drawn inside the Description column, which is exactly where DOORS draws it: in the
+   * main text column, at its full width, with the surrounding columns continuing on either side
+   * (`docs/DOORS_TABLES.md` §1). Its rows and cells are not rows of this table — they are inside
+   * the drawing.
+   *
+   * Null is also what a *failed* tables request leaves behind, and the row then falls back to its
+   * ordinary Description text rather than to a hole. A table that cannot be drawn must not take
+   * the module's requirements down with it.
+   */
+  readonly table: DoorsTableView | null;
 }
 
 // Label strings are a state channel, never display text (CLAUDE.md §5). They are read here and
 // mapped to behaviour; nothing below reaches a template.
 const HEADING_LABEL = 'DOORSHeading';
-const TABLE_LABELS = ['DOORSTable', 'DOORSTableRow', 'DOORSTableCell'];
+const TABLE_LABEL = 'DOORSTable';
+const TABLE_PART_LABELS = ['DOORSTableRow', 'DOORSTableCell'];
 
 export function isHeading(row: ReviewRow): boolean {
   return row.labels.includes(HEADING_LABEL);
 }
 
+/** The container object of an embedded DOORS table — the row the table itself is drawn on. */
+export function isTable(row: ReviewRow): boolean {
+  return row.labels.includes(TABLE_LABEL);
+}
+
 /**
- * Table structure — the cells, rows and wrappers DOORS emits for an embedded table.
+ * The rows and cells of an embedded table.
  *
- * Hidden from the review table for now (REQ_REVIEW.md §5). They are 273 of Segment's 903 objects
- * and each one carries a fragment of a table that only means anything laid out as a table, so in a
- * flat list they are noise between the requirements. They are still imported, still in the graph
- * and still reachable — this is a view filter, not a data decision.
+ * These stay hidden from the flat list, and now for a sharper reason than before: each one is a
+ * fragment that only means anything laid out as a table, and the table they belong to is drawn on
+ * its container's row. Showing them as well would print every cell twice.
+ *
+ * Still a **view filter, not a data decision** — they are imported, in the graph, reachable, and
+ * the "n in module" readout still counts them (REQ_REVIEW.md §5).
  */
-export function isTableElement(row: ReviewRow): boolean {
-  return row.labels.some((label) => TABLE_LABELS.includes(label));
+export function isTablePart(row: ReviewRow): boolean {
+  return row.labels.some((label) => TABLE_PART_LABELS.includes(label));
 }
 
 /**

@@ -1,6 +1,12 @@
 @use 'mixins' as sec;
 
+// `position: relative` is load-bearing, not decoration: it makes the figure the containing block
+// for the visually-hidden table below. Without it that table's containing block is the initial
+// one, so its static position — deep inside the view's own scroll panel — resolves against the
+// page and lands hundreds of pixels below the shell, giving the shell a scrollbar of its own next
+// to the view's. A 1px box nobody can see is still a 1px box the layout has to reach.
 .sec-chart {
+  position: relative;
   margin: 0;
   display: flex;
   flex-direction: column;

@@ -1,0 +1,108 @@
+<!--
+  A DOORS table (docs/DOORS_TABLES.md §5).
+
+  `role="table" / "row" / "columnheader" / "cell"` plus aria-rowindex / aria-colindex are
+  mandatory: CSS Grid divs carry no table semantics of their own, and without them a screen reader
+  reads an undifferentiated wall of text. This is a requirements tool — assistive-tech users are
+  reading normative content.
+
+  A cell shows its `Object Text` and nothing else: no object id, no attribute values beside it, and
+  no visual weight on the first row. The text is plain text and is rendered with interpolation.
+  Never [innerHTML], never bypassSecurityTrust* (§3.5, §9).
+-->
+<div class="sec-doors-table">
+  @if (anomalySummary()) {
+    <div class="sec-doors-table__caption">
+      <button
+        type="button"
+        class="sec-doors-table__warning"
+        [class.sec-doors-table__warning--error]="hasErrors()"
+        [attr.aria-expanded]="anomaliesOpen()"
+        (click)="toggleAnomalies()"
+      >
+        {{ anomalySummary() }}
+      </button>
+    </div>
+
+    @if (anomaliesOpen()) {
+      <ul class="sec-doors-table__anomalies">
+        @for (anomaly of anomalies(); track $index) {
+          <li
+            class="sec-doors-table__anomaly"
+            [class.sec-doors-table__anomaly--error]="anomaly.severity === 'ERROR'"
+          >
+            <!--
+              The DOORS id, not the handle. It is the only thing that lets a reviewer open the
+              object in DOORS itself, and it is display data (R6). A finding about the table as a
+              whole has none, and shows the sentence alone.
+            -->
+            @if (anomaly.id) {
+              <span class="sec-doors-table__anomaly-id">{{ anomaly.id }}</span>
+            }
+            <span>{{ anomaly.message }}</span>
+          </li>
+        }
+      </ul>
+    }
+  }
+
+  @if (table().columnCount > 0) {
+    <!--
+      The bounded-width wrapper. Below roughly 8rem per column the cells stop being readable, so
+      the table — and only the table — takes its own horizontal scrollbar. Scrolling the whole
+      document view instead would take the surrounding columns with it (§6.6).
+    -->
+    <div class="sec-doors-table__scroll">
+      <div
+        class="sec-doors-table__grid"
+        role="table"
+        [attr.aria-rowcount]="table().rowCount"
+        [attr.aria-colcount]="table().columnCount"
+      >
+        @for (entry of entries(); track entry.key) {
+          @if (entry.kind === 'row') {
+            <div
+              class="sec-doors-table__row"
+              role="row"
+              [attr.aria-rowindex]="entry.row.rowNumber"
+            >
+              @for (cell of entry.row.cells; track cell.columnNumber) {
+                <!--
+                  `columnheader` on the first row and `cell` on the rest: it is still the header
+                  row, and a screen reader is told so, even though nothing on screen says it.
+                  The DOORS id stays on `title` — invisible until hovered, and the only way to tell
+                  which object a cell is when an import goes wrong.
+                -->
+                <div
+                  class="sec-doors-table__cell"
+                  [attr.role]="entry.row.isHeader ? 'columnheader' : 'cell'"
+                  [attr.aria-colindex]="cell.columnNumber"
+                  [attr.data-ref]="cell.ref"
+                  [attr.title]="cell.id"
+                  [class.sec-doors-table__cell--absent]="!cell.present"
+                >{{ cell.text }}</div>
+              }
+            </div>
+          } @else {
+            <!--
+              A child of the table that is not a row, or of a row that is not a cell (§3.6). Drawn
+              as a full-width band in its document-order position rather than dropped, and named in
+              the findings list above.
+            -->
+            <div class="sec-doors-table__band" role="row">
+              <div
+                class="sec-doors-table__band-cell"
+                role="cell"
+                [attr.data-ref]="entry.band.ref"
+                [attr.title]="entry.band.id"
+              >{{ entry.band.text }}</div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  } @else {
+    <!-- An absence, stated in words. Never a blank area and never an internal label (R5). -->
+    <p class="sec-doors-table__empty">This table has no cells to show.</p>
+  }
+</div>

@@ -14,7 +14,6 @@ import com.sec.api.dto.SystemLevelOptionDto
 import com.sec.domain.Cycles
 import com.sec.domain.Ref
 import com.sec.domain.SystemLevel
-import com.sec.domain.TextMarkers
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
@@ -228,7 +227,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 requirements++
             }
 
-            val openPoints = TextMarkers.attributesCarrying(props)
+            val openPoints = DoorsChecks.openPointAttributes(labels, props)
             val missingMandatory = DoorsChecks.missingMandatory(policies, labels, props)
             val missingVerification =
                 DoorsChecks.missingVerification(verificationAttributes, labels, props)

@@ -1,5 +1,7 @@
 package com.sec.source.doors
 
+import com.sec.domain.TextMarkers
+
 /**
  * The consistency checks and the type vocabulary they run against, in **one** place.
  *
@@ -31,6 +33,9 @@ public object DoorsChecks {
     public val structuralTypes: Set<String> = setOf("DOORSTable", "DOORSTableRow", "DOORSTableCell")
 
     public const val TBD_LABEL: String = "DOORSTBD"
+
+    /** The DOORS attribute the type labels are derived from. */
+    public const val OBJECT_TYPE_ATTRIBUTE: String = "Object Type"
 
     public const val UNRESOLVED_LABEL: String = "__UNDEFINED"
 
@@ -120,6 +125,36 @@ public object DoorsChecks {
             .filter { policy -> policy.appliesToLabels.any { it in labelSet } }
             .map { it.attributeName }
             .filter { name -> isEmptyValue(props[name]) }
+    }
+
+    /**
+     * The attributes on one object whose text carries an open-point marker
+     * (`requirements-statistics.md` §3.3), with DOORS's own table scaffolding excused.
+     *
+     * The scan itself is source-agnostic and lives in `domain/TextMarkers.kt`. What is DOORS-
+     * specific — and therefore here — is the one exemption: on a table, a row or a cell, `Object
+     * Type` holds the literal string `TBD` because DOORS does not type the parts of an embedded
+     * table. That is the same fact [tbdCheckExclusions] already excuses from the fixed check, and
+     * scanning the attribute's *value* was letting it back in through a second door: the Req
+     * review Issues column reported nothing on those objects while the Statistics view counted
+     * every one of them as an open point. Two views disagreeing about one module is exactly what
+     * this file exists to prevent.
+     *
+     * The exemption is **`Object Type` on table structure and nothing more**. Every other
+     * attribute on a table object is still scanned — a cell whose text says "value TBC" is a real
+     * open point wherever it sits — and `Object Type` is still scanned on everything that is not
+     * table structure, where an untyped requirement genuinely is one.
+     */
+    public fun openPointAttributes(
+        labels: Collection<String>,
+        props: Map<String, Any?>,
+    ): List<String> {
+        val carrying = TextMarkers.attributesCarrying(props)
+        return if (isStructural(labels)) {
+            carrying.filterNot { it == OBJECT_TYPE_ATTRIBUTE }
+        } else {
+            carrying
+        }
     }
 
     /**

@@ -8,6 +8,7 @@ import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
+import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -73,6 +74,7 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     val breakdownProjection = BreakdownProjection(graphDriver)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
     val statisticsProjection = StatisticsProjection(graphDriver)
+    val tableProjection = DoorsTableProjection(graphDriver)
 
     configureRouting(
         graphDriver,
@@ -81,5 +83,6 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
         breakdownProjection,
         metaWriter,
         statisticsProjection,
+        tableProjection,
     )
 }

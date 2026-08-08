@@ -1,0 +1,13 @@
+// The renderer is a pass-through: it owns the *fill* of the cell and nothing about the table's
+// own appearance, which lives in shared/doors-table/doors-table.scss.
+//
+// `inline-size: 100%` on a block host is what makes the table follow the Description column's
+// width instead of shrinking to its longest word. It is a percentage, never a measured pixel
+// width — the browser does the reflow when the column is dragged (DOORS_TABLES.md §6.6). The other
+// half of the pair is `display: block` on the cell itself, in styles/_grid.scss, which is where an
+// ag-grid structural rule has to be outranked.
+:host {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+}

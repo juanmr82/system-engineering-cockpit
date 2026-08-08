@@ -452,6 +452,11 @@
 // both take the element out of that tree, and being read out is the entire point of the elements
 // this is used on (ADR 0008: every chart carries the same numbers as a real table).
 //
+// **Give the element a positioned ancestor.** It is taken out of flow with `position: absolute`,
+// so without one its containing block is the initial containing block and its static position is
+// resolved against the page. Inside a view that scrolls internally that puts the box below the
+// shell, and the shell grows a second scrollbar to reach a 1px box nobody can see.
+//
 // **Put this on a plain wrapper, never on a `<table>` directly.** A table generates two boxes: the
 // anonymous *wrapper* box, which takes `position` and `margin`, and the *grid* box, which takes
 // `width`, `height`, `overflow` and `clip-path` — and `<caption>` belongs to the wrapper. So on a
