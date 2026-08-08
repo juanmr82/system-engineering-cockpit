@@ -96,6 +96,12 @@ Behaviour:
   so that the application has **one** table system, and so a reviewer moving between here and Req
   review meets one set of column behaviours. `Last modified` sorts as the string DOORS gave us —
   it is free text, not ISO-8601, and is never parsed into a `Date`.
+- **Cells sit on the row's midline**, via the `sec-grid--middle` modifier on the grid wrapper. A
+  row is as tall as its tallest cell and several columns wrap, so a row can be two lines tall while
+  every other cell in it holds one — top-aligned, those hang off the top border and the row stops
+  reading as one record. It is a modifier and not the grid default on purpose: the review table's
+  rows run to five lines or more, and centring a one-line ID against that would float it away from
+  the text it identifies.
 - **Level cell** — a filled chip, so a user can never mistake an application classification for
   something DOORS said. **It is also the control that changes it**, and it is coloured by level:
 
