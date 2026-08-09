@@ -1,37 +1,26 @@
-<div
-  class="sec-bd__card"
-  [class.sec-bd__card--selected]="row().selected"
-  [class.sec-bd__card--unresolved]="!row().node.resolved"
+<sec-requirement-card
+  density="row"
+  [node]="row().node"
+  [expanded]="row().expanded"
+  [subject]="row().selected"
 >
-  <div class="sec-bd__head">
-    @if (collapsible()) {
-      <button
-        type="button"
-        class="sec-bd__twisty"
-        [class.sec-bd__twisty--open]="row().expanded"
-        [attr.aria-expanded]="row().expanded"
-        [attr.aria-label]="row().expanded ? 'Collapse' : 'Expand'"
-        (click)="toggled.emit()"
-      ></button>
-    } @else {
-      <span class="sec-bd__twisty-gap" aria-hidden="true"></span>
-    }
+  @if (collapsible()) {
+    <button
+      cardLead
+      type="button"
+      class="sec-bd__twisty"
+      [class.sec-bd__twisty--open]="row().expanded"
+      [attr.aria-expanded]="row().expanded"
+      [attr.aria-label]="row().expanded ? 'Collapse' : 'Expand'"
+      (click)="toggled.emit()"
+    ></button>
+  } @else {
+    <span cardLead class="sec-bd__twisty-gap" aria-hidden="true"></span>
+  }
 
-    <!-- Always rendered, even with no level set: the badge holds the column, and dropping it
-         un-aligns every id below it. The code carries its resolved wording on the chip itself —
-         that wording comes from the server's vocabulary and is never assembled here (R5). -->
-    <span
-      class="sec-bd__level sec-level--{{ row().node.level?.code || 'none' }}"
-      [matTooltip]="levelTooltip()"
-    >{{ row().node.level?.code }}</span>
-
-    @if (row().node.resolved) {
-      <!-- Text, not a control: this view does not navigate away from the tree it is showing. -->
-      <span class="sec-bd__id">{{ row().node.id }}</span>
-    } @else {
-      <span class="sec-bd__not-imported">{{ notImported() }}</span>
-    }
-
+  <!-- Everything after the identity. One projection slot takes one element, so the tree's own
+       chrome travels together in a wrapper — the card has no opinion about any of it. -->
+  <span cardMeta class="sec-bd__meta">
     <!-- Names the parent, so a requirement drawn under two parents says which one this copy sits
          under. Fixed verb at every level, root to leaf: it is a display convention of this tab and
          not a claim about what the source asserted — said once, above the tree. -->
@@ -58,38 +47,9 @@
     @if (!row().expanded && row().childCount > 0) {
       <span class="sec-bd__count">{{ childLabel() }}</span>
     }
-  </div>
+  </span>
 
-  @if (row().expanded && row().node.resolved) {
-    <div class="sec-bd__body">
-      @if (row().node.description) {
-        <p class="sec-bd__text">{{ row().node.description }}</p>
-      }
-
-      <div class="sec-bd__verification">
-        <p class="sec-bd__verification-label">Verification</p>
-        @if (row().node.verificationAttributes.length === 0) {
-          <!-- Quietly, not in error red: this is an absence of configuration, not a finding. -->
-          <p class="sec-bd__absent">No verification attribute defined yet for this requirement</p>
-        } @else {
-          <dl class="sec-bd__attributes">
-            @for (attribute of row().node.verificationAttributes; track attribute.name) {
-              <div>
-                <dt>{{ attribute.name }}</dt>
-                @if (attribute.value) {
-                  <dd>{{ attribute.value }}</dd>
-                } @else {
-                  <dd class="sec-bd__absent">Not filled in</dd>
-                }
-              </div>
-            }
-          </dl>
-        }
-      </div>
-
-      @if (row().childCount === 0) {
-        <p class="sec-bd__absent">No incoming links</p>
-      }
-    </div>
+  @if (row().childCount === 0) {
+    <p cardFoot class="sec-bd__absent">No incoming links</p>
   }
-</div>
+</sec-requirement-card>

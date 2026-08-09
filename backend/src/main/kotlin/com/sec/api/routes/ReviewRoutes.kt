@@ -8,10 +8,13 @@ import com.sec.api.dto.SaveCommentsResponseDto
 import com.sec.api.dto.SavedCommentDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
+import com.sec.domain.GraphDirection
+import com.sec.domain.GraphLevelStrategy
 import com.sec.domain.Ref
 import com.sec.domain.SaveCommentsOutcome
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
+import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.ktor.http.HttpStatusCode
@@ -30,6 +33,7 @@ public fun Route.reviewRoutes(
     doorsProjection: DoorsProjection,
     reviewProjection: ReviewProjection,
     breakdownProjection: BreakdownProjection,
+    dependencyGraphProjection: DependencyGraphProjection,
     metaWriter: MetaWriter,
 ) {
     route("${ApiPaths.MODULES}/${ApiPaths.REF}") {
@@ -163,6 +167,49 @@ public fun Route.reviewRoutes(
                 )
             call.respond(breakdown)
         }
+
+        /**
+         * The dependency graph (docs/REQ_BREAKDOWN_GRAPH_VIEW §3).
+         *
+         * Scope is always `seed + depth + direction` and there is no unscoped form (§8): a whole
+         * module is 12 000 objects, which is an unreadable hairball and a rendering problem this
+         * feature does not need to have. The seed is the `{ref}` in the path, so the URL *is* the
+         * scope and the view is shareable in a review.
+         *
+         * Every option is validated against a closed set before a statement is built. `depth` is
+         * the one that matters: it bounds a walk over a relationship with no schema constraint
+         * against cycles, on a database with no query governor (CLAUDE.md §7).
+         */
+        get("/graph") {
+            val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
+
+            val depth = call.intParam(
+                "depth",
+                default = DependencyGraphProjection.DEFAULT_DEPTH,
+                min = DependencyGraphProjection.MIN_DEPTH,
+                max = DependencyGraphProjection.MAX_DEPTH,
+            ) ?: return@get call.respondBadDepth()
+
+            val direction = call.request.queryParameters["direction"]
+                ?.let { GraphDirection.fromNameOrNull(it) ?: return@get call.respondBadOption("direction") }
+                ?: GraphDirection.BOTH
+
+            val levelStrategy = call.request.queryParameters["levels"]
+                ?.let { GraphLevelStrategy.fromNameOrNull(it) ?: return@get call.respondBadOption("levels") }
+                ?: GraphLevelStrategy.MODULE_SYSTEM_LEVEL
+
+            val graph = dependencyGraphProjection.getGraph(
+                seedIds = listOf(itemId),
+                depth = depth,
+                direction = direction,
+                levelStrategy = levelStrategy,
+            ) ?: return@get call.respondProblem(
+                HttpStatusCode.NotFound,
+                "Object not found",
+                "No object for this reference.",
+            )
+            call.respond(graph)
+        }
     }
 }
 
@@ -198,3 +245,20 @@ private suspend fun ApplicationCall.respondBadBounds(): Unit =
 
 private suspend fun ApplicationCall.respondModuleNotFound(): Unit =
     respondProblem(HttpStatusCode.NotFound, "Module not found", "No module for this reference.")
+
+private suspend fun ApplicationCall.respondBadDepth(): Unit =
+    respondProblem(
+        HttpStatusCode.BadRequest,
+        "Invalid depth",
+        "depth must be between ${DependencyGraphProjection.MIN_DEPTH} and " +
+            "${DependencyGraphProjection.MAX_DEPTH} hops.",
+    )
+
+// The value is deliberately not echoed. An unknown option is a client bug, and a query string is
+// user input: reflecting it puts whatever was sent into an error page (CLAUDE.md §5).
+private suspend fun ApplicationCall.respondBadOption(name: String): Unit =
+    respondProblem(
+        HttpStatusCode.BadRequest,
+        "Invalid option",
+        "The value given for '$name' is not one this view offers.",
+    )

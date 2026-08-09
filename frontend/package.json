@@ -22,6 +22,7 @@
     "ag-grid-angular": "36.1.0",
     "ag-grid-community": "36.1.0",
     "echarts": "6.1.0",
+    "elkjs": "0.11.0",
     "ngx-echarts": "22.0.0",
     "rxjs": "^7.8.0",
     "tslib": "^2.6.0"

@@ -10,6 +10,7 @@ import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
+import com.sec.source.doors.RequirementCardProjection
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -55,7 +56,7 @@ class BreakdownFeatureTest {
         graphDriver = GraphDriver(Neo4jSettings(neo4j.boltUrl, "neo4j", "neo4j", "ignored"))
         graphDriver.verifyConnectivity()
         doorsProjection = DoorsProjection(graphDriver)
-        breakdownProjection = BreakdownProjection(graphDriver)
+        breakdownProjection = BreakdownProjection(graphDriver, RequirementCardProjection(graphDriver))
         metaWriter = MetaWriter(graphDriver, doorsProjection)
         runBlocking {
             MetaSchema.apply(graphDriver)

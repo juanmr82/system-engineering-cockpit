@@ -57,7 +57,7 @@ describe('Breakdown', () => {
   const rows = (): HTMLElement[] => Array.from(host().querySelectorAll('sec-breakdown-row'));
 
   const rowsFor = (id: string): HTMLElement[] =>
-    rows().filter((row) => row.querySelector('.sec-bd__id')?.textContent?.trim() === id);
+    rows().filter((row) => row.querySelector('.sec-card__id')?.textContent?.trim() === id);
 
   const settle = async (): Promise<void> => {
     fixture.detectChanges();
@@ -94,12 +94,14 @@ describe('Breakdown', () => {
   });
 
   // Criterion 5, and the correction the mockup asked for: never "flows into".
-  it('names every relationship "refines" and says so is a convention of this view', async () => {
+  //
+  // The standing banner that used to state the convention above the tree was removed at the user's
+  // request; the verb on each row still has to be "refines", which is what this asserts now.
+  it('names every relationship "refines"', async () => {
     await open();
 
     expect(renderedText()).toContain('refines');
     expect(renderedText()).not.toContain('flows into');
-    expect(renderedText()).toContain('this requirement refines its target');
   });
 
   /**
@@ -137,7 +139,7 @@ describe('Breakdown', () => {
   it('shows every requirement\'s text and verification box without a click', async () => {
     await open();
 
-    const bodies = rows().filter((row) => row.querySelector('.sec-bd__body'));
+    const bodies = rows().filter((row) => row.querySelector('.sec-card__body'));
     // Every resolved node has a body; the placeholder has nothing to show.
     expect(bodies).toHaveLength(rows().length - 1);
     expect(renderedText()).toContain('seg2 statement');
@@ -152,13 +154,13 @@ describe('Breakdown', () => {
     await open();
 
     const sys1 = rowsFor('SYS1')[0];
-    expect(sys1.querySelector('.sec-bd__body')).not.toBeNull();
+    expect(sys1.querySelector('.sec-card__body')).not.toBeNull();
 
     sys1.querySelector<HTMLButtonElement>('.sec-bd__twisty')?.click();
     await settle();
 
     const collapsed = rowsFor('SYS1')[0];
-    expect(collapsed.querySelector('.sec-bd__body')).toBeNull();
+    expect(collapsed.querySelector('.sec-card__body')).toBeNull();
     expect(collapsed.textContent).toContain('2 children');
     // Its subtree went with it — but only *its* copy. seg1 is also drawn under the placeholder
     // root, and that copy, with everything beneath it, is untouched.
@@ -195,7 +197,7 @@ describe('Breakdown', () => {
     expect(marked).toHaveLength(4);
     expect(renderedText()).toContain('The requirement you opened');
     // The colour is the second signal, not the only one.
-    expect(marked[0].querySelector('.sec-bd__card--selected')).not.toBeNull();
+    expect(marked[0].querySelector('.sec-card--subject')).not.toBeNull();
   });
 
   /**
@@ -208,12 +210,12 @@ describe('Breakdown', () => {
   it('keeps the level square when a module has no system level, and says so', async () => {
     await open();
 
-    const unset = rowsFor('CMP1')[0].querySelector('.sec-bd__level');
+    const unset = rowsFor('CMP1')[0].querySelector('.sec-card__level');
     expect(unset).not.toBeNull();
     expect(unset?.textContent?.trim()).toBe('');
     expect(unset?.classList).toContain('sec-level--none');
 
-    const set = rowsFor('SEG1')[0].querySelector('.sec-bd__level');
+    const set = rowsFor('SEG1')[0].querySelector('.sec-card__level');
     expect(set?.textContent?.trim()).toBe('L2');
     expect(set?.classList).toContain('sec-level--L2');
   });

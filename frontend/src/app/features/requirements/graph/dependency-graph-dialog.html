@@ -1,0 +1,183 @@
+<header class="sec-gd__head">
+  <div class="sec-gd__identity">
+    <p class="sec-gd__eyebrow">Dependency graph</p>
+    <h2 class="sec-gd__title">{{ summary() || seedName() }}</h2>
+  </div>
+
+  <div class="sec-gd__controls">
+    <!-- Depth. A stepper rather than a slider: five values, and the number is the thing being
+         chosen, so it should be readable without dragging anything. -->
+    <div class="sec-gd__stepper" role="group" aria-label="How many links out from this requirement">
+      <span class="sec-gd__control-label">Hops</span>
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="One hop fewer"
+        [disabled]="scope().depth <= minDepth"
+        (click)="setDepth(scope().depth - 1)"
+      >
+        <mat-icon svgIcon="minus" />
+      </button>
+      <span class="sec-gd__stepper-value">{{ scope().depth }}</span>
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="One hop more"
+        [disabled]="scope().depth >= maxDepth"
+        (click)="setDepth(scope().depth + 1)"
+      >
+        <mat-icon svgIcon="plus" />
+      </button>
+    </div>
+
+    <!-- Direction, named by the relation. "Upstream" and "downstream" are not used anywhere in
+         this product: an outgoing reference is read as "refines", so following it goes *up* the
+         decomposition, and the two words would point opposite ways at the same arrow. -->
+    <button mat-stroked-button type="button" [matMenuTriggerFor]="directionMenu">
+      {{ directionLabel() }}
+      <mat-icon svgIcon="chevron-down" />
+    </button>
+    <mat-menu #directionMenu="matMenu">
+      @for (option of directions; track option) {
+        <button mat-menu-item type="button" (click)="setDirection(option)">
+          {{ labelFor(option) }}
+        </button>
+      }
+    </mat-menu>
+
+    <span class="sec-gd__spacer"></span>
+
+    <div class="sec-gd__zoom" role="group" aria-label="Zoom">
+      <button mat-icon-button type="button" aria-label="Zoom out" (click)="zoomOut()">
+        <mat-icon svgIcon="minus" />
+      </button>
+      <!-- The readout is how someone who zoomed by accident finds out they did, and the button is
+           how they get back. It has to state the *current* zoom to do either job — fit clamps to
+           100% but is usually well below it, so a fixed "100%" would be wrong nearly always. -->
+      <button
+        mat-button
+        type="button"
+        class="sec-gd__zoom-readout"
+        matTooltip="Back to 100%, centred on the requirement you opened"
+        (click)="resetZoom()"
+      >
+        {{ zoomPercent() }}%
+      </button>
+      <button mat-icon-button type="button" aria-label="Zoom in" (click)="zoomIn()">
+        <mat-icon svgIcon="plus" />
+      </button>
+      <button mat-button type="button" matTooltip="Fit the whole graph in the window" (click)="fit()">
+        Fit
+      </button>
+    </div>
+
+    <button
+      mat-icon-button
+      type="button"
+      [matTooltip]="'More options'"
+      aria-label="More options"
+      [matMenuTriggerFor]="optionsMenu"
+    >
+      <mat-icon svgIcon="gearbox" />
+    </button>
+    <mat-menu #optionsMenu="matMenu">
+      <p class="sec-gd__menu-heading">Arrange bands by</p>
+      @for (option of strategies; track option) {
+        <button mat-menu-item type="button" (click)="setLevelStrategy(option)">
+          {{ strategyLabel(option) }}
+        </button>
+      }
+      <button mat-menu-item type="button" (click)="legendOpen.set(!legendOpen())">
+        {{ legendOpen() ? 'Hide the legend' : 'Show the legend' }}
+      </button>
+    </mat-menu>
+
+    <button
+      mat-icon-button
+      type="button"
+      [matTooltip]="maximised() ? 'Restore' : 'Maximise'"
+      [attr.aria-label]="maximised() ? 'Restore' : 'Maximise'"
+      (click)="toggleMaximised()"
+    >
+      <mat-icon [svgIcon]="maximised() ? 'collapse' : 'expand'" />
+    </button>
+
+    <button mat-icon-button type="button" aria-label="Close the dependency graph" (click)="close()">
+      <mat-icon svgIcon="close" />
+    </button>
+  </div>
+</header>
+
+<!-- §1.1, and it is mandatory. Only outgoing links are imported, so a requirement drawn with no
+     incoming arrows may simply be one whose referencing module has not been loaded — and "nothing
+     depends on this" is a wrong and expensive conclusion in a requirements tool. Always visible,
+     never behind a tooltip. -->
+<p class="sec-gd__caveat">
+  <mat-icon svgIcon="info" />
+  <span>
+    Only outgoing links are imported. Missing incoming arrows may mean the referencing module has
+    not been imported yet.
+  </span>
+</p>
+
+@if (unresolved().length > 0) {
+  <div class="sec-gd__banner" role="status">
+    <mat-icon svgIcon="alert" />
+    <div>
+      <p class="sec-gd__banner-title">
+        This graph reaches objects that have not been imported yet.
+      </p>
+      <ul class="sec-gd__modules">
+        @for (module of unresolved(); track module.name) {
+          <li>
+            {{ module.name }}
+            <span class="sec-gd__module-count">
+              {{ module.count === 1 ? '1 object' : module.count + ' objects' }}
+            </span>
+          </li>
+        }
+      </ul>
+    </div>
+  </div>
+}
+
+@if (truncated()) {
+  <p class="sec-gd__truncated" role="status">
+    Graph limited to 300 objects — reduce the number of hops or open the graph on a narrower
+    requirement.
+  </p>
+}
+
+@if (legendOpen()) {
+  <!-- Four line styles are in play, so a legend is not optional (§5.3). -->
+  <ul class="sec-gd__legend" aria-label="What the lines mean">
+    <li><span class="sec-gd__key sec-gd__key--normal"></span>Refines</li>
+    <li><span class="sec-gd__key sec-gd__key--unresolved"></span>Refines something not yet imported</li>
+    <li><span class="sec-gd__key sec-gd__key--feedback"></span>Part of a loop, so it could not be drawn above</li>
+    <li><span class="sec-gd__key sec-gd__key--loop"></span>Refers to itself</li>
+  </ul>
+}
+
+<div class="sec-gd__body">
+  @if (graph.isLoading() && !graph.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (graph.error()) {
+    <div class="sec-gd__error" role="alert">
+      <p>Couldn't load the dependency graph for this requirement.</p>
+      <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else if (value(); as graph) {
+    @if (empty()) {
+      <!-- An invitation, not an apology: an isolated requirement is a normal state, and more hops
+           or the other direction is the thing to try. -->
+      <div class="sec-gd__empty">
+        <h3>Nothing links to this requirement, in either direction</h3>
+        <p>
+          Try more hops, or check whether the modules that reference it have been imported yet.
+        </p>
+      </div>
+    } @else {
+      <sec-graph-canvas [graph]="graph" (reseeded)="reseed($event)" />
+    }
+  }
+</div>

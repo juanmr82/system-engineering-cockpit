@@ -1,0 +1,168 @@
+<!-- The measure pass (§5.2). Off-screen but laid out — `display: none` would report every height
+     as zero — and re-read once the real font arrives, because measuring against the fallback
+     produces heights wrong by enough to overlap edges. -->
+<div #measure class="sec-graph__measure" aria-hidden="true">
+  @for (node of nodes(); track node.card.ref) {
+    <div [attr.data-ref]="node.card.ref" [style.width.px]="cardWidth">
+      <sec-requirement-card density="node" [node]="node.card" />
+    </div>
+  }
+</div>
+
+<div #viewport class="sec-graph__viewport">
+  @if (layout.isLoading()) {
+    <p class="sec-graph__status">Arranging the graph…</p>
+  } @else if (layout.error()) {
+    <p class="sec-graph__status" role="alert">
+      Couldn't arrange this graph. Try a smaller depth.
+    </p>
+  }
+
+  <!-- The lane labels follow the canvas down but stay pinned to the left edge during horizontal
+       pan (§4.4), so they are positioned in screen space rather than inside the transform. -->
+  <div class="sec-graph__lanes" aria-hidden="true">
+    @for (lane of laneLabels(); track lane.label) {
+      <div
+        class="sec-graph__lane"
+        [class.sec-graph__lane--alt]="lane.alternate"
+        [style.top.px]="lane.top"
+        [style.height.px]="lane.height"
+      >
+        <span class="sec-graph__lane-label">{{ lane.label }}</span>
+      </div>
+    }
+  </div>
+
+  <div
+    class="sec-graph__canvas"
+    [class.sec-graph__canvas--dimming]="dimming()"
+    [style.transform]="viewTransform()"
+    [style.width.px]="extent().width"
+    [style.height.px]="extent().height"
+  >
+    <!-- The bands themselves, behind everything, alternating at very low contrast so "arranged by
+         level" is legible at a glance rather than inferred from y positions. -->
+    @for (band of bandBoxes(); track band.label; let index = $index) {
+      <div
+        class="sec-graph__band"
+        [class.sec-graph__band--alt]="index % 2 === 1"
+        [style.top.px]="band.top"
+        [style.height.px]="band.bottom - band.top"
+      ></div>
+    }
+
+    <svg
+      class="sec-graph__edges"
+      [attr.width]="extent().width"
+      [attr.height]="extent().height"
+      aria-hidden="true"
+    >
+      <defs>
+        <!-- Two markers, not four: an arrowhead says *direction*, and direction is data. The
+             stroke carries what the layout had to do about it (§5.3). -->
+        <marker
+          id="sec-graph-arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" class="sec-graph__arrow" />
+        </marker>
+        <marker
+          id="sec-graph-arrow-open"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" class="sec-graph__arrow sec-graph__arrow--open" />
+        </marker>
+      </defs>
+
+      @for (edge of drawn(); track edge.id) {
+        <path
+          class="sec-graph__edge sec-graph__edge--{{ edge.kind }}"
+          [class.sec-graph__edge--lit]="isEdgeLit(edge)"
+          [attr.d]="edge.path"
+          [attr.marker-end]="
+            edge.kind === 'unresolved' ? 'url(#sec-graph-arrow-open)' : 'url(#sec-graph-arrow)'
+          "
+        />
+      }
+    </svg>
+
+    @for (item of positioned(); track item.ref) {
+      <div
+        class="sec-graph__node"
+        [class.sec-graph__node--lit]="isLit(item.ref)"
+        [style.translate]="item.x + 'px ' + item.y + 'px'"
+        [style.width.px]="cardWidth"
+        (pointerenter)="hovered.set(item.ref)"
+        (pointerleave)="hovered.set(null)"
+        (dblclick)="onNodeDoubleClick(item.ref, item.node.card.resolved)"
+      >
+        <sec-requirement-card
+          density="node"
+          [node]="item.node.card"
+          [subject]="item.node.seed"
+          [compact]="compact()"
+        >
+          <span cardMeta class="sec-graph__node-meta">
+            <!-- Said in words as well as by the wash behind the card: the seed is the one thing a
+                 reader has to be able to find in a picture of cards that all look alike. -->
+            @if (item.node.seed) {
+              <span class="sec-graph__seed">The requirement you opened</span>
+            }
+
+            <!-- Where the cap or the depth bound cut the picture. A graph that simply stops, with
+                 nothing to say it stopped, is read as a graph that ended (§1.1, §5.7). -->
+            @if (item.node.truncatedNeighbours > 0) {
+              <span
+                class="sec-graph__cut"
+                [matTooltip]="
+                  'This requirement has links to objects that are not in this graph. Increase the depth, or open the graph on this requirement.'
+                "
+              >
+                +{{ item.node.truncatedNeighbours }}
+              </span>
+            }
+          </span>
+        </sec-requirement-card>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- The accessible equivalent of the picture, and the thing people paste into review minutes.
+     Adjacent in the DOM, never conditional — a node-link diagram is not navigable by screen
+     reader on its own (§5.7). -->
+<div class="sec-graph__reading">
+  <table>
+    <caption>
+      Every requirement in this graph and what it links to
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Requirement</th>
+        <th scope="col">Level</th>
+        <th scope="col">Refines</th>
+        <th scope="col">Refined by</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of readingRows(); track row.ref) {
+        <tr>
+          <th scope="row">{{ row.name }}</th>
+          <td>{{ row.level }}</td>
+          <td>{{ row.refines }}</td>
+          <td>{{ row.refinedBy }}</td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>

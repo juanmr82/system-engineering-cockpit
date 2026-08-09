@@ -16,8 +16,16 @@ const SEC_ICONS = {
   alert: '/icons/alert.svg',
   gearbox: '/icons/gearbox.svg',
   'account-circle': '/icons/account-circle.svg',
+  'chevron-down': '/icons/chevron-down.svg',
   close: '/icons/close.svg',
+  collapse: '/icons/collapse.svg',
+  expand: '/icons/expand.svg',
+  // A hub with three spokes. Deliberately not a tree glyph: the breakdown tab next to it *is* a
+  // tree, and the point of this view is that it is not one.
+  graph: '/icons/graph.svg',
   info: '/icons/info.svg',
+  minus: '/icons/minus.svg',
+  plus: '/icons/plus.svg',
   save: '/icons/save.svg',
   search: '/icons/search.svg',
 } as const;

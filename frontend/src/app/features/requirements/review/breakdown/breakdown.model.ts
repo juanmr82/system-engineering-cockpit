@@ -1,31 +1,17 @@
-import type { SystemLevelOption } from '../../modules/modules.model';
+import type {
+  RequirementAttribute,
+  RequirementCardNode,
+} from '../../../../shared/requirement-card/requirement-card.model';
 
-// Wire shapes and the DAG-to-tree transform for docs/requirement-breakdown-tree.md. `ref` is
-// always the opaque route handle (R5) — never a raw internal id.
+// The DAG-to-tree transform for docs/requirement-breakdown-tree.md. `ref` is always the opaque
+// route handle (R5) — never a raw internal id.
+//
+// The node payload is the shared card's, not this tab's: the dependency graph draws the same
+// requirement as a node from the same shape (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1), so there is one
+// definition of what a requirement looks like and the two views cannot drift apart.
 
-export interface BreakdownAttribute {
-  readonly name: string;
-  readonly value: string;
-}
-
-/**
- * One node of the forest.
- *
- * `resolved` false means the target is a placeholder the importer created for an object no import
- * has reached: it carries no DOORS id and no description, and the UI renders it as "Not yet
- * imported", names the owning module, and does not link it — exactly as the References column does
- * (§7).
- */
-export interface BreakdownNode {
-  readonly ref: string;
-  readonly id: string | null;
-  readonly level: SystemLevelOption | null;
-  readonly description: string;
-  readonly resolved: boolean;
-  readonly moduleRef: string | null;
-  readonly moduleName: string | null;
-  readonly verificationAttributes: BreakdownAttribute[];
-}
+export type BreakdownAttribute = RequirementAttribute;
+export type BreakdownNode = RequirementCardNode;
 
 /** `from` refines `to` (§2), so `to` is drawn as `from`'s parent. */
 export interface BreakdownEdge {

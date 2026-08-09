@@ -1,7 +1,11 @@
-import { Component, computed, input, linkedSignal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal } from '@angular/core';
 import { httpResource } from '@angular/common/http';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { DependencyGraphDialog } from '../../graph/dependency-graph-dialog';
 import { BreakdownRowComponent } from './breakdown-row';
 import { MAX_ROWS, buildTree, flatten } from './breakdown.model';
 import type { BreakdownResponse, BreakdownTree } from './breakdown.model';
@@ -19,11 +23,19 @@ import type { BreakdownResponse, BreakdownTree } from './breakdown.model';
  */
 @Component({
   selector: 'sec-breakdown',
-  imports: [BreakdownRowComponent, MatIconModule, MatProgressBarModule],
+  imports: [
+    BreakdownRowComponent,
+    MatButtonModule,
+    MatIconModule,
+    MatProgressBarModule,
+    MatTooltipModule,
+  ],
   templateUrl: './breakdown.html',
   styleUrl: './breakdown.scss',
 })
 export class Breakdown {
+  private readonly dialog = inject(MatDialog);
+
   readonly itemRef = input.required<string>();
 
   // Created here, in the tab, so the request goes out when the tab is first opened and not before:
@@ -72,6 +84,37 @@ export class Breakdown {
     }
     this.collapsed.set(next);
   }
+
+  /**
+   * Whether there is anything to open a graph on.
+   *
+   * The scope is the requirement this tab is open on, and it only exists once the response has
+   * arrived and confirmed the object is real — opening a graph on a reference that turned out to be
+   * a 404 would put an error dialog on top of an error panel.
+   */
+  protected readonly hasScope = computed(() => this.breakdown.hasValue());
+
+  /**
+   * The same requirements, drawn as a graph rather than as a tree
+   * (docs/REQ_BREAKDOWN_GRAPH_VIEW §2).
+   *
+   * Enabled only once there is a scope — the requirement this tab is open on. **Never an unscoped
+   * whole-module graph** (§8): a module is twelve thousand objects, which is an unreadable hairball
+   * and a rendering problem this feature does not need to have.
+   */
+  protected openGraph(): void {
+    DependencyGraphDialog.open(this.dialog, {
+      seedRef: this.itemRef(),
+      seedId: this.selectedId(),
+    });
+  }
+
+  /** What the tree already knows the opened requirement is called, so the dialog's header is
+   *  populated before its own response arrives. */
+  private readonly selectedId = computed(() => {
+    const response = this.breakdown.value();
+    return response?.nodes.find((node) => node.ref === response.selectedRef)?.id ?? null;
+  });
 
   protected retry(): void {
     this.breakdown.reload();
