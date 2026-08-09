@@ -24,6 +24,14 @@ export const DEFAULT_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    key: 'jira',
+    label: 'JIRA',
+    items: [
+      { key: 'jira-issues', label: 'Issues', route: '/jira/issues' },
+      { key: 'jira-kids', label: 'KIDS', route: '/jira/kids' },
+    ],
+  },
+  {
     key: 'documents',
     label: 'Documents',
     items: [{ key: 'documents-windchill', label: 'Windchill', route: '/documents/windchill' }],

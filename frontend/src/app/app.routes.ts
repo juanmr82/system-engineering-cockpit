@@ -38,6 +38,14 @@ export const routes: Routes = [
         canDeactivate: [canLeaveReview],
       },
       {
+        path: 'jira/issues',
+        loadComponent: () => import('./features/jira/issues/jira-issues').then((m) => m.JiraIssues),
+      },
+      {
+        path: 'jira/kids',
+        loadComponent: () => import('./features/jira/kids/jira-kids').then((m) => m.JiraKids),
+      },
+      {
         path: 'documents/windchill',
         loadComponent: () =>
           import('./features/documents/windchill/windchill-documents').then(

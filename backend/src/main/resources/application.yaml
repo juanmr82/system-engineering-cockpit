@@ -32,6 +32,15 @@ navigation:
         - key: requirements-review
           label: "Req review"
           route: "/requirements/review"
+    - key: jira
+      label: "JIRA"
+      items:
+        - key: jira-issues
+          label: "Issues"
+          route: "/jira/issues"
+        - key: jira-kids
+          label: "KIDS"
+          route: "/jira/kids"
     - key: documents
       label: "Documents"
       items:

@@ -428,6 +428,10 @@ section as the contract the shell must continue to satisfy.
 │   · Modules      │            dynamic content                     │
 │   · Req review   │                                                │
 │                  │                                                │
+│  JIRA            │                                                │
+│   · Issues       │                                                │
+│   · KIDS         │                                                │
+│                  │                                                │
 │  Documents       │                                                │
 │   · Windchill    │                                                │
 │                  │                                                │
@@ -444,7 +448,7 @@ section as the contract the shell must continue to satisfy.
 - Sidenav width 280px expanded. A collapse control rails it to 64px (icons only, labels
   as tooltips). Collapsed state is a **per-user browser preference** — client-side only,
   never the graph, never the backend.
-- The three groups are **source families**, not arbitrary sections. The sidenav is
+- The groups are **source families**, not arbitrary sections. The sidenav is
   rendered from a typed `NavGroup[]` fetched from `GET /api/v1/config/navigation` — never
   from hand-written markup, and never from the graph. Order is defined in the backend
   config file and is therefore identical for every user.
@@ -486,6 +490,8 @@ section as the contract the shell must continue to satisfy.
 | `/requirements/statistics` | `RequirementsStatisticsComponent` | Requirements |
 | `/requirements/modules` | `ModulesComponent` | Requirements |
 | `/requirements/review` | `RequirementReviewComponent` | Requirements |
+| `/jira/issues` | `JiraIssues` | JIRA |
+| `/jira/kids` | `JiraKids` | JIRA |
 | `/documents/windchill` | `WindchillDocumentsComponent` | Documents |
 | `/mbse/soi-views` | `SoiViewsComponent` | CAMEO |
 | `/mbse/functions` | `FunctionsComponent` | CAMEO |
