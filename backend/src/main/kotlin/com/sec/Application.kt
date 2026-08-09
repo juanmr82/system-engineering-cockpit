@@ -8,8 +8,10 @@ import com.sec.graph.GraphDriver
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
+import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
+import com.sec.source.doors.RequirementCardProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -76,7 +78,11 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     // lifecycles and a test can substitute its own.
     val doorsProjection = DoorsProjection(graphDriver)
     val reviewProjection = ReviewProjection(graphDriver)
-    val breakdownProjection = BreakdownProjection(graphDriver)
+    // One card shape, one thing that builds it: the Breakdown tab and the dependency graph both
+    // read requirement cards from here (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+    val cardProjection = RequirementCardProjection(graphDriver)
+    val breakdownProjection = BreakdownProjection(graphDriver, cardProjection)
+    val dependencyGraphProjection = DependencyGraphProjection(graphDriver, cardProjection)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
@@ -86,6 +92,7 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
         doorsProjection,
         reviewProjection,
         breakdownProjection,
+        dependencyGraphProjection,
         metaWriter,
         statisticsProjection,
         tableProjection,

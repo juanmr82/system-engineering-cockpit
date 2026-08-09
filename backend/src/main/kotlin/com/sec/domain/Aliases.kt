@@ -131,4 +131,65 @@ public object Aliases {
         val present = labels.toSet()
         return TYPE_LABEL_PRIORITY.firstOrNull { it in present }?.let(typeLabels::get)
     }
+
+    // -- The dependency graph's vocabulary (docs/REQ_BREAKDOWN_GRAPH_VIEW §2, §4.1, §4.4) ------
+
+    /**
+     * The scope control's wording, naming the relation rather than a direction.
+     *
+     * "Downstream" and "upstream" are the words the spec uses and they are the words this product
+     * must not use: an outgoing `refersTo` is read here as *this requirement refines its target*,
+     * so following it goes **up** the decomposition while the spec calls it downstream. Naming the
+     * relation instead leaves nothing to get backwards.
+     */
+    public val graphDirectionLabels: Map<GraphDirection, String> = mapOf(
+        GraphDirection.OUTGOING to "What these refine",
+        GraphDirection.INCOMING to "What refines these",
+        GraphDirection.BOTH to "Both directions",
+    )
+
+    /** The level strategies, as the dialog's overflow menu names them. */
+    public val graphLevelStrategyLabels: Map<GraphLevelStrategy, String> = mapOf(
+        GraphLevelStrategy.MODULE_SYSTEM_LEVEL to "System level of the module",
+        GraphLevelStrategy.OUTLINE_LEVEL to "Outline level in the module",
+        GraphLevelStrategy.GRAPH_RANK to "Position in this graph",
+    )
+
+    /**
+     * What a band is called, given the strategy that produced it.
+     *
+     * The system-level strategy reuses [SystemLevel]'s own wording rather than inventing a second
+     * spelling of "L2 – Segment": the band and the badge inside it name the same thing, so a
+     * mismatch between them would read as two different levels.
+     */
+    public fun graphBandLabel(strategy: GraphLevelStrategy, level: Int): String = when (strategy) {
+        GraphLevelStrategy.MODULE_SYSTEM_LEVEL ->
+            SystemLevel.entries.getOrNull(level)?.label ?: "Level $level"
+
+        GraphLevelStrategy.OUTLINE_LEVEL -> "Outline level $level"
+
+        // A position, not a level: this strategy ranks the picture, and saying so stops the number
+        // being read as a system level it has nothing to do with.
+        GraphLevelStrategy.GRAPH_RANK -> if (level == 0) "Top of this graph" else "Step ${level + 1}"
+    }
+
+    /**
+     * The band everything the strategy could not place falls into — always drawn, always last, and
+     * never quietly merged into a real level (§4.1).
+     *
+     * It says what is missing rather than that something is wrong: a module nobody has classified
+     * is a normal state, and the fix is a click in the Modules settings dialog.
+     */
+    public fun graphUnplacedBandLabel(strategy: GraphLevelStrategy): String = when (strategy) {
+        GraphLevelStrategy.MODULE_SYSTEM_LEVEL -> "No system level set"
+        GraphLevelStrategy.OUTLINE_LEVEL -> "No outline level"
+        GraphLevelStrategy.GRAPH_RANK -> "Not placed"
+    }
+
+    /**
+     * A placeholder whose owning module has not been imported either, so there is no module node to
+     * name — and the `__moduleUrl` it does carry is an internal identifier that never reaches a
+     * user (R5). This sentence is the whole of what can honestly be said.
+     */
+    public const val UNNAMED_UNRESOLVED_MODULE: String = "A module that has not been imported yet"
 }

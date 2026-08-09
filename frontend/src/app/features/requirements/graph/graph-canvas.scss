@@ -1,0 +1,247 @@
+@use 'mixins' as sec;
+
+// The dependency graph canvas (docs/REQ_BREAKDOWN_GRAPH_VIEW §5).
+//
+// Paper rules apply here as everywhere: bands are separated by a hairline and the faintest of
+// washes, never by a fill; the cards are the same paper cards the breakdown tree draws. What is new
+// is a coordinate space, so this is the one stylesheet in the app with absolute positioning
+// throughout — every number in it comes from the layout, not from CSS.
+
+:host {
+  display: block;
+  position: relative;
+  block-size: 100%;
+  inline-size: 100%;
+  overflow: hidden;
+  background: var(--sec-shell);
+  outline: none;
+
+  &:focus-visible {
+    @include sec.focus-ring(-2px);
+  }
+}
+
+.sec-graph__viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  // The canvas is panned, not scrolled, so a drag has to mean "pan" rather than "select the text
+  // of every card it passes over".
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+// Laid out, so heights are real, but out of sight and out of the accessibility tree. `display:
+// none` would report every height as zero, which is the whole failure this pass exists to avoid.
+.sec-graph__measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.sec-graph__canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  // A composited property, so panning and zooming never touch layout (§5.5).
+  will-change: transform;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Level bands
+// ---------------------------------------------------------------------------------------------
+
+// A wash, and the faintest one in the system. This is the one place a background says "these
+// belong together" over a whole region, and it has to stay quieter than the cards sitting on it —
+// a saturated lane would out-shout the paper it exists to group (CLAUDE.md §8).
+.sec-graph__band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: var(--sec-hairline) solid var(--sec-line-soft);
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+.sec-graph__band--alt {
+  background: color-mix(in srgb, var(--sec-blue) 3%, transparent);
+}
+
+// The labels sit in screen space, not in the canvas: they follow the diagram down but stay pinned
+// to the left edge during horizontal pan (§4.4), and they never scale with the zoom — a level name
+// is chrome, and chrome that shrinks with the content stops being readable exactly when it is most
+// needed.
+.sec-graph__lanes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sec-graph__lane {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 0 0 10px;
+}
+
+.sec-graph__lane-label {
+  @include sec.field-label;
+
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--sec-paper) 88%, transparent);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Edges
+// ---------------------------------------------------------------------------------------------
+
+.sec-graph__edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.sec-graph__edge {
+  fill: none;
+  stroke-width: 1.5;
+  stroke: var(--sec-grey-blue);
+  transition: opacity 0.12s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+// The target has not been imported, so the picture past it is unknown rather than absent. Dotted
+// and muted, with an outlined arrowhead — the same "there is something here we cannot show you"
+// tone the References column uses (§5.3).
+.sec-graph__edge--unresolved {
+  stroke: var(--sec-highlight-undefined);
+  stroke-dasharray: 2 4;
+}
+
+// The layout could not put this edge's target above its source — a cycle. Dashed, so a reader can
+// see the layout had to fight the data. **The arrowhead is never reversed to suit the layout**
+// (§8): only the stroke says anything about it.
+.sec-graph__edge--feedback {
+  stroke-dasharray: 7 4;
+}
+
+.sec-graph__edge--loop {
+  stroke: var(--sec-highlight-tbd);
+}
+
+.sec-graph__arrow {
+  fill: var(--sec-grey-blue);
+}
+
+.sec-graph__arrow--open {
+  fill: none;
+  stroke: var(--sec-highlight-undefined);
+  stroke-width: 1.5;
+}
+
+// Hover: the incident edges come forward and everything else recedes. Opacity rather than colour,
+// so an edge's own meaning — unresolved, feedback — survives being dimmed.
+.sec-graph__canvas--dimming {
+  .sec-graph__edge {
+    opacity: 0.18;
+  }
+
+  .sec-graph__node {
+    opacity: 0.35;
+  }
+}
+
+.sec-graph__canvas--dimming .sec-graph__edge--lit {
+  opacity: 1;
+  stroke-width: 2;
+}
+
+.sec-graph__canvas--dimming .sec-graph__node--lit {
+  opacity: 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nodes
+// ---------------------------------------------------------------------------------------------
+
+.sec-graph__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  // `translate` rather than top/left: a composited property, and one that does not invalidate
+  // layout at 300 nodes (§5.2).
+  transition: opacity 0.12s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.sec-graph__node-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+// Navy outline, not a filled chip: filled is the Tier-2 shape, and this is a statement about what
+// the user is looking at rather than something the application wrote.
+.sec-graph__seed {
+  @include sec.outline-chip;
+
+  text-transform: none;
+  border-color: var(--sec-blue);
+  color: var(--sec-blue);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+// Where the cap or the depth bound cut the picture. It wears the TBD tone rather than the error
+// red: nothing is wrong, there is simply more than this graph is showing (§1.1).
+.sec-graph__cut {
+  @include sec.badge(var(--sec-highlight-tbd));
+
+  min-width: 0;
+  color: var(--sec-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-graph__status {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 2;
+  margin: 0;
+  padding: 6px 14px;
+  background: var(--sec-paper);
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+}
+
+// The picture's accessible equivalent. Removed from the page, kept in the accessibility tree —
+// and on a plain wrapper, never on the <table>, for the reason the mixin spells out.
+.sec-graph__reading {
+  @include sec.visually-hidden;
+}

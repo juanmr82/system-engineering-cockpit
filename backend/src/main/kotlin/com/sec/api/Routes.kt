@@ -9,6 +9,7 @@ import com.sec.api.routes.tableRoutes
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
+import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.ReviewProjection
@@ -32,6 +33,7 @@ public fun Application.configureRouting(
     doorsProjection: DoorsProjection,
     reviewProjection: ReviewProjection,
     breakdownProjection: BreakdownProjection,
+    dependencyGraphProjection: DependencyGraphProjection,
     metaWriter: MetaWriter,
     statisticsProjection: StatisticsProjection,
     tableProjection: DoorsTableProjection,
@@ -39,7 +41,13 @@ public fun Application.configureRouting(
     routing {
         healthRoutes(graphDriver)
         moduleRoutes(doorsProjection, metaWriter)
-        reviewRoutes(doorsProjection, reviewProjection, breakdownProjection, metaWriter)
+        reviewRoutes(
+            doorsProjection,
+            reviewProjection,
+            breakdownProjection,
+            dependencyGraphProjection,
+            metaWriter,
+        )
         statisticsRoutes(statisticsProjection)
         tableRoutes(doorsProjection, tableProjection)
         configRoutes()

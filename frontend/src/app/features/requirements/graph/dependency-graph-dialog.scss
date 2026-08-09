@@ -1,0 +1,224 @@
+@use 'mixins' as sec;
+
+// The dependency graph dialog (docs/REQ_BREAKDOWN_GRAPH_VIEW §2).
+//
+// The dialog is a sheet like any other view, and everything above the canvas is reference chrome
+// that must keep a predictable position — the toolbar, the incompleteness caveat, the banner and
+// the legend. That is the whole reason the dialog does not size itself to the diagram (§2.1).
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  background: var(--sec-paper);
+}
+
+.sec-gd__head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sec-gd__identity {
+  min-inline-size: 220px;
+}
+
+.sec-gd__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-gd__title {
+  margin: 4px 0 0;
+  font-size: var(--sec-text-body);
+  font-weight: 600;
+  color: var(--sec-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-gd__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.sec-gd__spacer {
+  flex: 1;
+}
+
+.sec-gd__stepper,
+.sec-gd__zoom {
+  @include sec.compact-icon-button;
+
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+}
+
+.sec-gd__control-label {
+  @include sec.field-label;
+
+  margin-right: 4px;
+}
+
+.sec-gd__stepper-value {
+  min-inline-size: 14px;
+  text-align: center;
+  font-size: var(--sec-text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--sec-blue);
+}
+
+.sec-gd__menu-heading {
+  @include sec.field-label;
+
+  margin: 0;
+  padding: 8px 16px 2px;
+}
+
+// The sentence §1.1 requires, always visible and never behind a tooltip. Quiet, because it is a
+// standing caveat rather than a finding — but it is never conditional, because the conclusion it
+// prevents ("nothing depends on this") is wrong and expensive.
+.sec-gd__caveat {
+  @include sec.accent-panel(var(--sec-blue-mid), var(--sec-wash-cool));
+
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+
+  mat-icon {
+    flex: none;
+    inline-size: 16px;
+    block-size: 16px;
+    font-size: 16px;
+    color: var(--sec-blue-mid);
+  }
+}
+
+// Named modules, not a count: the action this prompts is "import that module", and a count does
+// not say which one.
+.sec-gd__banner {
+  @include sec.accent-panel(var(--sec-highlight-undefined), #fdf6f1);
+
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+
+  mat-icon {
+    flex: none;
+    inline-size: 18px;
+    block-size: 18px;
+    font-size: 18px;
+    color: var(--sec-highlight-undefined);
+  }
+}
+
+.sec-gd__banner-title {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink);
+}
+
+.sec-gd__modules {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+}
+
+.sec-gd__module-count {
+  color: var(--sec-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-gd__truncated {
+  @include sec.accent-panel(var(--sec-highlight-tbd), var(--sec-wash));
+
+  margin: 0;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+}
+
+// Four line styles are in play, so this is not optional (§5.3).
+.sec-gd__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--sec-text-xs);
+  color: var(--sec-ink-2);
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+// Drawn with a border rather than as an inline SVG: the key has to match the stroke on the canvas,
+// and a border-top is the one CSS primitive that dashes the same way an SVG stroke does.
+.sec-gd__key {
+  inline-size: 26px;
+  border-top: 2px solid var(--sec-grey-blue);
+}
+
+.sec-gd__key--unresolved {
+  border-top-style: dotted;
+  border-top-color: var(--sec-highlight-undefined);
+}
+
+.sec-gd__key--feedback {
+  border-top-style: dashed;
+}
+
+.sec-gd__key--loop {
+  border-top-color: var(--sec-highlight-tbd);
+}
+
+// The canvas needs a bounded height — `flex: 1` alone is not enough, `min-height: 0` is what lets
+// a flex child shrink below its content (CLAUDE.md §6).
+.sec-gd__body {
+  flex: 1;
+  min-block-size: 0;
+  position: relative;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius-sheet);
+  overflow: hidden;
+}
+
+.sec-gd__error {
+  @include sec.error-panel;
+
+  margin: 16px;
+}
+
+.sec-gd__empty {
+  @include sec.empty-state;
+
+  margin: 16px;
+
+  h3 {
+    @include sec.view-title;
+
+    margin: 0;
+    font-size: var(--sec-text-body);
+  }
+}
+
+// Tabular figures, so the number does not jitter sideways as it changes under a wheel gesture.
+.sec-gd__zoom-readout {
+  font-variant-numeric: tabular-nums;
+}

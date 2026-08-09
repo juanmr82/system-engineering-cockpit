@@ -1,0 +1,183 @@
+@use 'mixins' as sec;
+@use 'document' as doc;
+
+// The shared requirement card. The vocabulary is _document.scss's — object cards, the verification
+// panel — and it arrived here from breakdown-row.scss when the dependency graph needed the same
+// card as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+//
+// What stayed behind in breakdown-row.scss is the *tree's* chrome: the depth rail, the twisty, the
+// relation line, the loop markers. None of that is a fact about a requirement, so none of it
+// belongs to the card.
+
+:host {
+  display: block;
+}
+
+.sec-card {
+  @include doc.tree-card;
+
+  margin-bottom: 0;
+
+  // --rail is set by the consuming view — the breakdown row's depth-rails mixin reads the row's
+  // depth and sets it, and it inherits in here. The graph sets no depth, so the fallback is what
+  // that view actually gets, and the mixin's own bare var(--rail) would leave the border invalid.
+  border-left-color: var(--rail, var(--sec-grey-blue));
+}
+
+.sec-card__head {
+  @include doc.tree-card-head;
+
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: default;
+}
+
+// Always occupies its own width, level or no level, so every id in the column starts at the same x.
+.sec-card__level {
+  @include sec.badge;
+
+  flex: none;
+  min-width: 24px;
+  min-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+@include sec.system-level-scale;
+
+// The identifier — the thing a reviewer reads first and quotes in a review.
+.sec-card__id {
+  @include doc.object-id;
+
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-card__not-imported {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-highlight-undefined);
+}
+
+.sec-card--unresolved {
+  border-left-color: var(--sec-highlight-undefined);
+}
+
+.sec-card__body {
+  @include doc.tree-card-body;
+
+  padding: 8px 12px 12px;
+}
+
+.sec-card__text {
+  @include doc.object-text;
+
+  margin-top: 8px;
+  font-size: var(--sec-text-sm);
+}
+
+// The Tier-2 accent, because what this panel surfaces is an attribute a user flagged in the
+// settings dialog — the same colour that marks an app annotation everywhere else.
+.sec-card__verification {
+  @include doc.verification-panel(var(--sec-highlight-meta));
+
+  margin-top: 10px;
+}
+
+.sec-card__verification-label {
+  @include sec.field-label;
+
+  margin: 0;
+}
+
+.sec-card__attributes {
+  margin: 6px 0 0;
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 2px 0;
+  }
+
+  dt {
+    flex: none;
+    width: 150px;
+    font-size: var(--sec-text-xs);
+    color: var(--sec-blue-deep);
+  }
+
+  dd {
+    flex: 1 1 180px;
+    margin: 0;
+    font-size: var(--sec-text-sm);
+    color: var(--sec-ink);
+    overflow-wrap: anywhere;
+  }
+}
+
+.sec-card__absent {
+  @include sec.absent-text;
+
+  margin-top: 6px;
+  font-size: var(--sec-text-xs);
+}
+
+// "You are here" — and it has to hold at a glance, because this requirement can be drawn more than
+// once: in the tree, under every parent it refines; in the graph, as the seed among its neighbours.
+//
+// Navy rail, navy wash, and a hairline all the way round, so the card reads as a distinct object
+// rather than as a row that happens to be tinted. Three signals, none of them load-bearing alone —
+// the consuming view says it in words too (CLAUDE.md §8, the fourth background exception).
+.sec-card--subject {
+  border-color: var(--sec-subject-line);
+  border-left-color: var(--sec-blue);
+  background: var(--sec-subject);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The `node` density — a graph node (§5.1, §5.2)
+// ---------------------------------------------------------------------------------------------
+
+// Fixed width comes from the graph, which has to know it before layout runs; the card fills what it
+// is given. Height is measured, so nothing here may set one.
+.sec-card-host--node {
+  inline-size: 100%;
+
+  // Keeps a node's own layout and paint out of the canvas's, which matters at 300 of them (§6).
+  contain: layout paint;
+}
+
+.sec-card--node {
+  block-size: 100%;
+  box-shadow: var(--sec-shadow-raised);
+
+  .sec-card__head {
+    padding: 6px 9px;
+  }
+
+  .sec-card__body {
+    padding: 6px 10px 10px;
+  }
+
+  // Clamped rather than wrapped without limit: one 40-line requirement would otherwise make its
+  // whole band taller than the screen and push every other band off the bottom. The full text is
+  // one click away in the panel behind the dialog.
+  .sec-card__text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+    overflow: hidden;
+  }
+
+  .sec-card__attributes dd {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+}
+
+// Below ~50% zoom: identity only. Nothing to style beyond the head, which is all that renders.
+.sec-card--compact .sec-card__head {
+  padding: 5px 8px;
+}

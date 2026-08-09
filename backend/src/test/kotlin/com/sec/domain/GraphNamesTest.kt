@@ -1,8 +1,10 @@
 package com.sec.domain
 
 import com.sec.graph.cypher.BreakdownCypher
+import com.sec.graph.cypher.DependencyGraphCypher
 import com.sec.graph.cypher.ItemCypher
 import com.sec.graph.cypher.ModuleCypher
+import com.sec.graph.cypher.RequirementCardCypher
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.cypher.SystemCypher
@@ -71,10 +73,15 @@ class GraphNamesTest {
         fun add(owner: String, vararg queries: String) =
             queries.forEachIndexed { i, q -> add("$owner[$i]" to q) }
 
+        add("BreakdownCypher", BreakdownCypher.EDGES_UP, BreakdownCypher.EDGES_DOWN)
         add(
-            "BreakdownCypher",
-            BreakdownCypher.EDGES_UP, BreakdownCypher.EDGES_DOWN, BreakdownCypher.NODES,
-            BreakdownCypher.VERIFICATION_ATTRIBUTES,
+            "DependencyGraphCypher",
+            DependencyGraphCypher.OUT_NEIGHBOURS, DependencyGraphCypher.IN_NEIGHBOURS,
+            DependencyGraphCypher.SEEDS,
+        )
+        add(
+            "RequirementCardCypher",
+            RequirementCardCypher.NODES, RequirementCardCypher.VERIFICATION_ATTRIBUTES,
         )
         add("ItemCypher", ItemCypher.FIND_BY_ID)
         add(

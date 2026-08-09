@@ -1,0 +1,63 @@
+<div
+  class="sec-card"
+  [class.sec-card--node]="density() === 'node'"
+  [class.sec-card--compact]="compact()"
+  [class.sec-card--subject]="subject()"
+  [class.sec-card--unresolved]="!node().resolved"
+>
+  <div class="sec-card__head">
+    <!-- Whatever the consuming view puts before the identity: the tree's twisty, and the gap that
+         keeps every id at the same x when a row has nothing to collapse. -->
+    <ng-content select="[cardLead]" />
+
+    <!-- Always rendered, even with no level set: the badge holds the column, and dropping it
+         un-aligns every id below it. The code carries its resolved wording on the chip itself —
+         that wording comes from the server's vocabulary and is never assembled here (R5). -->
+    <span
+      class="sec-card__level sec-level--{{ node().level?.code || 'none' }}"
+      [matTooltip]="levelTooltip()"
+    >{{ node().level?.code }}</span>
+
+    @if (node().resolved) {
+      <!-- Text, not a control: neither view navigates away from what it is showing. -->
+      <span class="sec-card__id">{{ node().id }}</span>
+    } @else {
+      <span class="sec-card__not-imported">{{ notImported() }}</span>
+    }
+
+    <!-- Whatever the consuming view puts after the identity: the tree's "refines ‹parent›" line and
+         loop markers, the graph's cut-neighbours badge. -->
+    <ng-content select="[cardMeta]" />
+  </div>
+
+  @if (hasBody()) {
+    <div class="sec-card__body">
+      @if (node().description) {
+        <p class="sec-card__text">{{ node().description }}</p>
+      }
+
+      <div class="sec-card__verification">
+        <p class="sec-card__verification-label">Verification</p>
+        @if (node().verificationAttributes.length === 0) {
+          <!-- Quietly, not in error red: this is an absence of configuration, not a finding. -->
+          <p class="sec-card__absent">No verification attribute defined yet for this requirement</p>
+        } @else {
+          <dl class="sec-card__attributes">
+            @for (attribute of node().verificationAttributes; track attribute.name) {
+              <div>
+                <dt>{{ attribute.name }}</dt>
+                @if (attribute.value) {
+                  <dd>{{ attribute.value }}</dd>
+                } @else {
+                  <dd class="sec-card__absent">Not filled in</dd>
+                }
+              </div>
+            }
+          </dl>
+        }
+      </div>
+
+      <ng-content select="[cardFoot]" />
+    </div>
+  }
+</div>

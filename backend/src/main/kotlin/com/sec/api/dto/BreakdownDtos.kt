@@ -4,38 +4,9 @@ import kotlinx.serialization.Serializable
 
 // Wire shapes for docs/requirement-breakdown-tree.md §6. `ref` is always the base64url encoding of
 // __id (R5) — never __id itself, and no __-prefixed name appears in a field name or a value.
-
-/** One verification attribute of a node's module, name and value (§4). */
-@Serializable
-public data class BreakdownAttributeDto(
-    public val name: String,
-    public val value: String,
-)
-
-/**
- * One node of the breakdown forest.
- *
- * `resolved` is false for a placeholder the importer created for an object no import has reached.
- * Such a node carries no DOORS `id` — its `__name` is its `__id` spelled out, which R5 keeps off
- * the wire — so `id` is null and the wording plus the owning module's name is all the UI can
- * honestly show, exactly as in the References column (§7).
- *
- * `level` is the module's system-level classification resolved to code **and** label, reusing the
- * shape the Modules table already speaks, so the client never maps a stored code to wording of its
- * own (R5). Null when the owning module has no classification: the row renders with no chip rather
- * than with a blank one (§2).
- */
-@Serializable
-public data class BreakdownNodeDto(
-    public val ref: String,
-    public val id: String? = null,
-    public val level: SystemLevelOptionDto? = null,
-    public val description: String,
-    public val resolved: Boolean = true,
-    public val moduleRef: String? = null,
-    public val moduleName: String? = null,
-    public val verificationAttributes: List<BreakdownAttributeDto> = emptyList(),
-)
+//
+// The node payload itself is not here: it is [RequirementCardDto], shared with the dependency
+// graph, so one requirement has one card shape across every view that draws one.
 
 /**
  * One `refersTo` edge, read as **`from` refines `to`** (§2).
@@ -71,6 +42,6 @@ public data class BreakdownResponseDto(
     public val selectedRef: String,
     public val roots: List<String>,
     public val truncated: Boolean,
-    public val nodes: List<BreakdownNodeDto>,
+    public val nodes: List<RequirementCardDto>,
     public val edges: List<BreakdownEdgeDto>,
 )

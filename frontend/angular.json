@@ -21,6 +21,11 @@
               { "glob": "**/*", "input": "public" }
             ],
             "styles": ["src/styles.scss"],
+            "allowedCommonJsDependencies": [
+              "elkjs/lib/elk-api",
+              "elkjs/lib/elk-worker.min.js",
+              "elkjs/lib/elk.bundled.js"
+            ],
             "stylePreprocessorOptions": {
               "includePaths": ["src/styles"]
             }

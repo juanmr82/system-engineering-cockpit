@@ -1,3 +1,18 @@
+<!-- The tab's toolbar. One control today, and it is right-aligned so it stays where it is as more
+     join it. -->
+<div class="sec-bd__toolbar">
+  <button
+    mat-icon-button
+    type="button"
+    [disabled]="!hasScope()"
+    matTooltip="Show these requirements as a dependency graph"
+    aria-label="Show dependency graph"
+    (click)="openGraph()"
+  >
+    <mat-icon svgIcon="graph" />
+  </button>
+</div>
+
 @if (breakdown.isLoading() && !breakdown.hasValue()) {
   <mat-progress-bar mode="indeterminate" />
 } @else if (breakdown.error()) {
@@ -8,17 +23,6 @@
 } @else if (rows().length === 0) {
   <p class="sec-bd__empty">This object is not linked to anything, so there is no breakdown to show.</p>
 } @else {
-  <!-- Said once, visibly, so a drawn "refines" is never mistaken for one somebody authored: every
-       outgoing reference is read as decomposition here, which is this tab's convention and not
-       something DOORS asserted. -->
-  <p class="sec-bd__caveat">
-    <mat-icon svgIcon="info" />
-    <span>
-      Every reference out of a requirement is read here as "this requirement refines its target".
-      That is how this tree is drawn, not something the source states.
-    </span>
-  </p>
-
   <ul class="sec-bd__tree">
     @for (row of rows(); track row.key) {
       <!-- Only when there is more than one, so the ordinary single-root case reads exactly as it

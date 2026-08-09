@@ -5,27 +5,6 @@
   display: block;
 }
 
-// The convention notice, in the same shape the app uses for any quiet aside. Not an error and not
-// a finding — it explains how to read the tree.
-.sec-bd__caveat {
-  @include sec.accent-panel(var(--sec-blue-mid), var(--sec-wash-cool));
-
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 0 12px;
-  font-size: var(--sec-text-xs);
-  color: var(--sec-ink-2);
-
-  mat-icon {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    font-size: 16px;
-    color: var(--sec-blue-mid);
-  }
-}
-
 .sec-bd__tree {
   @include doc.tree;
 }
@@ -80,4 +59,14 @@
 
 .sec-bd__truncated {
   @include doc.document-footer;
+}
+
+// The tab's toolbar. Right-aligned so a second control joins it without moving the first, and
+// compact so it does not out-weigh the tree beneath it.
+.sec-bd__toolbar {
+  @include sec.compact-icon-button;
+
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
 }
