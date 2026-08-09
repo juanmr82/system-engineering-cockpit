@@ -65,7 +65,7 @@ Save/Cancel, sized in the dialog itself.
 
 ### 4.1 Filter checkboxes
 
-Three, in the same bar, all narrowing the loaded rows and none re-querying. They combine with each
+Four, in the same bar, all narrowing the loaded rows and none re-querying. They combine with each
 other and with the search, and none of them touches the "n in module" readout — filtering is not a
 claim about how many objects there are.
 
@@ -74,6 +74,22 @@ claim about how many objects there are.
 | **Requirements only** | `requirementLike` | headings, information objects and table structure are context, not requirements (§11 O4) |
 | **Objects with issues** | a non-empty Issues list | unconditional — see §5.3 |
 | **Requirements without parents** | `requirementLike` **and** no outgoing `refersTo` | below |
+| **Links to deleted objects** | a reference, in **either** direction, whose target DOORS deleted | unconditional; below |
+
+**Links to deleted objects.** DOORS deletes an object and keeps the links to it, so a requirement
+can go on refining something that no longer exists (ADR 0012). This is the one finding in the table
+a reviewer cannot act on from inside the table — the stale link exists only in DOORS — so the
+working pattern is to collect every row carrying one and take the list there. A filter is what makes
+that list, which is why it is not left to a search of the Issues column.
+
+**Both directions count.** An outgoing one says this requirement refines something that is gone; an
+incoming one says something that is gone claims to refine this. They are the same defect seen from
+two sides and are fixed in the same place, and a filter that looked only at outgoing references
+would report a module as clean while it is the module the stale links land in.
+
+Unconditional, like *Objects with issues* and for the same reason: an empty result honestly means
+the module has none, and hiding the control when it does would leave a reviewer unable to tell that
+from not having looked.
 
 **Requirements without parents.** An outgoing `refersTo` reads as *refines* — `A -[:refersTo]-> B`
 means A refines B, the display convention the Breakdown tab states in words (CLAUDE.md R5) — so a
@@ -255,17 +271,19 @@ Rows grow to their content now (§5), so the height is there to spend.
 - Each id opens the detail panel (§7) for that object.
 - A target carrying `__UNDEFINED` renders muted and non-clickable as **Not yet imported
   (module <name>)** — accent `#FE5000`, wording from `Aliases.kt`, never the label string (R5).
-- **Incoming links are incomplete by design.** Importers ingest out-links only, so an incoming
-  link exists only if the *referencing* module has itself been imported. The column header
-  carries an info affordance saying so in plain language. Never present an empty incoming list as
-  "orphan requirement" (`SE_ITEM_SCHEMA.md` §8.2).
+- **Incoming links are complete as of the module's own export** (amended; ADR 0012). This section
+  used to say the opposite, and the reversal matters more than the wording: importers ingested
+  out-links only, so an incoming link existed just where the *referencing* module had itself been
+  imported, and an empty list meant nothing. The importer now reads `__inputLinks` as well, and a
+  module's export states every link pointing at it — so the list is complete, `incomingComplete`
+  is `true`, and an empty incoming list really does mean nothing refers to this object.
 
-  **Implemented as the column's `headerTooltip`, which is a weaker affordance than the ⓘ button
-  this section was written for, and knowingly so.** A custom ag-grid header component replaces the
-  *whole* header, sort indicator included, so keeping the button would mean reimplementing sorting
-  and its indicator — a lot of surface for one icon, and a second sort affordance that would drift
-  from the grid's own. The sentence is unchanged and still one hover away. If the incompleteness
-  ever surprises a reviewer in practice, the fix is a note in the view, not a custom header.
+  A source whose module has not been imported is **in** the list, as *Not yet imported*, because
+  the importer creates the placeholder from the target side. That is the case this rule was
+  written to protect against, and it is now visible rather than merely warned about.
+
+  The column's `headerTooltip` survives and says what the two directions are; it no longer carries
+  a caveat, because there is none left to carry.
 - All `refersTo` edges are untyped. Do not display or imply satisfies/verifies/refines here —
   that semantics belongs to `:__Meta:__Link` (R2, Shape C) and is a different feature.
 
@@ -686,7 +704,15 @@ that consumes it does not invent its own wording.
 
 ### Still open
 
-- **O5 — `incomingComplete` is hard-coded `false`.** Incoming links stay incomplete until every
-  referencing module has been imported, and nothing tracks which those are. The field exists so the
-  caveat travels with the data instead of living in UI copy; making it real needs import-coverage
-  tracking and no wire change.
+- **O5 — closed, and not the way it was expected to close.** `incomingComplete` is now `true`.
+  It was hard-coded `false` on the reasoning that incoming links stay incomplete until every
+  referencing module has been imported, and that making it real would need import-coverage
+  tracking. It needed no such thing: the importer reads `__inputLinks`, so a module's own export
+  states every link pointing at it, and the list is as complete as that export (ADR 0012). A
+  source whose module has not been imported is *in* the list, as *Not yet imported*, rather than
+  absent from it.
+
+  The field stays on the wire. Whether an empty incoming list means anything is not something a
+  consumer may assume for itself, and a future source that cannot report its inbound links will
+  say so here rather than in UI copy. The caveat it used to carry has been removed from the review
+  table's header tooltip and from the dependency graph, where it was a standing sentence.

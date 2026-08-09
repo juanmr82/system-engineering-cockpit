@@ -10,6 +10,7 @@ const node = (ref: string, level: string | null = null): BreakdownNode => ({
   level: level ? { code: level, label: `${level} – label` } : null,
   description: `${ref} text`,
   resolved: true,
+  deletedInSource: false,
   moduleRef: 'module',
   moduleName: 'A module',
   verificationAttributes: [],

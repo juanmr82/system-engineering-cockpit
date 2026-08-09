@@ -20,6 +20,7 @@ const NODE: RequirementCardNode = {
   level: { code: 'L2', label: 'L2 – Segment' },
   description: 'The segment shall maintain attitude control throughout the ascent phase.',
   resolved: true,
+  deletedInSource: false,
   moduleRef: 'bW9k',
   moduleName: 'Segment requirements',
   verificationAttributes: [],
@@ -111,5 +112,61 @@ describe('RequirementCard', () => {
     fixture.detectChanges();
 
     expect(host().textContent ?? '').not.toContain('__');
+  });
+});
+
+/**
+ * The two ways a card can be about something that is not really there.
+ *
+ * They are opposite states that a reader has to be able to tell apart, because only one of them
+ * is fixed by importing. A placeholder is waiting for an import. An object DOORS deleted is
+ * waiting for someone to open DOORS and remove the link that still reaches it — and it renders in
+ * full, because it was imported and everything it shows is real except its continued existence.
+ */
+describe('RequirementCard, deleted in DOORS', () => {
+  let fixture: ComponentFixture<RequirementCard>;
+
+  const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+  const text = (): string => (host().textContent ?? '').replace(/\s+/g, ' ').trim();
+
+  const mount = async (node: RequirementCardNode): Promise<void> => {
+    await TestBed.configureTestingModule({
+      imports: [RequirementCard],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RequirementCard);
+    fixture.componentRef.setInput('node', node);
+    fixture.componentRef.setInput('density', 'node');
+    fixture.detectChanges();
+  };
+
+  it('says the object is gone, and still shows everything it knows about it', async () => {
+    await mount({ ...NODE, deletedInSource: true });
+
+    expect(text()).toContain('Deleted in DOORS');
+    // The id and the statement are the point of keeping the ghost: without them the card cannot
+    // say *which* requirement went away.
+    expect(host().querySelector('.sec-card__id')?.textContent?.trim()).toBe('SEG-REQ-1249');
+    expect(text()).toContain('The segment shall maintain attitude control');
+  });
+
+  it('never calls a deleted object not yet imported', async () => {
+    await mount({ ...NODE, deletedInSource: true });
+
+    // The wording that would send a reviewer to run an import of a module they already have.
+    expect(text()).not.toContain('Not yet imported');
+  });
+
+  it('leaves an ordinary card unmarked', async () => {
+    await mount(NODE);
+
+    expect(text()).not.toContain('Deleted in DOORS');
+  });
+
+  it('shows no internal name', async () => {
+    await mount({ ...NODE, deletedInSource: true });
+
+    expect(text()).not.toContain('__');
   });
 });

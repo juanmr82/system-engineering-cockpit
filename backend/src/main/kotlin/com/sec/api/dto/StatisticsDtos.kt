@@ -21,6 +21,13 @@ public data class CensusDto(
     /** Items carrying a literal TBD/TBC marker in some attribute value (§3.3). */
     public val openPoints: Int,
     public val links: Int,
+    /**
+     * Links whose far end is an object DOORS deleted while keeping the link (ADR 0012).
+     *
+     * A subset of [links], and deliberately reported next to it rather than subtracted from it:
+     * the edge is really there and really imported. What is wrong is the requirements data.
+     */
+    public val deletedLinks: Int,
 )
 
 /**
@@ -90,6 +97,8 @@ public data class ModuleStatisticsDto(
     public val openPointsByAttribute: List<AttributeCountDto>,
     public val links: Int,
     public val danglingLinks: Int,
+    /** Links this module still asserts to or from objects DOORS deleted (ADR 0012). */
+    public val deletedLinks: Int,
     /** True when the object scan hit its cap. Truncation is reported, never silent (§9). */
     public val truncated: Boolean,
 )

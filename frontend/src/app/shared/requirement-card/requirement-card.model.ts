@@ -17,6 +17,15 @@ export interface RequirementAttribute {
  * `resolved` false means the target is a placeholder the importer created for an object no import
  * has reached: it carries no DOORS id and no description, and the card renders it as "Not yet
  * imported", names the owning module, and does not link it — exactly as the References column does.
+ *
+ * `deletedInSource` is a different fact and the two never coincide. The object was really
+ * imported — it has its id, its statement and its level — and a later export of its own module no
+ * longer contained it, because DOORS deleted it and kept the links pointing at it. So the card
+ * renders in full, and adds that the requirement it is showing no longer exists.
+ *
+ * Both of those are states, not styling: what a reader has to be able to tell apart is whether an
+ * import would help. For a placeholder it would. For a deleted object nothing here will, and the
+ * fix is a link to remove in DOORS.
  */
 export interface RequirementCardNode {
   readonly ref: string;
@@ -24,6 +33,7 @@ export interface RequirementCardNode {
   readonly level: SystemLevelOption | null;
   readonly description: string;
   readonly resolved: boolean;
+  readonly deletedInSource: boolean;
   readonly moduleRef: string | null;
   readonly moduleName: string | null;
   readonly verificationAttributes: RequirementAttribute[];

@@ -95,28 +95,49 @@ export function describe(row: ReviewRow): string {
 }
 
 /**
- * One direction of the References cell, split at load.
+ * One direction of the References cell, split at load into three states rather than two.
  *
- * Unresolved targets are counted rather than listed. Each one would otherwise render the same
+ * Never-imported targets are counted rather than listed. Each one would otherwise render the same
  * sentence — "Not yet imported", with no id to tell them apart, because a placeholder has none —
  * and against the reference module that is three identical phrases in a 46px row, clipped. The
  * count says the same thing in the space available, and the tooltip names the modules to import.
+ *
+ * Objects deleted in DOORS are **listed**, by id, and the difference is not cosmetic. They are
+ * resolved targets: the object was really imported, and its id is the whole of what a reviewer
+ * needs to go and find the link in DOORS and remove it. Counting them would replace the one
+ * actionable thing about them with a number.
+ *
+ * They are also kept out of `resolved`, which is what the cell renders as a navigable control.
+ * There is nothing to navigate to — the object is not in its module's table any more — so a
+ * deleted target is text, not a button.
  */
 export interface RefGroup {
   readonly resolved: Reference[];
+  readonly deleted: Reference[];
+  readonly deletedTooltip: string;
   readonly unresolvedCount: number;
   readonly unresolvedTooltip: string;
 }
 
 export function refGroup(references: Reference[]): RefGroup {
-  const resolved = references.filter((reference) => reference.resolved);
-  const unresolved = references.filter((reference) => !reference.resolved);
+  const deleted = references.filter((reference) => reference.deletedInSource);
+  const resolved = references.filter(
+    (reference) => reference.resolved && !reference.deletedInSource,
+  );
+  const unresolved = references.filter(
+    (reference) => !reference.resolved && !reference.deletedInSource,
+  );
   const modules = [
     ...new Set(unresolved.map((reference) => reference.moduleName).filter((name) => !!name)),
   ];
 
   return {
     resolved,
+    deleted,
+    deletedTooltip:
+      deleted.length === 1
+        ? 'This object was deleted in DOORS and the link to it was left behind. The link has to be removed in DOORS.'
+        : 'These objects were deleted in DOORS and the links to them were left behind. The links have to be removed in DOORS.',
     unresolvedCount: unresolved.length,
     unresolvedTooltip: modules.length
       ? `Not yet imported. Import ${modules.join(', ')} to see ${unresolved.length === 1 ? 'it' : 'them'}.`

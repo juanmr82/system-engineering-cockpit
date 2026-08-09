@@ -116,6 +116,11 @@ public class RequirementCardProjection(private val graphDriver: GraphDriver) {
 
     private fun CardRow.toDto(id: String, verificationAttributes: List<String>): RequirementCardDto {
         val resolved = NodeLabel.UNDEFINED !in labels
+        // Not a kind of unresolved, and deliberately independent of it: a deleted object was
+        // really imported once and still carries its id, its text and its type label, so it
+        // renders as the requirement it was and says, additionally, that DOORS no longer has it
+        // (ADR 0012). A placeholder is the other case entirely — nothing was ever imported.
+        val deletedInSource = NodeLabel.DELETED in labels
         return RequirementCardDto(
             ref = Ref.encode(id),
             // A placeholder's __name is its __id spelled out, so there is no display id to send
@@ -124,6 +129,7 @@ public class RequirementCardProjection(private val graphDriver: GraphDriver) {
             level = levelCode?.let(SystemLevel::fromCode)?.let { SystemLevelOptionDto(it.code, it.label) },
             description = if (resolved) describe() else "",
             resolved = resolved,
+            deletedInSource = deletedInSource,
             moduleRef = moduleId?.let(Ref::encode),
             moduleName = moduleName,
             // All of them, name and value — a module can flag more than one and showing only the

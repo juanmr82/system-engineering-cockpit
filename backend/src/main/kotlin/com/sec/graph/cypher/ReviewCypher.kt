@@ -11,6 +11,7 @@ import com.sec.domain.MetaProp.VISIBLE
 import com.sec.domain.MetaValue.CURRENT_SCHEMA_VERSION
 import com.sec.domain.MetaValue.MANDATORY_RULE
 import com.sec.domain.NodeLabel.ATTRIBUTE_SETTING
+import com.sec.domain.NodeLabel.DELETED
 import com.sec.domain.NodeLabel.META
 import com.sec.domain.NodeLabel.NOTE
 import com.sec.domain.NodeLabel.POLICY
@@ -57,10 +58,20 @@ public object ReviewCypher {
     // Incoming links are deliberately included here and are *incomplete by design*: importers
     // ingest out-links only, so an incoming edge exists only when the referencing module has
     // itself been imported. That caveat is surfaced in the UI, never silently (SE_ITEM_SCHEMA §8.2).
+    //
+    // `deleted` is the other thing a reference can be, and it is not a kind of unresolved: the
+    // target is a real imported object with its `id` and its text, which a later export of its own
+    // module stopped containing. DOORS deleted it and left this link behind. So `resolved` stays
+    // true and the row still shows what it points at — what changes is that the link itself is the
+    // defect, and the only fix is in DOORS (ADR 0012).
+    // NOT o:$DELETED throughout: an object DOORS deleted is not part of the module any more, and
+    // a module listing that still contained it would be showing a document DOORS does not have.
+    // It stays in the graph only as the far end of the links DOORS left behind, and it is reached
+    // from those links -- never by listing the module (ADR 0012).
     public const val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
         WITH o
         ORDER BY o.$SORT_KEY
         SKIP ${'$'}skip
@@ -70,12 +81,14 @@ public object ReviewCypher {
                  ref: out.$ID,
                  id: CASE WHEN out:$UNDEFINED THEN null ELSE coalesce(out.$DOORS_ID, out.$NAME) END,
                  resolved: NOT out:$UNDEFINED,
+                 deleted: out:$DELETED,
                  moduleUrl: out.$MODULE_URL
              }] AS outgoing,
              [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) | {
                  ref: inc.$ID,
                  id: CASE WHEN inc:$UNDEFINED THEN null ELSE coalesce(inc.$DOORS_ID, inc.$NAME) END,
                  resolved: NOT inc:$UNDEFINED,
+                 deleted: inc:$DELETED,
                  moduleUrl: inc.$MODULE_URL
              }] AS incoming
         OPTIONAL MATCH (o)-[:$NOTE_ON]->(n:$META:$NOTE)
@@ -126,7 +139,7 @@ public object ReviewCypher {
     public const val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
         RETURN count(o) AS total
     """
 
@@ -149,6 +162,7 @@ public object ReviewCypher {
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
+               t:$DELETED               AS deleted,
                t.$MODULE_URL            AS moduleUrl
         ORDER BY id
         LIMIT ${'$'}limit
@@ -160,6 +174,7 @@ public object ReviewCypher {
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
+               t:$DELETED               AS deleted,
                t.$MODULE_URL            AS moduleUrl
         ORDER BY id
         LIMIT ${'$'}limit

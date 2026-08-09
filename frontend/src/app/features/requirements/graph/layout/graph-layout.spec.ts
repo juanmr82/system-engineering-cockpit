@@ -24,6 +24,7 @@ function node(ref: string, level: number | null, seed = false): GraphNode {
       level: null,
       description: '',
       resolved: true,
+      deletedInSource: false,
       moduleRef: null,
       moduleName: null,
       verificationAttributes: [],

@@ -18,6 +18,7 @@ const node = (ref: string, over: Partial<GraphNode> = {}): GraphNode => ({
     level: { code: 'L2', label: 'L2 – Segment' },
     description: `${ref} statement`,
     resolved: true,
+    deletedInSource: false,
     moduleRef: 'bW9k',
     moduleName: 'Segment requirements',
     verificationAttributes: [],
@@ -43,6 +44,7 @@ const GRAPH: DependencyGraph = {
         level: { code: 'L1', label: 'L1 – System of Systems' },
         description: 'The aircraft shall fly',
         resolved: true,
+        deletedInSource: false,
         moduleRef: 'c3lz',
         moduleName: 'System requirements',
         verificationAttributes: [],
@@ -55,6 +57,7 @@ const GRAPH: DependencyGraph = {
         level: { code: 'L2', label: 'L2 – Segment' },
         description: 'The wing shall generate lift',
         resolved: true,
+        deletedInSource: false,
         moduleRef: 'bW9k',
         moduleName: 'Segment requirements',
         verificationAttributes: [{ name: 'Verification Method', value: 'Test' }],
@@ -128,23 +131,27 @@ describe('DependencyGraphDialog', () => {
   });
 
   /**
-   * §7, and it is the criterion this whole feature turns on: the sentence is **unconditional**.
+   * The inverse of the test that used to stand here, and the inversion is the point.
    *
-   * Only outgoing links are imported, so a requirement drawn with no incoming arrows may simply be
-   * one whose referencing module has not been loaded — and "nothing depends on this" is a wrong and
-   * expensive conclusion in a requirements tool (§1.1).
+   * The graph carried an unconditional caveat saying only outgoing links were imported, because a
+   * requirement drawn with no incoming arrows might merely be one whose referencing module had not
+   * been loaded. The importer now reads `__inputLinks`, so that is no longer true: a link into this
+   * requirement is in the graph whether or not its source module has been imported, and the source
+   * is drawn as an unresolved node (ADR 0012).
+   *
+   * Asserted rather than deleted, because the sentence stops being merely unnecessary and starts
+   * being wrong: it would tell a reviewer to distrust an emptiness that is now real information.
    */
-  it('always says that only outgoing links are imported', async () => {
+  it('no longer claims that only outgoing links are imported', async () => {
     await open();
 
-    expect(renderedText()).toContain('Only outgoing links are imported');
-    expect(renderedText()).toContain('may mean the referencing module has not been imported yet');
+    expect(renderedText()).not.toContain('Only outgoing links are imported');
   });
 
-  it('says it even when nothing in the graph is unresolved', async () => {
+  it('shows no standing caveat when nothing in the graph is unresolved', async () => {
     await open({ ...GRAPH, unresolvedModules: [] });
 
-    expect(renderedText()).toContain('Only outgoing links are imported');
+    expect(host().querySelector('.sec-gd__caveat')).toBeNull();
     expect(host().querySelector('.sec-gd__banner')).toBeNull();
   });
 

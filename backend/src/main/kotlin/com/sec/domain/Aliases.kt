@@ -192,4 +192,27 @@ public object Aliases {
      * user (R5). This sentence is the whole of what can honestly be said.
      */
     public const val UNNAMED_UNRESOLVED_MODULE: String = "A module that has not been imported yet"
+
+    /**
+     * An object DOORS deleted while keeping the links to it — the `:__DELETED` label, in words
+     * (ADR 0012). Never *Not yet imported*, which is the opposite situation and sends a reviewer
+     * to run an import that cannot help; and never the label itself, which no user sees (R5).
+     *
+     * The hint says where the fix is, because it is the one finding in this application that
+     * cannot be fixed *in* this application. The graph is reporting the source correctly; it is
+     * the source that is wrong.
+     */
+    public const val DELETED_IN_SOURCE: String = "Deleted in DOORS"
+    public const val DELETED_IN_SOURCE_HINT: String =
+        "This object was deleted in DOORS and the links to it were left behind. " +
+            "The link has to be removed in DOORS."
+
+    /**
+     * The Req review filter for rows carrying at least one such link (`REQ_REVIEW.md` §11).
+     *
+     * Worth its own filter rather than a search of the Issues column because it is the one
+     * finding a reviewer cannot act on from inside the table, so the working pattern is to
+     * collect them all and take the list to DOORS.
+     */
+    public const val DELETED_LINKS_FILTER: String = "Links to or from deleted objects"
 }

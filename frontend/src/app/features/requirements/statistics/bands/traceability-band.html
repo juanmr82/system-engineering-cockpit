@@ -53,6 +53,15 @@
       }
     }
 
+    @if (deletedLinkCount()) {
+      <p class="sec-band__summary sec-band__summary--warn">
+        <b>{{ deletedLinkCount() }}</b> link{{ deletedLinkCount() === 1 ? '' : 's' }} point to
+        objects that were deleted in DOORS. DOORS keeps the link when it deletes the object, so
+        {{ deletedLinkCount() === 1 ? 'it has' : 'they have' }} to be removed there — no import
+        will clear {{ deletedLinkCount() === 1 ? 'it' : 'them' }}.
+      </p>
+    }
+
     @if (modulesWithoutSystemLevel().length) {
       <p class="sec-band__note sec-band__note--quiet">
         Left out of the count above, because no system level is set for them:

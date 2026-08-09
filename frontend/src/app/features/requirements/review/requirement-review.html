@@ -139,6 +139,19 @@
       Requirements without parents
     </mat-checkbox>
 
+    <!-- The one finding on this table that cannot be fixed from this table: the stale link lives
+         in DOORS. Offered unconditionally, like the issues filter and for the same reason — an
+         empty result honestly means the module has none, and hiding the control when it does
+         would leave a reviewer unable to tell that from not having looked. -->
+    <mat-checkbox
+      class="sec-review__filter"
+      matTooltip="Objects with a link to or from an object that was deleted in DOORS. DOORS keeps the link when it deletes the object, so the link has to be removed there — nothing here can repair it."
+      [checked]="deletedLinksOnly()"
+      (change)="deletedLinksOnly.set($event.checked)"
+    >
+      Links to deleted objects
+    </mat-checkbox>
+
     <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded
          in, so this clears every column's sort rather than sorting by anything (§5). -->
     @if (sorted()) {

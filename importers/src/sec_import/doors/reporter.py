@@ -28,6 +28,33 @@ class ImportCounters:
     tables: int = 0
     table_rows: int = 0
 
+    # Reconciliation (phase 6, ADR 0012).
+    #
+    # `objects_deleted_in_source` is the module's whole ghost population, not this run's delta:
+    # an object deleted three imports ago is still gone, and a report that only counted the
+    # newly-marked would show 0 on every run after the one that noticed. `objects_newly_deleted`
+    # is the delta, and it is the number worth reacting to -- a sudden large one is what a
+    # truncated or view-filtered export looks like.
+    objects_deleted_in_source: int = 0
+    objects_newly_deleted: int = 0
+    child_rels_deleted: int = 0
+    refers_to_deleted: int = 0
+    ghost_edges_stripped: int = 0
+    ghosts_collected: int = 0
+    placeholders_removed: int = 0
+
+    # Annotations removed with the object they were written on. The only Tier-2 data an importer
+    # ever deletes, so it is reported rather than left to be inferred from a node count: a user
+    # who wrote a comment on a requirement that has since been deleted should be able to find out
+    # from the run that took it.
+    ghost_meta_deleted: int = 0
+
+    # Incoming links, from __inputLinks. `read` counts what the export asserts about links into
+    # this module; `created` counts the ones the graph did not already have, which after the first
+    # import of a stable pair of modules is normally zero.
+    incoming_links_read: int = 0
+    incoming_links_created: int = 0
+
 
 @dataclass
 class ImportReport:
@@ -58,6 +85,17 @@ class ImportReport:
         print(f"  Placeholders upgraded:{c.placeholders_upgraded}")
         print(f"  __child created     : {c.child_rels_created}")
         print(f"  refersTo created    : {c.refers_to_created}")
+        print(f"  Incoming links read : {c.incoming_links_read}")
+        print(f"  Incoming created    : {c.incoming_links_created}")
+        print("  -- deleted in DOORS --")
+        print(f"  Objects gone        : {c.objects_deleted_in_source} "
+              f"({c.objects_newly_deleted} newly, this run)")
+        print(f"  __child pruned      : {c.child_rels_deleted}")
+        print(f"  refersTo pruned     : {c.refers_to_deleted}")
+        print(f"  Annotations removed : {c.ghost_meta_deleted}")
+        print(f"  Ghost edges stripped: {c.ghost_edges_stripped}")
+        print(f"  Ghosts collected    : {c.ghosts_collected}")
+        print(f"  Placeholders removed: {c.placeholders_removed}")
         print(f"  DOORSTable          : {c.tables}")
         print(f"  DOORSTableRow       : {c.table_rows}")
         print(f"  DOORSTableCell      : {c.table_cells}")

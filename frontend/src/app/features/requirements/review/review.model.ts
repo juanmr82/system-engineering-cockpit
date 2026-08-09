@@ -5,17 +5,29 @@
 // One linked object in the References column (§5.1). `id` is null when the target has not been
 // imported: a placeholder has no DOORS id, so there is nothing the column can honestly show
 // beyond the wording and the owning module's name.
+//
+// `deletedInSource` is not another way to be unresolved. The target is a real imported object with
+// a real `id`, and `resolved` is true — what it says is that a later export of the target's own
+// module no longer contained it. DOORS deleted the object and left this link behind.
+//
+// The two prompt opposite actions, which is why they are separate fields. Unresolved asks for a
+// module to be imported. Deleted asks for a link to be removed, in DOORS, where the only copy of
+// it lives.
 export interface Reference {
   readonly ref: string;
   readonly id: string | null;
   readonly resolved: boolean;
+  readonly deletedInSource: boolean;
   readonly moduleRef: string | null;
   readonly moduleName: string | null;
 }
 
-// `incomingComplete` is false by construction: importers ingest out-links only, so an incoming
-// link exists only where the referencing module has itself been imported. An empty incoming list
-// is never evidence that a requirement is unreferenced.
+// `incomingComplete` says whether an empty incoming list means anything. It is true now that the
+// importer reads `__inputLinks` — a module's own export states every link pointing at it — so an
+// empty list really does mean nothing refers to this object, and a referencing module that has not
+// been imported shows up as an unresolved reference rather than as silence. Still carried per
+// response rather than assumed: a future source that cannot report its inbound links would say so
+// here.
 export interface References {
   readonly outgoing: Reference[];
   readonly incoming: Reference[];

@@ -4,6 +4,7 @@ import com.sec.domain.MetaProp.CODE
 import com.sec.domain.MetaProp.SCHEME
 import com.sec.domain.MetaValue.SYSTEM_LEVEL_SCHEME
 import com.sec.domain.NodeLabel.CLASSIFICATION
+import com.sec.domain.NodeLabel.DELETED
 import com.sec.domain.NodeLabel.META
 import com.sec.domain.NodeLabel.SE_ITEM
 import com.sec.domain.NodeLabel.UNDEFINED
@@ -67,21 +68,22 @@ public object StatisticsCypher {
     public const val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
         WITH o
         ORDER BY o.$SORT_KEY
         LIMIT ${'$'}limit
         RETURN o         AS object,
                labels(o) AS labels,
                COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM) WHERE NOT t:$UNDEFINED } AS resolvedParents,
-               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM) WHERE t:$UNDEFINED }     AS placeholderParents
+               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM) WHERE t:$UNDEFINED }     AS placeholderParents,
+               COUNT { (o)-[:$REFERS_TO]-(t:$SE_ITEM) WHERE t:$DELETED }        AS deletedLinks
     """
 
     /** Counted separately so a truncated object scan still reports an honest total. */
     public const val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
         RETURN count(o) AS total
     """
 
@@ -95,7 +97,7 @@ public object StatisticsCypher {
     public const val DANGLING_TARGET_MODULES: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})-[:$REFERS_TO]->(t:$SE_ITEM)
-        WHERE t:$UNDEFINED AND NOT o:$DOORS_MODULE
+        WHERE t:$UNDEFINED AND NOT o:$DOORS_MODULE AND NOT o:$DELETED
         WITH DISTINCT t.$MODULE_URL AS moduleUrl
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: moduleUrl})
         RETURN moduleUrl AS id,
