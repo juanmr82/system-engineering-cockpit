@@ -33,7 +33,28 @@
   @if (hasBody()) {
     <div class="sec-card__body">
       @if (node().description) {
-        <p class="sec-card__text">{{ node().description }}</p>
+        <!-- One line, deliberately: the text is `pre-wrap`, so an interpolation broken across
+             lines for readability would render its own indentation. -->
+        <p #text class="sec-card__text" [class.sec-card__text--full]="textExpanded()">{{ node().description }}</p>
+
+        <!-- Drawn only where the clamp is hiding something, which is measured rather than assumed
+             — a control that offers to reveal nothing is worse than no control. So it appears on a
+             graph node with a long statement and on nothing else, without either view being asked
+             which it is. -->
+        @if (canExpandText()) {
+          <button
+            mat-icon-button
+            type="button"
+            class="sec-card__more"
+            [class.sec-card__more--open]="textExpanded()"
+            [attr.aria-expanded]="textExpanded()"
+            [attr.aria-label]="textExpanded() ? 'Show less of this text' : 'Show the full text'"
+            [matTooltip]="textExpanded() ? 'Show less' : 'Show the full text'"
+            (click)="toggleText()"
+          >
+            <mat-icon svgIcon="chevron-down" />
+          </button>
+        }
       }
 
       <div class="sec-card__verification">

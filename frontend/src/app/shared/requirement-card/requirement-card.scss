@@ -73,6 +73,31 @@
   font-size: var(--sec-text-sm);
 }
 
+// The control that lifts the clamp. Quiet and at the end of the text it reveals: it says something
+// about how much is shown, not about the requirement, so it never competes with the statement above
+// it or with the Tier-2 chip below.
+.sec-card__more {
+  @include sec.compact-icon-button(14px, 22px);
+
+  display: block;
+  margin-inline-start: auto;
+  color: var(--sec-ink-3);
+
+  mat-icon {
+    transition: rotate 0.12s ease;
+
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+}
+
+// Down means "there is more below"; up means "put it back". The one glyph turned over, rather than
+// a second icon a reader has to learn.
+.sec-card__more--open mat-icon {
+  rotate: 180deg;
+}
+
 // The Tier-2 accent, because what this panel surfaces is an attribute a user flagged in the
 // settings dialog — the same colour that marks an app annotation everywhere else.
 .sec-card__verification {
@@ -159,13 +184,23 @@
 
   // Clamped rather than wrapped without limit: one 40-line requirement would otherwise make its
   // whole band taller than the screen and push every other band off the bottom. The full text is
-  // one click away in the panel behind the dialog.
+  // one click away — in the panel behind the dialog, or on the card itself.
   .sec-card__text {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 6;
     line-clamp: 6;
     overflow: hidden;
+  }
+
+  // The clamp lifted, by the control below the text. `display` goes back to `block` rather than
+  // only unsetting the line count: an unclamped `-webkit-box` is a flex container of a kind
+  // nothing else in this stylesheet reasons about, and there is no reason to keep one.
+  .sec-card__text--full {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: none;
+    line-clamp: none;
   }
 
   .sec-card__attributes dd {

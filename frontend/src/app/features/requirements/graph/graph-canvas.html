@@ -4,7 +4,13 @@
 <div #measure class="sec-graph__measure" aria-hidden="true">
   @for (node of nodes(); track node.card.ref) {
     <div [attr.data-ref]="node.card.ref" [style.width.px]="cardWidth">
-      <sec-requirement-card density="node" [node]="node.card" />
+      <!-- Measured with the text expanded exactly as the drawn card has it, or the height this
+           pass reports is the height of a card nobody is looking at. -->
+      <sec-requirement-card
+        density="node"
+        [node]="node.card"
+        [textExpanded]="isTextExpanded(node.card.ref)"
+      />
     </div>
   }
 </div>
@@ -104,13 +110,15 @@
         [style.width.px]="cardWidth"
         (pointerenter)="hovered.set(item.ref)"
         (pointerleave)="hovered.set(null)"
-        (dblclick)="onNodeDoubleClick(item.ref, item.node.card.resolved)"
+        (dblclick)="onNodeDoubleClick($event, item.ref, item.node.card.resolved)"
       >
         <sec-requirement-card
           density="node"
           [node]="item.node.card"
           [subject]="item.node.seed"
           [compact]="compact()"
+          [textExpanded]="isTextExpanded(item.ref)"
+          (textExpandedChange)="setTextExpanded(item.ref, $event)"
         >
           <span cardMeta class="sec-graph__node-meta">
             <!-- Said in words as well as by the wash behind the card: the seed is the one thing a
