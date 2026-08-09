@@ -3,6 +3,131 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-09 (session 14) — the dependency graph, and CLAUDE.md split in three
+
+Two commits, merged as **PR #1** from `feature/requirement-dependency-graph`. **`git status` is
+clean.** Every "still uncommitted" line further down this file is now stale — sessions 9 through 13
+all went in, and nothing is carried.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The requirement dependency graph** — a node-and-edge view of `refersTo` opened from the Breakdown tab, laid out top-to-bottom so that **y encodes system level** | `features/requirements/graph/`, `DependencyGraphProjection.kt` |
+| 2 | **One card, two views.** `RequirementCardDto` + `sec-requirement-card` render as a Breakdown row *or* as a graph node | `shared/requirement-card/`, `RequirementCardProjection.kt` |
+| 3 | **`GET /api/v1/items/{ref}/graph`** — scoped, capped, collects unresolved modules | `ReviewRoutes.kt`, `DependencyGraphCypher.kt`, `GraphScope.kt` |
+| 4 | **elkjs 0.11.0** added, pinned exact, worker-only | `layout/elk.worker.ts`, §4 of `CLAUDE.md`, ADR 0011 |
+| 5 | **CLAUDE.md split**: §5 → `backend/`, §6/§8/§9 → `frontend/`, §10 → `importers/`. Root 83,532 → 39,974 chars (~20.9k → ~10.0k tokens) | four `CLAUDE.md` files |
+
+`docs/REQ_BREAKDOWN_GRAPH_VIEW` is the spec; **steps 1–7 of its build order are done, step 8 is
+not** (list tab, keyboard navigation).
+
+### The card is the point, and it constrains both views from now on
+
+§5.1 asks for the same component in both places, so one projection builds the DTO for the Breakdown
+tab and the graph alike. Padding and clamping differ; **the field set cannot**. A column added to
+one is added to both or to neither.
+
+What stayed behind in `breakdown-row` is only the tree's own chrome: the depth rail, the twisty, the
+parent it refines, the loop markers.
+
+### Three places the spec was overruled — all in ADR 0011, read it before changing any of them
+
+- **Bands come from the module's existing L0–L4 `:__Classification`**, not from §4.1's regex over
+  `moduleFullPath`. That regex was a guess from one example path, written before this product had a
+  per-module system level. It has one, a human sets it in the Modules dialog, and it already draws
+  the badge on every row — so the regex would have produced a **second, differently-numbered** level
+  on the same screen as the first: an `L2` badge inside a band reading *Level 1*. `OUTLINE_LEVEL` and
+  `GRAPH_RANK` sit beside it in the overflow menu. An unclassified module gets its own band at the
+  bottom, never folded into a real level.
+- **Direction is `OUTGOING` / `INCOMING`**, shown as *What these refine* / *What refines these*. The
+  spec calls the outgoing direction `DOWNSTREAM`, which is the opposite of what this product means —
+  an outgoing `refersTo` reads as *refines*, so following it goes **up** the decomposition. Two words
+  for one arrow pointing opposite ways is how a reviewer reads a traceability picture backwards.
+- **`GraphNodeDto` drops the spec's `moduleUrl`** (an internal name whose value is an internal id —
+  R5), **`itemId` and `isPlaceholder`** (the card already carries `ref` and `resolved`; stating
+  either twice is how the two come to disagree).
+
+### The trap that cost an hour: ELK owns the worker, we do not
+
+Our own worker importing `elk.bundled.js` looks right and **cannot work**. The in-thread path
+constructs `require('./elk-worker.min.js').Worker`, and in a worker context that module has already
+taken its self-install branch — so there is no `Worker` on it. `TypeError: _Worker is not a
+constructor`, thrown *inside* the worker, surfacing as **a layout that never completes**.
+
+So: the pure functions run on the main thread, where they cost microseconds, and `elk-api`'s
+`workerFactory` points at a worker that is one import of `elk-worker.min.js`.
+
+### Everything decision-shaped is a pure function, deliberately
+
+`partitionOf`'s dense renumbering, `compressBands`' sub-lane compression and bend-point remapping,
+edge dedup, self-loop retention, feedback detection, the local router — all in `layout/`, unit-tested
+with no ELK types in sight. **ELK supplies coordinates; it does not supply meaning.** If it is ever
+replaced, the pure half and its tests survive. That is the containment for the accepted risk of a
+1.4 MB compiled Java-to-JavaScript bundle (ADR 0011).
+
+`compressBands` **departs from §4.3's sketch**, which places sub-lane *k* at `bandTop + k *
+SUBLANE_GAP` and would stack every card on the one above it. Each sub-lane sits below the previous
+one's *bottom* instead.
+
+Two more that are rules, not preferences: **edges are handed to ELK reversed and the arrowhead is
+never reversed to match** (bands run top-down from L0, so a "refines" arrow runs against the layer
+flow; feeding ELK the data direction makes it report almost every edge as feedback and the whole
+picture goes dashed), and **the §1.1 incompleteness caveat is unconditional** — "no incoming arrows"
+must never be read as "nothing depends on this" when only outgoing links are imported.
+
+### ⚠ One documentation inconsistency was created knowingly — close it
+
+The Breakdown tab's standing *"read here as refines"* banner was **removed at the user's request**.
+The per-row wording is unchanged. But two documents still say that convention is stated visibly in
+the tab:
+
+- `CLAUDE.md` R5, the `refersTo` **in the Breakdown tab only** alias row — *"a display convention of
+  that one tab, stated visibly in it"*;
+- `docs/requirement-breakdown-tree.md` §2 — *"Say so once, visibly, in the tab (a small info
+  affordance next to the tab label…)"*.
+
+**Both need amending, or the wording needs a new home.** Left open because deciding which is a
+product call, not an edit.
+
+### Still open from the spec
+
+- **§9 question 1 was never answered:** should `__child` also be drawn, as faint containment edges
+  behind the `refersTo` ones? The spec asks for it as a toggle, **off by default**. Not implemented,
+  not decided.
+- **Step 8** — list tab and keyboard navigation.
+- Nit: the spec file's own title reads `# REquirement Brea Graph View`, and it was committed that
+  way. The file also has no extension, unlike every other doc.
+
+### Why the CLAUDE.md split, and what did *not* move
+
+The root file was 83,532 characters — about 20.9k tokens on every session, more than twice the
+~40,000 at which Claude Code warns a single memory file is too large, paid for whether or not the
+session went near the code it described.
+
+**This is a move, not a cull.** Almost none of it was dead weight: the directory trees are annotated
+line by line with facts `ls` cannot show, and the version table's payload is its rationale column,
+not its numbers. Fifteen genuinely derivable lines went from §3's tree.
+
+**Section numbers are unchanged on purpose** — code comments and `docs/` say "CLAUDE.md §6" and those
+references still resolve. Staying in the root: §1, §2 (R1–R7 and the state-location table), §3, §4,
+§7, §11. **Every hard prohibition and every cross-cutting rule is still always-loaded; nothing that
+says "never do X" moved.**
+
+The honest caveat: a session touching backend *and* frontend loads both files and saves nothing. The
+win is on single-stack work, which is most of it.
+
+### Verified
+
+| | Status |
+|---|---|
+| `mvn verify` | **90 backend tests** |
+| `mvn -Pdocker test` | **82 container tests** (+14; `DependencyGraphFeatureTest` is new) |
+| `npm run lint` / `npm test` / `npm run build` | **green — 177 frontend specs** |
+| The graph, in the browser | **against the live Segment module** — `SEG-REQ-1249` + 2 hops draws **12 objects** across L1, L2 and a *No system level set* band, with the two dangling links as ghost cards and the banner naming what to import |
+| The CLAUDE.md split | **checked section by section against a pre-edit copy** — the five moved sections byte-identical in their destinations, the six kept ones untouched but for §3's trim |
+| The graph | **read-only.** This feature writes nothing; ADR 0011 notes it needed no new `:__Meta` kind, so there is no new write path and nothing for `MATCH (m:__Meta) DETACH DELETE m` to have missed |
+
+---
+
 ## State as of 2026-08-08 (session 13) — graph names, the two settings dialogs, the Modules table
 
 Four requests. All verified in the browser against the live SRD and Segment modules, and against
