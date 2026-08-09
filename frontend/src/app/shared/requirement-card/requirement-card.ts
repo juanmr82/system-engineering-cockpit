@@ -1,4 +1,16 @@
-import { Component, computed, input } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  computed,
+  input,
+  model,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { RequirementCardDensity, RequirementCardNode } from './requirement-card.model';
 
@@ -20,7 +32,7 @@ import type { RequirementCardDensity, RequirementCardNode } from './requirement-
  */
 @Component({
   selector: 'sec-requirement-card',
-  imports: [MatTooltipModule],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule],
   templateUrl: './requirement-card.html',
   styleUrl: './requirement-card.scss',
   host: {
@@ -50,6 +62,61 @@ export class RequirementCard {
   readonly compact = input(false);
 
   /**
+   * Whether the description is shown in full, rather than clamped to the few lines the `node`
+   * density allows.
+   *
+   * A `model` rather than plain local state, because the two consumers need opposite things and
+   * both are right. The Breakdown tab binds nothing and gets a self-contained toggle. The graph
+   * *must* know: a card that is suddenly six lines taller is a card overlapping its neighbours,
+   * because the layout was computed from a height measured before the click. So the canvas owns
+   * the state, renders the same value into its measure pass, and lays out again — the toggle is a
+   * height change like any other, and there is only one path that handles those.
+   */
+  readonly textExpanded = model(false);
+
+  private readonly textElement = viewChild<ElementRef<HTMLElement>>('text');
+
+  /** True while the clamp is actually hiding something. Measured on every render, never guessed. */
+  private readonly clamped = signal(false);
+
+  constructor() {
+    afterRenderEffect({
+      read: () => {
+        // Every input that can change how much text fits, so the probe re-runs when any of them
+        // does: a different requirement, a different density, a body that has just appeared.
+        this.node();
+        this.density();
+        this.compact();
+        this.expanded();
+        this.textExpanded();
+
+        const element = this.textElement()?.nativeElement;
+        // jsdom reports 0 for both, which reads as "nothing is hidden" — and is right, since
+        // there is no layout there to hide anything with.
+        const clamped = element ? isClamped(element.scrollHeight, element.clientHeight) : false;
+
+        untracked(() => {
+          if (this.clamped() !== clamped) {
+            this.clamped.set(clamped);
+          }
+        });
+      },
+    });
+  }
+
+  /**
+   * Whether the show-more control is drawn at all.
+   *
+   * `clamped` on its own is wrong in the one direction that matters: expanding lifts the clamp, so
+   * the control that expanded the card would disappear with it and leave no way back.
+   */
+  protected readonly canExpandText = computed(() => this.clamped() || this.textExpanded());
+
+  protected toggleText(): void {
+    this.textExpanded.update((expanded) => !expanded);
+  }
+
+  /**
    * What a placeholder says instead of an id.
    *
    * A placeholder has no DOORS id — its internal name is its internal id spelled out — so naming
@@ -75,4 +142,18 @@ export class RequirementCard {
   protected readonly hasBody = computed(
     () => this.expanded() && !this.compact() && this.node().resolved,
   );
+}
+
+/**
+ * Whether a clamped element is hiding anything.
+ *
+ * Exported so it can be tested on numbers: jsdom has no layout, so the only honest way to cover
+ * the rule is to cover the arithmetic and let a spec assert the wiring around it.
+ *
+ * The one-pixel tolerance is deliberate. A fractional line height leaves `scrollHeight` a rounding
+ * error above `clientHeight` on text that is entirely visible, and a control offering to reveal
+ * nothing is worse than no control at all.
+ */
+export function isClamped(scrollHeight: number, clientHeight: number): boolean {
+  return scrollHeight - clientHeight > 1;
 }

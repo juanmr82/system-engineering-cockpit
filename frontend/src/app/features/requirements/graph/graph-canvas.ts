@@ -110,7 +110,7 @@ export class GraphCanvas {
   protected readonly view = signal({ x: 0, y: 0, scale: 1 });
 
   /**
-   * Set the moment the user pans, zooms or drags, and never cleared.
+   * Set the moment the user pans, zooms, drags or expands a card's text, and never cleared.
    *
    * Auto-fit runs on open and on resize, and stops for good once this is set: re-fitting after
    * someone has arranged the view yanks it out from under them, which is worse than a view that is
@@ -138,6 +138,40 @@ export class GraphCanvas {
 
   protected readonly cardWidth = CARD_WIDTH;
 
+  /**
+   * The nodes whose description is shown in full (§5.1).
+   *
+   * Held here rather than inside each card because an expanded card is a **taller** card, and
+   * every position on screen was computed from a height measured before the click. So the set
+   * feeds the measure pass, the measure pass produces new heights, and the graph is laid out
+   * again — the one path that already exists for a height changing. The alternative, letting a
+   * card grow where it stands, is cards overlapping the ones beneath them.
+   *
+   * Keyed by `ref` and never pruned: a ref that leaves the graph costs one string, and re-seeding
+   * back onto a requirement someone had opened finds it open, which is what they left.
+   */
+  private readonly expandedText = signal<ReadonlySet<string>>(new Set());
+
+  protected isTextExpanded(ref: string): boolean {
+    return this.expandedText().has(ref);
+  }
+
+  protected setTextExpanded(ref: string, expanded: boolean): void {
+    // The view is now the reader's, for the same reason a pan makes it theirs. Expanding a card
+    // produces a new layout, and auto-fit would answer a taller diagram by scaling the whole thing
+    // down — past the compact threshold on a large graph, which drops every card's body and takes
+    // the text that was just asked for with it.
+    this.markDirty();
+
+    const next = new Set(this.expandedText());
+    if (expanded) {
+      next.add(ref);
+    } else {
+      next.delete(ref);
+    }
+    this.expandedText.set(next);
+  }
+
   constructor() {
     // Measuring against the fallback font produces heights wrong by enough to overlap edges, so
     // the pass runs again once the real font has arrived (§5.2). `document.fonts` is absent in
@@ -146,10 +180,12 @@ export class GraphCanvas {
 
     afterRenderEffect({
       read: () => {
-        // Both are dependencies: a new node set needs measuring, and so does the same node set
-        // once the font it is set in has changed underneath it.
+        // All three are dependencies: a new node set needs measuring, so does the same node set
+        // once the font it is set in has changed underneath it, and so does a card whose text has
+        // just been expanded — that is the whole mechanism by which the graph makes room for it.
         const nodes = this.nodes();
         this.fontsReady();
+        this.expandedText();
 
         const host = this.measureHost()?.nativeElement;
         if (!host || nodes.length === 0) {
@@ -559,7 +595,14 @@ export class GraphCanvas {
     }
   }
 
-  protected onNodeDoubleClick(ref: string, resolved: boolean): void {
+  protected onNodeDoubleClick(event: MouseEvent, ref: string, resolved: boolean): void {
+    // A control on the card is not the card. Someone toggling the full text twice in quick
+    // succession has double-clicked a button, not a node, and re-seeding the whole graph out from
+    // under them is the last thing they asked for.
+    if ((event.target as HTMLElement).closest('button')) {
+      return;
+    }
+
     // A placeholder has nothing behind it, so re-seeding on one would return a graph of one node
     // and lose the picture the user was reading (§5.4).
     if (resolved) {
