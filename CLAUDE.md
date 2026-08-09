@@ -106,9 +106,14 @@ Rules that follow from this and must be enforced in code and in review:
   DOORS attribute in its payload. Model the anchor explicitly rather than assuming
   item-scoped annotation — this shape appears as soon as the review views arrive, and
   widening it later means migrating live user data.
-- **A re-import must not disturb Tier 2.** The importers `MERGE` on `__id` and
-  `SET n += props`, which leaves relationships alone. Verify this holds after any
-  importer change — a test asserting "meta survives a second import run" is mandatory.
+- **A re-import must not disturb Tier 2 — with exactly one exception, and it is named here.**
+  The importers `MERGE` on `__id` and `SET n += props`, which leaves relationships alone. Verify
+  this holds after any importer change — a test asserting "meta survives a second import run" is
+  mandatory. The exception: when a source deletes the item an annotation hangs off, the annotation
+  is deleted with it (ADR 0012). A note about a requirement DOORS no longer has is a note about
+  nothing, and the alternative — keeping it alive on a node the source has disowned — leaves Tier 2
+  anchored to something no export will ever mention again. This is the **only** circumstance in
+  which an importer may delete a `:__Meta` node, and any second one needs its own ADR.
 - **Deleting all app data must be one query**, and it must be safe to run:
   `MATCH (m:__Meta) DETACH DELETE m`. If that query would ever destroy imported data,
   the model has drifted.
@@ -266,7 +271,8 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `__child` | never shown; silently drives the tree |
 | `__moduleUrl` | rendered as the parent module's `__name`, as a link |
 | `__typeRaw` | **Type** — preferred over the label chip when present |
-| `:__UNDEFINED` | the *Not yet imported* state, with the owning module named |
+| `:__UNDEFINED` | the *Not yet imported* state, with the owning module named. Reached from **either** side of a link now: a target this module points at, or a source that points at this module, which its own `__inputLinks` name. That second case is the one worth having — it is how a reviewer sees that something refines this requirement before the referencing module exists here at all |
+| `:__DELETED` | **Deleted in DOORS** — an object an import once brought in that a later export of its module no longer contains. It keeps every label, attribute and id it had, so the view still says *which* requirement went away; it is out of the tree and out of every module listing. Carried as `deletedInSource`, never as a label string. In the References column: the target's id, struck through, in **error red**, not a link. In Issues: *n links to or from objects deleted in DOORS*. Every one of those says the fix is **in DOORS**, because this application holds no copy of the link |
 | `__tableObject`, `__tableRowIndex`, `__tableColumnIndex` | never shown; a **cross-check** on table geometry, never the source of it (`docs/DOORS_TABLES.md` §2.1) |
 | a `DOORSTable`'s reconstructed geometry | drawn as the table itself, in the Description column, with the **ID and Type columns blank** for it — as in DOORS. A cell shows its `Object Text` and nothing else: no id, no other attribute, no weight on the first row |
 | a table's findings | **n findings on this table**, a disclosure above it. Computed on read, never stored (R2) |
@@ -276,7 +282,7 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | the dependency graph's direction control | **What these refine** / **What refines these** / **Both directions** — never *upstream* / *downstream*. An outgoing `refersTo` is read as *refines*, so following it goes **up** the decomposition, and the two words would point opposite ways at the same arrow (`docs/REQ_BREAKDOWN_GRAPH_VIEW` §3.1, ADR 0011) |
 | the dependency graph's level bands | the `:__Classification` system level's own wording — *L2 – Segment* — so the band and the badge inside it never disagree. Unplaced nodes get one explicit band, **No system level set**, always last and never folded into a real level |
 | a dependency-graph node with links outside the picture | **+n**, a badge, with *This requirement has links to objects that are not in this graph* on hover. A graph that stops with nothing to say it stopped is read as a graph that ended (§1.1) |
-| the dependency graph, unconditionally | *Only outgoing links are imported. Missing incoming arrows may mean the referencing module has not been imported yet.* — above the canvas, always, never behind a tooltip. It is the sentence that stops "no incoming arrows" being read as "nothing depends on this" |
+| the dependency graph's incoming arrows | **no caveat at all** — and its removal is load-bearing rather than tidy-up. The importer reads `__inputLinks`, so a link into a requirement is in the graph whether or not its source module has been imported, and a missing incoming arrow really is a missing dependency. The standing sentence that used to say otherwise is now *wrong*: it would tell a reviewer to distrust an emptiness that carries real information. What remains is the unresolved-modules banner, which names modules and only appears when there are some (ADR 0012) |
 | the item a Breakdown tree was opened for | **The requirement you opened** — on every copy of it, in words as well as in `--sec-subject` |
 | a `:__Classification` `systemLevel` that is not set | the level badge stays, **empty and outlined**, with *No system level set for this module* on hover. Dropping it un-aligns every id in the column and reads as a fault rather than an absence |
 | `id` in the detail panel | the panel's **heading**. `__name` is its second line — for a requirement that is `Object Text`, which a sanitised export makes identical on every object |

@@ -152,6 +152,16 @@ export class RequirementReview {
   protected readonly issuesOnly = signal(false);
 
   /**
+   * Narrows the table to objects linking to, or linked from, something DOORS deleted.
+   *
+   * Its own filter rather than a search of the Issues column because it is the one finding a
+   * reviewer cannot act on from inside this table: the stale link exists only in DOORS, so the
+   * working pattern is to collect every row carrying one and take the list there. A filter is
+   * what makes that list.
+   */
+  protected readonly deletedLinksOnly = signal(false);
+
+  /**
    * Narrows the table to requirements with no outgoing `refersTo` — nothing they refine.
    *
    * An outgoing `refersTo` reads as *refines*: `A -[:refersTo]-> B` means A refines B, which is the
@@ -414,11 +424,12 @@ export class RequirementReview {
               .join(' ');
           return [describe(data.outgoing), describe(data.incoming)].filter(Boolean).join(' ');
         },
-        // Incoming links are incomplete by design — importers ingest out-links only, so an
-        // incoming link exists only where the referencing module has itself been imported. An
-        // empty list must never be read as "orphan requirement" (§5.1).
+        // Incoming links come from each module's own export, which states every link pointing
+        // at it, so this list is complete as of that export (§5.1). A source whose module has
+        // not been imported is *in* the list, as an unresolved reference — which is the thing a
+        // reviewer needs to see, and the reason an empty list can now be trusted.
         headerTooltip:
-          'Incoming references are only known for modules that have been imported. An empty list does not mean an object is unreferenced.',
+          'Outgoing references first, then incoming. A reference whose module has not been imported is listed as not yet imported rather than left out.',
       },
       {
         colId: 'issues',
@@ -508,10 +519,12 @@ export class RequirementReview {
     const requirementsOnly = this.requirementsOnly();
     const issuesOnly = this.issuesOnly();
     const withoutParents = this.withoutParents();
+    const deletedLinksOnly = this.deletedLinksOnly();
     return this.allRows().filter(
       (entry) =>
         (!requirementsOnly || entry.row.requirementLike) &&
         (!issuesOnly || entry.row.issues.length > 0) &&
+        (!deletedLinksOnly || entry.outgoing.deleted.length > 0 || entry.incoming.deleted.length > 0) &&
         (!withoutParents ||
           (entry.row.requirementLike && entry.row.references.outgoing.length === 0)) &&
         (!term || entry.searchText.includes(term)),

@@ -15,7 +15,7 @@ import type { CyclesResponse, RequirementStatistics } from './statistics.model';
 // is the same surface a screen reader gets, so testing it is testing the accessible view.
 
 const STATISTICS: RequirementStatistics = {
-  census: { modules: 2, items: 11, requirements: 8, openPoints: 1, links: 6 },
+  census: { modules: 2, items: 11, requirements: 8, openPoints: 1, links: 6, deletedLinks: 2 },
   completeness: {
     items: 11,
     itemsWithOpenPoints: 1,
@@ -60,6 +60,7 @@ const STATISTICS: RequirementStatistics = {
       openPointsByAttribute: [{ attribute: 'Object Text', violations: 1 }],
       links: 6,
       danglingLinks: 1,
+      deletedLinks: 2,
       truncated: false,
     },
     {
@@ -82,6 +83,7 @@ const STATISTICS: RequirementStatistics = {
       openPointsByAttribute: [],
       links: 0,
       danglingLinks: 0,
+      deletedLinks: 0,
       truncated: false,
     },
   ],

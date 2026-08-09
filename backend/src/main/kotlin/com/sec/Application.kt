@@ -60,9 +60,10 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     install(ContentNegotiation) {
         // encodeDefaults: a field whose value equals its declared default is still part of the
         // contract, and kotlinx omits it unless told otherwise. That silently dropped
-        // `incomingComplete: false` — the one field REQ_REVIEW.md §5.1 requires to travel *with*
-        // the data so no consumer can read an empty incoming list as "orphan requirement" — and
-        // turned every empty list into an absent key the client would have to defend against.
+        // `incomingComplete` — the one field REQ_REVIEW.md §5.1 requires to travel *with* the
+        // data, because whether an empty incoming list means anything is not something a consumer
+        // may assume — and turned every empty list into an absent key the client would have to
+        // defend against.
         json(Json { ignoreUnknownKeys = true; encodeDefaults = true })
     }
     install(CallId) {

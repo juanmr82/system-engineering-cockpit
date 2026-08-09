@@ -67,6 +67,18 @@ export class TraceabilityBand {
   );
 
   /**
+   * Links to objects DOORS deleted and did not unlink (ADR 0012).
+   *
+   * Reported next to the dangling count and never merged into it, because the two say opposite
+   * things about what to do. A dangling link is waiting for an import and this view can name the
+   * module that would clear it; this one is waiting for someone to open DOORS. No number of
+   * imports changes it.
+   */
+  protected readonly deletedLinkCount = computed(() =>
+    this.modules().reduce((sum, module) => sum + module.deletedLinks, 0),
+  );
+
+  /**
    * The dangling targets split by whether we can say which module they are.
    *
    * A target module carries a name only once it has been imported (§6.2: "named where the module

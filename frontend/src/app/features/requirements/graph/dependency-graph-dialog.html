@@ -108,17 +108,12 @@
   </div>
 </header>
 
-<!-- §1.1, and it is mandatory. Only outgoing links are imported, so a requirement drawn with no
-     incoming arrows may simply be one whose referencing module has not been loaded — and "nothing
-     depends on this" is a wrong and expensive conclusion in a requirements tool. Always visible,
-     never behind a tooltip. -->
-<p class="sec-gd__caveat">
-  <mat-icon svgIcon="info" />
-  <span>
-    Only outgoing links are imported. Missing incoming arrows may mean the referencing module has
-    not been imported yet.
-  </span>
-</p>
+<!-- The "only outgoing links are imported" caveat that stood here is gone, and its removal is
+     the point rather than a tidy-up: the importer now reads each module's own inbound link list too, so a missing
+     incoming arrow really is a missing dependency (ADR 0012). A requirement whose referencing
+     module has not been imported is *drawn*, as an unresolved node, and the banner below names
+     the modules to import — which is the same information the caveat used to gesture at, said
+     precisely and only when it applies. -->
 
 @if (unresolved().length > 0) {
   <div class="sec-gd__banner" role="status">

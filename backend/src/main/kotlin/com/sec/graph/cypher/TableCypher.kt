@@ -1,5 +1,6 @@
 package com.sec.graph.cypher
 
+import com.sec.domain.NodeLabel.DELETED
 import com.sec.domain.NodeLabel.SE_ITEM
 import com.sec.domain.Prop.ID
 import com.sec.domain.Prop.MODULE_URL
@@ -43,6 +44,7 @@ public object TableCypher {
     public const val MODULE_TABLES: String = """
         CYPHER 25
         MATCH (t:$DOORS_TABLE {$MODULE_URL: ${'$'}moduleUrl})
+        WHERE NOT t:$DELETED
         OPTIONAL MATCH (t)-[:$CHILD]->(r)
         OPTIONAL MATCH (r)-[:$CHILD]->(c)
         RETURN t.$ID                  AS tableItemId,

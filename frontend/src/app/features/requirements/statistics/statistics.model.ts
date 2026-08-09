@@ -14,6 +14,13 @@ export interface Census {
   readonly requirements: number;
   readonly openPoints: number;
   readonly links: number;
+  /**
+   * Links whose far end is an object DOORS deleted while keeping the link (ADR 0012).
+   *
+   * A subset of `links`, not a separate population: the edge really was imported. What is wrong
+   * is the requirements data, and the fix is in DOORS.
+   */
+  readonly deletedLinks: number;
 }
 
 export interface AttributeCount {
@@ -63,6 +70,7 @@ export interface ModuleStatistics {
   readonly openPointsByAttribute: AttributeCount[];
   readonly links: number;
   readonly danglingLinks: number;
+  readonly deletedLinks: number;
   readonly truncated: boolean;
 }
 

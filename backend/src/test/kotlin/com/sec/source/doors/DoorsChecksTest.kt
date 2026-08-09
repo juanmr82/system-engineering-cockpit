@@ -2,6 +2,7 @@ package com.sec.source.doors
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The open-point scan's one DOORS-specific exemption (`requirements-statistics.md` §3.3).
@@ -44,6 +45,49 @@ class DoorsChecksTest {
     fun `Object Type is still scanned on a requirement`() {
         val props = mapOf("Object Type" to "TBD", "Object Text" to "The mass shall be defined")
         assertEquals(listOf("Object Type"), DoorsChecks.openPointAttributes(requirement, props))
+    }
+
+    /**
+     * A link whose far end DOORS deleted is a finding on the object that still asserts it, and it
+     * comes first: an unfilled attribute is work not yet done, while this is a statement the
+     * requirements data is making that it cannot support (ADR 0012).
+     */
+    @Test
+    fun `a link to a deleted object is the first issue reported`() {
+        val issues = DoorsChecks.issuesFor(
+            policies = listOf(DoorsChecks.MandatoryPolicy("Rationale", setOf("DOORSRequirement"))),
+            labels = requirement,
+            props = mapOf("Rationale" to ""),
+            deletedLinks = 2,
+        )
+
+        assertEquals(
+            listOf("2 links to or from objects deleted in DOORS", "Rationale"),
+            issues,
+        )
+    }
+
+    /** Singular, because "1 links" is the sort of thing a reviewer stops trusting the tool over. */
+    @Test
+    fun `one deleted link reads as one`() {
+        assertEquals("1 link to or from an object deleted in DOORS", DoorsChecks.deletedLinkIssue(1))
+    }
+
+    /**
+     * The default matters: every caller that has nothing to say about links must not accidentally
+     * report a finding, and `issuesFor` is called from two views.
+     */
+    @Test
+    fun `no deleted links means no such issue`() {
+        val issues = DoorsChecks.issuesFor(emptyList(), requirement, mapOf("Object Text" to "x"))
+
+        assertEquals(emptyList(), issues)
+    }
+
+    /** R5: the label the finding is derived from never reaches the sentence a reviewer reads. */
+    @Test
+    fun `the deleted-link wording carries no internal name`() {
+        assertTrue(!DoorsChecks.deletedLinkIssue(3).contains("__"))
     }
 
     @Test

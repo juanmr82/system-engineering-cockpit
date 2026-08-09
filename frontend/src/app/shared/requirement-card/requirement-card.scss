@@ -60,6 +60,22 @@
   border-left-color: var(--sec-highlight-undefined);
 }
 
+// A requirement DOORS deleted while keeping the links to it (ADR 0012).
+//
+// Error red rather than the unresolved orange, and the distinction is the whole point of having
+// two colours: orange is a thing waiting for an import, red is a defect in the requirements data
+// that no import will clear. Same token the dangling-link states use, because it is the same
+// class of problem — a link whose far end is not what it claims.
+.sec-card__deleted {
+  font-size: var(--sec-text-sm);
+  font-weight: 600;
+  color: var(--sec-highlight-error);
+}
+
+.sec-card--deleted {
+  border-left-color: var(--sec-highlight-error);
+}
+
 .sec-card__body {
   @include doc.tree-card-body;
 

@@ -84,28 +84,6 @@
   padding: 8px 16px 2px;
 }
 
-// The sentence §1.1 requires, always visible and never behind a tooltip. Quiet, because it is a
-// standing caveat rather than a finding — but it is never conditional, because the conclusion it
-// prevents ("nothing depends on this") is wrong and expensive.
-.sec-gd__caveat {
-  @include sec.accent-panel(var(--sec-blue-mid), var(--sec-wash-cool));
-
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0;
-  font-size: var(--sec-text-xs);
-  color: var(--sec-ink-2);
-
-  mat-icon {
-    flex: none;
-    inline-size: 16px;
-    block-size: 16px;
-    font-size: 16px;
-    color: var(--sec-blue-mid);
-  }
-}
-
 // Named modules, not a count: the action this prompts is "import that module", and a count does
 // not say which one.
 .sec-gd__banner {

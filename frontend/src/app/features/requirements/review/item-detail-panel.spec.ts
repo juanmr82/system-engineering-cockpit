@@ -31,6 +31,7 @@ const breakdownFor = (ref: string): BreakdownResponse => ({
       level: null,
       description: `${ref} statement`,
       resolved: true,
+      deletedInSource: false,
       moduleRef: 'bW9k',
       moduleName: 'Segment',
       verificationAttributes: [],

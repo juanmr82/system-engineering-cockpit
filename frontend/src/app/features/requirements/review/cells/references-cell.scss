@@ -49,3 +49,20 @@
   color: var(--sec-highlight-undefined);
   cursor: default;
 }
+
+// A target DOORS deleted while keeping the link, shown by its id (ADR 0012).
+//
+// The id is real — the object was imported, and that id is what a reviewer will search for in
+// DOORS to find the link and remove it — so it is printed rather than counted. The strike is what
+// says the requirement behind it is not there any more.
+//
+// Error red, not the unresolved orange next to it, because the two ask for opposite things: the
+// orange one is waiting for an import, this one is waiting for someone to fix DOORS. Not a
+// button, for the same reason: there is nothing left to navigate to.
+.sec-references-cell__deleted {
+  display: block;
+  color: var(--sec-highlight-error);
+  text-decoration: line-through;
+  cursor: default;
+  overflow-wrap: anywhere;
+}

@@ -48,6 +48,26 @@ public object DoorsChecks {
      */
     public const val TBD_ISSUE: String = "${DoorsAttr.OBJECT_TYPE} shall not be TBD"
 
+    /**
+     * The wording for links whose far end DOORS deleted (ADR 0012).
+     *
+     * Phrased as a count rather than as one finding per link because the Issues column is a cell
+     * in a 46px row and the ids are already listed, in the References column, two columns away.
+     * "to or from" rather than "to": both directions are the same defect and are fixed in the
+     * same place, and a reviewer reading "2 links to" while the row shows one of each would go
+     * looking for the one that is not there.
+     *
+     * No `__DELETED` and no `__`-prefixed name reaches this sentence (R5), and it names DOORS
+     * because DOORS is where the fix is — nothing in this application can repair a link it does
+     * not own.
+     */
+    public fun deletedLinkIssue(count: Int): String =
+        if (count == 1) {
+            "1 link to or from an object deleted in DOORS"
+        } else {
+            "$count links to or from objects deleted in DOORS"
+        }
+
     /** One mandatory-attribute rule: which attribute, and which objects it applies to. */
     public data class MandatoryPolicy(
         val attributeName: String,
@@ -87,12 +107,24 @@ public object DoorsChecks {
      * Fixed rules first, then the configured ones: a typed object with an unfilled attribute is a
      * different conversation from an object that was never classified at all, and the second is
      * the more fundamental problem.
+     *
+     * A broken link comes before both. An unfilled attribute is work not yet done; a link to an
+     * object that no longer exists is a statement the requirements data is making and cannot
+     * support, and it is the only finding here whose fix is not in this application.
+     *
+     * [deletedLinks] is passed in rather than derived, because the row already carries its
+     * references and re-reading the graph to count them would let the Issues column and the
+     * References column disagree about the same edges.
      */
     public fun issuesFor(
         policies: List<MandatoryPolicy>,
         labels: List<String>,
         props: Map<String, Any?>,
+        deletedLinks: Int = 0,
     ): List<String> = buildList {
+        if (deletedLinks > 0) {
+            add(deletedLinkIssue(deletedLinks))
+        }
         if (labels.contains(DoorsLabel.TBD) && labels.none { it in tbdCheckExclusions }) {
             add(TBD_ISSUE)
         }

@@ -53,10 +53,36 @@ const OBJECTS: ModuleObjectsResponse = {
       // no DOORS id, so this row's References cell has ids for nothing and must still speak.
       references: {
         outgoing: [
-          { ref: 'cGxhY2Vob2xkZXItMQ', id: null, resolved: false, moduleRef: 'bW9kLTk', moduleName: 'ICD' },
-          { ref: 'cGxhY2Vob2xkZXItMg', id: null, resolved: false, moduleRef: 'bW9kLTk', moduleName: 'ICD' },
+          {
+            ref: 'cGxhY2Vob2xkZXItMQ',
+            id: null,
+            resolved: false,
+            deletedInSource: false,
+            moduleRef: 'bW9kLTk',
+            moduleName: 'ICD',
+          },
+          {
+            ref: 'cGxhY2Vob2xkZXItMg',
+            id: null,
+            resolved: false,
+            deletedInSource: false,
+            moduleRef: 'bW9kLTk',
+            moduleName: 'ICD',
+          },
         ],
-        incoming: [],
+        // An object in another module that DOORS deleted while keeping the link into this one.
+        // Resolved and carrying a real id, which is what the References cell needs to print and
+        // the Issues column needs to count — and what makes it not a placeholder.
+        incoming: [
+          {
+            ref: 'Z29uZS0x',
+            id: 'SEG-367',
+            resolved: true,
+            deletedInSource: true,
+            moduleRef: 'bW9kLTI',
+            moduleName: 'Segment',
+          },
+        ],
         incomingComplete: false,
       },
     }),
@@ -465,9 +491,9 @@ describe('RequirementReview', () => {
     // claim nothing is being checked.
     expect(renderedText()).toContain('No mandatory attributes');
     // The issues filter stays: a fixed check runs whatever the configuration, so an empty result
-    // is an honest "none found" rather than "none looked for". Three filters now — requirements
-    // only, objects with issues, requirements without parents.
-    expect(element().querySelectorAll('.sec-review__filter').length).toBe(3);
+    // is an honest "none found" rather than "none looked for". Four filters now — requirements
+    // only, objects with issues, requirements without parents, links to deleted objects.
+    expect(element().querySelectorAll('.sec-review__filter').length).toBe(4);
 
     openSpy.mockRestore();
   });
@@ -496,6 +522,33 @@ describe('RequirementReview', () => {
 
     expect(renderedText()).toContain('SRD-1');
     expect(renderedText()).not.toContain('SRD-2');
+  });
+
+  /**
+   * The links a reviewer cannot fix from here, collected so they can be taken to DOORS.
+   *
+   * Counted in both directions: the fixture's deleted link is an *incoming* one, because that is
+   * the harder half to get right — a filter that only looked at outgoing references would report
+   * this module as clean while it is the module the stale link lands in.
+   */
+  it('narrows to the objects linked to something deleted in DOORS', async () => {
+    const toggles = Array.from(
+      element().querySelectorAll<HTMLInputElement>('.sec-review__filter input'),
+    );
+    // Last checkbox: "Links to deleted objects".
+    toggles[toggles.length - 1].click();
+    await settle();
+
+    const text = renderedText();
+    expect(text).toContain('SRD-1');
+    expect(text).not.toContain('SRD-4');
+    expect(text).toContain('1 shown');
+  });
+
+  // The id is printed rather than counted: it is what the reviewer searches for in DOORS.
+  it('prints the id of a deleted target and never offers it as a link', () => {
+    expect(renderedText()).toContain('SEG-367');
+    expect(element().querySelector('.sec-references-cell__deleted')).not.toBeNull();
   });
 
   /**

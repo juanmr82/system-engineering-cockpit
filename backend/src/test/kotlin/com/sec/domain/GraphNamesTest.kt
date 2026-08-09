@@ -46,7 +46,7 @@ class GraphNamesTest {
     // -- what the Cypher is allowed to say -------------------------------------------------
 
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED) + NodeLabel.meta + DoorsLabel.all
+        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED) + NodeLabel.meta + DoorsLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,

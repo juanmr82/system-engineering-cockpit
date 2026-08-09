@@ -15,24 +15,40 @@ import kotlinx.serialization.json.JsonElement
 // __id spelled out — so sending it would put a raw __id in the field the References column
 // displays (R5). There is no display id for something that has not been imported; the wording
 // and the module name are the whole of what the UI can honestly show.
+//
+// `deletedInSource` is not a second flavour of unresolved. The target is a real imported object,
+// so `resolved` is true and `id` is its DOORS id — what it says is that a later export of the
+// target's own module no longer contained it. DOORS deleted the object and left this link behind.
+//
+// The two never coincide, and they prompt opposite actions: an unresolved reference asks for a
+// module to be imported, a deleted one asks for a link to be removed in DOORS. Carried as its own
+// field rather than inferred client-side from a label string, so the wording stays server-side
+// (R5) and the client never has to know that `__DELETED` exists (ADR 0012).
 @Serializable
 public data class ReferenceDto(
     public val ref: String,
     public val id: String? = null,
     public val resolved: Boolean,
+    public val deletedInSource: Boolean = false,
     public val moduleRef: String? = null,
     public val moduleName: String? = null,
 )
 
-// Incoming links are incomplete by construction — importers ingest out-links only, so an incoming
-// link exists only where the referencing module has itself been imported. `incomingComplete` is
-// always false today and is carried explicitly rather than left for the UI to remember, so no
-// consumer can present an empty incoming list as "orphan requirement" (SE_ITEM_SCHEMA §8.2).
+// Incoming links used to be incomplete by construction, because the importers ingested out-links
+// only and an incoming edge therefore existed just where the referencing module had itself been
+// imported. They now read `__inputLinks` as well — a module's own export states every link
+// pointing at it — so an incoming list is as complete as the export it came from, and a source
+// that has not been imported appears as an unresolved reference rather than as silence.
+//
+// `incomingComplete` stays on the wire rather than being deleted along with the caveat. It is the
+// statement that an empty incoming list *means* something, which is precisely what a consumer must
+// not assume for itself (SE_ITEM_SCHEMA §8.2), and the day a source arrives that cannot report its
+// inbound links it is the field that says so per response.
 @Serializable
 public data class ReferencesDto(
     public val outgoing: List<ReferenceDto> = emptyList(),
     public val incoming: List<ReferenceDto> = emptyList(),
-    public val incomingComplete: Boolean = false,
+    public val incomingComplete: Boolean = true,
 )
 
 // One comment on one object. Exactly one per object (§5.2) — this is a single value, never a list.

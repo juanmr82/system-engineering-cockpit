@@ -114,6 +114,23 @@ public object NodeLabel {
     public const val UNDEFINED: String = "__UNDEFINED"
 
     /**
+     * An object an import once brought in that a later export of the same module no longer
+     * contains: DOORS deleted it, and DOORS kept the links pointing at it.
+     *
+     * Written by the importers, so it is Tier 1 despite the prefix — but it is the one Tier-1
+     * name that is not a function of a single export. It is a function of two: this one, and
+     * whatever the graph already held. Re-importing an export that contains the object removes
+     * the label again.
+     *
+     * It sits **alongside** the labels the object already had rather than replacing them, which
+     * is why nothing in this backend needs a second read path for a deleted object: it is still
+     * a `:DOORSRequirement`, it still has its `id` and its `Object Text`, and every projection
+     * that could describe it before can still describe it. What changes is that it is out of the
+     * tree and that anything still linking to it is a defect to be fixed in DOORS (ADR 0012).
+     */
+    public const val DELETED: String = "__DELETED"
+
+    /**
      * The label that decides Tier 1 from Tier 2 — not the `__` prefix, which both tiers carry.
      * Owns the uniqueness constraint on [Prop.META_ID].
      */

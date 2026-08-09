@@ -77,10 +77,13 @@ sanitised export blanks `Object Type` so every object imports as TBD, and exclud
 the table on exactly the fixtures that get shared outside the work environment (CLAUDE.md §10).
 It is derived per request and never stored — a stored classification would go stale on re-import.
 
-**Open, and deliberately not built:** `incomingComplete` is hard-coded `false`. Incoming links are
-incomplete until every referencing module has been imported, and nothing currently tracks which
-modules those are. The field exists so the caveat travels with the data rather than living in UI
-copy; when import coverage becomes knowable it becomes a real computation with no wire change.
+**Was open, now closed — see ADR 0012.** `incomingComplete` was hard-coded `false` on the
+reasoning that incoming links are incomplete until every referencing module has been imported, and
+that nothing tracked which those were. That turned out to be solving the wrong problem: the
+importer reads `__inputLinks`, so a module's own export states every link pointing at it and the
+list is complete without any import-coverage tracking. The field is `true`, and it stays on the
+wire for the reason it was introduced — whether an empty incoming list means anything is not
+something a consumer may assume.
 
 The author of a comment is recorded (`__createdBy` / `__updatedBy`, required by R2) but is not
 carried on the wire and is not shown anywhere — the answer to §11 O2. Any reviewer may edit any

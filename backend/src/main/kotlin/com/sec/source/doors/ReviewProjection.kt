@@ -152,6 +152,16 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
         val commentId = get("commentId").takeUnless { it.isNull() }?.asString()
 
+        // Built before the DTO because the Issues column is one of its readers: a link whose far
+        // end DOORS deleted is a finding on *this* row, and counting it here means the count and
+        // the cell that lists them can never disagree.
+        val references = ReferencesDto(
+            outgoing = get("outgoing").toReferences(),
+            incoming = get("incoming").toReferences(),
+            // True since the importer reads `__inputLinks`: a module's export states every link
+            // pointing at it, so this list is as complete as that export (ADR 0012).
+            incomingComplete = true,
+        )
         return ReviewRowDto(
             ref = Ref.encode(props[Prop.ID]?.toString().orEmpty()),
             // `id` is DOORS's own module-local identifier: display only, never a key (R6).
@@ -164,13 +174,9 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             labels = labels,
             level = (props[DoorsAttr.OBJECT_LEVEL] as? Number)?.toInt() ?: 1,
             requirementLike = DoorsChecks.isRequirementLike(labels),
-            issues = DoorsChecks.issuesFor(policies, labels, props),
+            issues = DoorsChecks.issuesFor(policies, labels, props, references.deletedCount()),
             attributes = attributeBag(props),
-            references = ReferencesDto(
-                outgoing = get("outgoing").toReferences(),
-                incoming = get("incoming").toReferences(),
-                incomingComplete = false,
-            ),
+            references = references,
             comment = commentId?.let {
                 CommentDto(
                     metaId = it,
@@ -222,9 +228,21 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             ref = Ref.encode(get("ref").asString("")),
             id = get("id").takeUnless { it.isNull() }?.asString(),
             resolved = get("resolved").asBoolean(true),
+            deletedInSource = get("deleted").asBoolean(false),
             moduleRef = get("moduleUrl").takeUnless { it.isNull() }?.asString()?.let(Ref::encode),
             moduleName = null,
         )
+
+    /**
+     * Links on this row whose far end DOORS deleted, in either direction.
+     *
+     * Both directions count, because both are the same defect seen from two sides and both are
+     * fixed in the same place. An outgoing one says this requirement refines something that no
+     * longer exists; an incoming one says something that no longer exists claims to refine this.
+     * Neither can be repaired here — the link only exists in DOORS.
+     */
+    private fun ReferencesDto.deletedCount(): Int =
+        outgoing.count { it.deletedInSource } + incoming.count { it.deletedInSource }
 
     // distinctBy(ref): two refersTo edges between the same pair read as one reference to a person,
     // and nothing in the graph forbids the duplicate. Names are filled in later, per page.
@@ -235,6 +253,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
                 ref = Ref.encode(map["ref"]?.toString().orEmpty()),
                 id = map["id"]?.toString(),
                 resolved = map["resolved"] as? Boolean ?: true,
+                deletedInSource = map["deleted"] as? Boolean ?: false,
                 moduleRef = (map["moduleUrl"] as? String)?.let(Ref::encode),
                 moduleName = null,
             )

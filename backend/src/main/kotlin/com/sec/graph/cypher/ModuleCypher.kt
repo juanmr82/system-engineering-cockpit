@@ -11,6 +11,7 @@ import com.sec.domain.MetaValue.CURRENT_SCHEMA_VERSION
 import com.sec.domain.MetaValue.MANDATORY_RULE
 import com.sec.domain.MetaValue.SYSTEM_LEVEL_SCHEME
 import com.sec.domain.NodeLabel.CLASSIFICATION
+import com.sec.domain.NodeLabel.DELETED
 import com.sec.domain.NodeLabel.META
 import com.sec.domain.NodeLabel.POLICY
 import com.sec.domain.Prop.CREATED_AT
@@ -89,6 +90,7 @@ public object ModuleCypher {
     public const val DISCOVER_ATTRIBUTES: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
+        WHERE NOT o:$DELETED
         UNWIND keys(o) AS k
         WITH DISTINCT k
         WHERE NOT k STARTS WITH '$NAMESPACE'

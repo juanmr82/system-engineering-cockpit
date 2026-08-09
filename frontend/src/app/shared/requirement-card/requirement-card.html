@@ -4,6 +4,7 @@
   [class.sec-card--compact]="compact()"
   [class.sec-card--subject]="subject()"
   [class.sec-card--unresolved]="!node().resolved"
+  [class.sec-card--deleted]="node().deletedInSource"
 >
   <div class="sec-card__head">
     <!-- Whatever the consuming view puts before the identity: the tree's twisty, and the gap that
@@ -23,6 +24,13 @@
       <span class="sec-card__id">{{ node().id }}</span>
     } @else {
       <span class="sec-card__not-imported">{{ notImported() }}</span>
+    }
+
+    <!-- Beside the id rather than instead of it. A deleted object still has everything a card
+         shows — that is the point of keeping it — and what the reader needs added is that the
+         requirement is gone from DOORS and the link that reached it is the thing to fix. -->
+    @if (node().deletedInSource) {
+      <span class="sec-card__deleted" [matTooltip]="deletedTooltip">Deleted in DOORS</span>
     }
 
     <!-- Whatever the consuming view puts after the identity: the tree's "refines ‹parent›" line and

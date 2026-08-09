@@ -55,6 +55,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 requirements = perModule.sumOf { it.requirements },
                 openPoints = perModule.sumOf { it.completeness.itemsWithOpenPoints },
                 links = perModule.sumOf { it.links },
+                deletedLinks = perModule.sumOf { it.dto.deletedLinks },
             ),
             modules = perModule.map { it.dto },
             completeness = perModule.map { it.completeness }.rollUp(),
@@ -167,6 +168,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 openPointsByAttribute = tally.openPointsByAttribute.toCounts(),
                 links = tally.links,
                 danglingLinks = tally.danglingLinks,
+                deletedLinks = tally.deletedLinks,
                 truncated = tally.items + tally.placeholders < total,
             ),
             completeness = tally.completeness(policies.isNotEmpty(), verificationAttributes.isNotEmpty()),
@@ -196,6 +198,16 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
         var itemsClean: Int = 0
         var links: Int = 0
         var danglingLinks: Int = 0
+
+        /**
+         * Counted in both directions, and counted before the placeholder test below.
+         *
+         * Both directions, because the module is equally responsible for a link it asserts into a
+         * deleted object and for one a deleted object asserts into it -- and because ghosts are
+         * excluded from this scan, the other end of every such edge is outside it, so nothing is
+         * counted twice.
+         */
+        var deletedLinks: Int = 0
         var hasParent: Int = 0
         var parentNotImported: Int = 0
         var orphans: Int = 0
@@ -214,6 +226,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
 
             links += resolvedParents + placeholderParents
             danglingLinks += placeholderParents
+            deletedLinks += record.get("deletedLinks").asInt(0)
 
             // A placeholder stands for an object no import has reached. Counting it as an item
             // would inflate every total in proportion to how much is *missing* (§3.1).

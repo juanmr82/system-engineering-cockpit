@@ -188,7 +188,7 @@ class ReviewFeatureTest {
         assertNull(unresolved.id)
         assertEquals(Ref.encode("missing-1"), unresolved.ref)
 
-        assertFalse(rows.getValue("SRD-1").references.incomingComplete)
+        assertTrue(rows.getValue("SRD-1").references.incomingComplete)
         assertEquals(listOf("SRD-1"), rows.getValue("SRD-2").references.incoming.map { it.id })
 
         val traces = reviewProjection.getTraces("obj-1", incoming = false)

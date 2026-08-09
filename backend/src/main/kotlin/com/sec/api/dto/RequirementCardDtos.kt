@@ -27,6 +27,15 @@ public data class RequirementAttributeDto(
  * the wire — so `id` is null and the wording plus the owning module's name is all the UI can
  * honestly show.
  *
+ * `deletedInSource` is a different fact and the two are independent. It means a module that *has*
+ * been imported no longer contains this object: DOORS deleted it, and DOORS kept the links
+ * pointing at it. Such a card is fully `resolved` — the object was really imported once and still
+ * carries its id, its statement and its type — and what it adds is that nothing here can be
+ * repaired by importing anything. The link is the defect, and it only exists in DOORS.
+ *
+ * A card is never both. A placeholder was never imported, so no export can have stopped
+ * mentioning it (ADR 0012).
+ *
  * `level` is the module's system-level classification resolved to code **and** label, reusing the
  * shape the Modules table already speaks, so the client never maps a stored code to wording of its
  * own (R5). Null when the owning module has no classification: the card renders an outlined empty
@@ -39,6 +48,7 @@ public data class RequirementCardDto(
     public val level: SystemLevelOptionDto? = null,
     public val description: String,
     public val resolved: Boolean = true,
+    public val deletedInSource: Boolean = false,
     public val moduleRef: String? = null,
     public val moduleName: String? = null,
     public val verificationAttributes: List<RequirementAttributeDto> = emptyList(),

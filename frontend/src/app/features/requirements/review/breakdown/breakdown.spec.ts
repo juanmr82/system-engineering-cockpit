@@ -11,6 +11,7 @@ const node = (ref: string, over: Partial<BreakdownNode> = {}): BreakdownNode => 
   level: null,
   description: `${ref} statement`,
   resolved: true,
+  deletedInSource: false,
   moduleRef: 'bW9k',
   moduleName: 'Segment requirements',
   verificationAttributes: [],

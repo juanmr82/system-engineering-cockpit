@@ -6,6 +6,14 @@
         {{ reference.id }}
       </button>
     }
+    <!-- Listed rather than counted: the id is real, and it is the one thing a reviewer needs to
+         find this link in DOORS and remove it. Not a control — the object is gone from its
+         module, so there is nothing left to navigate to. -->
+    @for (reference of group.deleted; track reference.ref) {
+      <span class="sec-references-cell__deleted" [matTooltip]="group.deletedTooltip">
+        {{ reference.id }}
+      </span>
+    }
     @if (group.unresolvedCount; as count) {
       <span class="sec-references-cell__unresolved" [matTooltip]="group.unresolvedTooltip">
         {{ count }} not yet imported
@@ -21,6 +29,14 @@
       <button type="button" class="sec-references-cell__ref" (click)="open(reference.ref)">
         {{ reference.id }}
       </button>
+    }
+    <!-- Listed rather than counted: the id is real, and it is the one thing a reviewer needs to
+         find this link in DOORS and remove it. Not a control — the object is gone from its
+         module, so there is nothing left to navigate to. -->
+    @for (reference of group.deleted; track reference.ref) {
+      <span class="sec-references-cell__deleted" [matTooltip]="group.deletedTooltip">
+        {{ reference.id }}
+      </span>
     }
     @if (group.unresolvedCount; as count) {
       <span class="sec-references-cell__unresolved" [matTooltip]="group.unresolvedTooltip">

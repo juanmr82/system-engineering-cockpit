@@ -117,6 +117,16 @@ export class RequirementCard {
   }
 
   /**
+   * Why a card that looks complete is marked as gone.
+   *
+   * Says where the fix is, because it is not here: this application has no copy of the link to
+   * remove. Mirrors `Aliases.DELETED_IN_SOURCE_HINT`, which is the declaration of this wording.
+   */
+  protected readonly deletedTooltip =
+    'This object was deleted in DOORS and the links to it were left behind. ' +
+    'The link has to be removed in DOORS.';
+
+  /**
    * What a placeholder says instead of an id.
    *
    * A placeholder has no DOORS id — its internal name is its internal id spelled out — so naming
