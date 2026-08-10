@@ -132,15 +132,61 @@ class JiraFeatureTest {
     private fun importer(jira: JiraApi): JiraImporter =
         JiraImporter(jira, graphWriter, projection, settings)
 
-    /** Adds a project node and puts it in scope, the way the settings route does. */
+    /**
+     * Adds a project node and puts it in scope, in **exactly** the three calls `POST /jira/projects`
+     * makes and in the same order.
+     *
+     * This helper used to call `applySchema()` and `upsertSource()` itself, which is how it missed
+     * a bug that made the product unusable on a fresh installation: `UPSERT_PROJECTS` opens with
+     * `MATCH (src:JiraSource …)`, the route never created that node, and the statement therefore
+     * matched nothing and wrote nothing — silently, answering 200 with an empty list. The test
+     * passed because the *test* had seeded the state the route did not.
+     *
+     * So it mirrors the route rather than arranging its own convenience. If the route sequence
+     * changes, this changes with it, and the empty-graph test below is what holds the two together.
+     */
     private fun addProjectToScope(key: String, jql: String = ""): Unit = runBlocking {
-        graphWriter.applySchema()
-        graphWriter.upsertSource("seed")
+        val stamp = "seed"
+        graphWriter.prepare(stamp)
         graphWriter.upsertProjects(
             listOf(JiraRows.projectRow(FakeJira.projectDef(key))),
-            runStamp = "seed",
+            runStamp = stamp,
         )
-        metaWriter.saveJiraImportScope(JiraId.project(key), enabled = true, jql = jql)
+        val scoped = metaWriter.saveJiraImportScope(JiraId.project(key), enabled = true, jql = jql)
+        assertTrue(scoped, "the import scope was not written for $key")
+    }
+
+    @Test
+    fun `the first project can be added to a completely empty graph`() {
+        // The regression, stated as the user hit it: on a fresh installation there has been no
+        // import, so nothing has created the source root — and adding a project is what has to
+        // happen *before* the first import. Every other test in this file starts from a graph that
+        // has had at least one project added, so this is the only one that can see it.
+        assertEquals(0L, single("MATCH (n) RETURN count(n)"), "the graph should start empty")
+
+        addProjectToScope("PROJ")
+
+        val projects = runBlocking { projection.listProjects() }
+        assertEquals(1, projects.size, "adding the first project wrote nothing")
+        assertEquals("PROJ", projects.single().key)
+        assertTrue(projects.single().inScope)
+        assertTrue(projects.single().enabled)
+
+        // And the source root now exists, so the import that follows has something to hang off.
+        assertEquals(1L, single("MATCH (s:JiraSource) RETURN count(s)"))
+        assertEquals(1L, single("MATCH (:JiraSource)-[:__child]->(:JiraProject {key: 'PROJ'}) RETURN count(*)"))
+    }
+
+    @Test
+    fun `columns can be saved before anything has been imported`() {
+        // The same shape one endpoint further along: UPSERT_COLUMN_SETTINGS also matches on the
+        // source root, so a save made before the first import would have stored nothing.
+        runBlocking {
+            graphWriter.prepare("seed")
+            metaWriter.saveJiraColumns(JiraId.SOURCE, listOf("status.name"), JiraFieldId.fixedColumns)
+        }
+
+        assertEquals(1L, single("MATCH (:JiraSource)-[:__attributeSettingFor]->(s:__Meta:__AttributeSetting) RETURN count(s)"))
     }
 
     private fun runImport(jira: JiraApi): JiraImportOutcome.Completed = runBlocking {

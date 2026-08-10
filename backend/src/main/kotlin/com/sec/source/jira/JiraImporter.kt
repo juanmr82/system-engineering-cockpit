@@ -69,8 +69,7 @@ public class JiraImporter(
         val runStamp = started.toString()
         val warnings = mutableListOf<String>()
 
-        writer.applySchema()
-        writer.upsertSource(runStamp)
+        writer.prepare(runStamp)
 
         val scopes = projection.enabledProjects()
         if (scopes.isEmpty()) return JiraImportOutcome.NoProjectsInScope

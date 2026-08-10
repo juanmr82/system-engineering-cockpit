@@ -40,6 +40,25 @@ public class JiraGraphWriter(
     private val batchSize: Int,
 ) {
 
+    /**
+     * Everything that must exist before anything else can be written: the schema, and the one
+     * source-root node.
+     *
+     * **Call this from every write path, not just the import.** `UPSERT_PROJECTS` opens with
+     * `MATCH (src:JiraSource …)`, so on a graph without that node the whole statement matches
+     * nothing and does nothing — silently, with no error for a route to report. That is not a
+     * hypothetical: adding the first project happens *before* the first import by definition, so a
+     * fresh installation could never get started. The route returned 200 and an empty list.
+     *
+     * Both halves are idempotent — the schema statements are `IF NOT EXISTS` and the source is a
+     * `MERGE` — so calling this on every write is a few cheap round trips, and much less expensive
+     * than a statement that quietly declines to run.
+     */
+    public suspend fun prepare(runStamp: String) {
+        applySchema()
+        upsertSource(runStamp)
+    }
+
     /** Constraints and indexes, `IF NOT EXISTS`. Each runs alone — schema cannot share a
      *  transaction with anything else. */
     public suspend fun applySchema() {

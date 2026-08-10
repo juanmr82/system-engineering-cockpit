@@ -61,6 +61,29 @@ stale-column warning was narrowed at the same time: it fires when *neither* sour
 when the data alone does not — otherwise every correctly-chosen column of an empty field is reported
 as stale.
 
+### ⚠ The bug the first production test found, and why the tests could not
+
+**A fresh installation could not add its first project.** `UPSERT_PROJECTS` opens with
+`MATCH (src:JiraSource …)`, and the source root was created **only** by `JiraImporter` — so on a
+graph that had never imported, the statement matched nothing, wrote nothing, and said nothing.
+`saveJiraImportScope` then did the same for the same reason, and the route discarded the Boolean it
+returns. The endpoint answered **200 with `projects: []`**: no error, no 404, nothing in the log.
+Adding a project has to happen before the first import, and the first import needs a project, so it
+was a deadlock on every new environment.
+
+Fixed by `JiraGraphWriter.prepare(runStamp)` — schema plus source root, both idempotent — called by
+the importer **and** by `POST /jira/projects` and `POST /jira/fields`, which have the same
+MATCH-on-source shape. A false return from `saveJiraImportScope` is now a problem detail rather than
+a silent success.
+
+**`JiraFeatureTest` could never have caught it**, and that is the part worth remembering: its
+`addProjectToScope` helper called `applySchema()` and `upsertSource()` itself. The test seeded the
+state the production route did not create, so it passed while the product was unusable. The helper
+now makes **exactly the three calls the route makes, in the route's order**, and
+`the first project can be added to a completely empty graph` asserts the graph is empty before it
+starts. Generalise it: a test fixture that arranges its own setup is not testing the code path that
+has to arrange it in production.
+
 ### Three things that will bite whoever touches this next
 
 1. **A Kotlin object whose name equals a declared label's *value* fails `GraphNamesTest`.** The
@@ -115,7 +138,7 @@ Two numbers came out of it and both changed the code:
 
 **⚠ Two things are unverified and they are the two that matter.**
 
-`JiraFeatureTest` — **19 tests, written and compiling, never executed.** It is where the
+`JiraFeatureTest` — **21 tests, written and compiling, never executed.** It is where the
 reconciliation is actually tested, because the reconciliation is Cypher. It covers idempotence, the
 hard delete, the `coalesce` trap, placeholder creation and promotion, orphan collection, `__child`
 for both containment cases, the R2 byte-identical-anchor assertion, `MATCH (m:__Meta) DETACH

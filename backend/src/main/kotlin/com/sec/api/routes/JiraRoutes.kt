@@ -121,15 +121,29 @@ public fun Route.jiraRoutes(
 
             // Stamped with now rather than an import's run stamp: nothing reconciles project
             // nodes, and a blank stamp would read as "an import saw this and skipped it".
-            graphWriter.upsertProjects(
-                listOf(JiraRows.projectRow(project)),
-                runStamp = Instant.now().toString(),
-            )
-            metaWriter.saveJiraImportScope(
+            val stamp = Instant.now().toString()
+
+            // The schema and the source root, before anything that MATCHes on them. Adding the
+            // first project happens before the first import by definition, and UPSERT_PROJECTS
+            // opens with `MATCH (src:JiraSource …)` — so without this the statement matches
+            // nothing, writes nothing, and says nothing.
+            graphWriter.prepare(stamp)
+            graphWriter.upsertProjects(listOf(JiraRows.projectRow(project)), runStamp = stamp)
+
+            val scoped = metaWriter.saveJiraImportScope(
                 projectId = JiraId.project(project.key),
                 enabled = body.enabled,
                 jql = body.jql.trim(),
             )
+            // Its MATCH can find nothing for the same reason, and a write that quietly did not
+            // happen must not be answered with 200 and an unchanged list.
+            if (!scoped) {
+                return@post call.respondProblem(
+                    HttpStatusCode.InternalServerError,
+                    "Project not saved",
+                    "'${project.key}' could not be added to the import scope. Try again.",
+                )
+            }
             call.respond(JiraProjectListDto(projects = projection.listProjects()))
         }
 
@@ -204,6 +218,9 @@ public fun Route.jiraRoutes(
         // the state the server actually holds rather than the one it hoped for.
         post("/fields") {
             val body = call.receive<SaveJiraColumnsRequestDto>()
+            // Same reason as above: UPSERT_COLUMN_SETTINGS matches on the source root, so a save
+            // made before any import would silently store nothing.
+            graphWriter.prepare(Instant.now().toString())
             metaWriter.saveJiraColumns(
                 sourceId = JiraId.SOURCE,
                 paths = body.paths,
