@@ -29,3 +29,51 @@ public suspend fun GraphDriver.executeWrite(queries: List<Query>): Unit =
             session.executeWrite({ tx -> queries.forEach { tx.run(it) } }, writeTx)
         }
     }
+
+/**
+ * What a write actually changed, as the server counted it.
+ *
+ * An importer has to report how many nodes it created as against updated, and the honest source
+ * for that is the server's own counters — not a `count(*)` of the rows sent, which cannot tell a
+ * MERGE that matched from one that created, and not a read-before-write, which doubles the round
+ * trips and still races. Only the fields something reports on are surfaced.
+ */
+public data class WriteCounts(
+    public val nodesCreated: Int = 0,
+    public val nodesDeleted: Int = 0,
+    public val relationshipsCreated: Int = 0,
+    public val relationshipsDeleted: Int = 0,
+) {
+    public operator fun plus(other: WriteCounts): WriteCounts = WriteCounts(
+        nodesCreated + other.nodesCreated,
+        nodesDeleted + other.nodesDeleted,
+        relationshipsCreated + other.relationshipsCreated,
+        relationshipsDeleted + other.relationshipsDeleted,
+    )
+
+    public companion object {
+        public val NONE: WriteCounts = WriteCounts()
+    }
+}
+
+/**
+ * A write that reports what it changed. Same session discipline as [executeWrite] — this is not a
+ * second write path, it is the same one asked a further question.
+ *
+ * `consume()` is what makes the counters available, and it must be called inside the transaction
+ * lambda: the result is streamed, and reading its summary after the transaction has closed throws.
+ */
+public suspend fun GraphDriver.executeWriteCounting(query: Query): WriteCounts =
+    withContext(Dispatchers.IO) {
+        driver.session(SessionConfig.forDatabase(database)).use { session ->
+            session.executeWrite({ tx ->
+                val counters = tx.run(query).consume().counters()
+                WriteCounts(
+                    nodesCreated = counters.nodesCreated(),
+                    nodesDeleted = counters.nodesDeleted(),
+                    relationshipsCreated = counters.relationshipsCreated(),
+                    relationshipsDeleted = counters.relationshipsDeleted(),
+                )
+            }, writeTx)
+        }
+    }

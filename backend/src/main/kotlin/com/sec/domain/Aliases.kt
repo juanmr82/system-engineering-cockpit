@@ -97,7 +97,8 @@ public object Aliases {
     // release of a module, and this field is not that — it is which snapshot of the module an
     // object came from, "current" for everything imported so far. Calling it Baseline claimed a
     // word that real baselines will need when they arrive.
-    public fun renderVersionValue(raw: String): String = if (raw == "current") "Current" else raw
+    public fun renderVersionValue(raw: String): String =
+        if (raw == PropValue.CURRENT_VERSION) "Current" else raw
 
     // Which label answers "what kind of object is this". Neo4j returns labels in no defined
     // order, so this cannot be "the first one that maps" — an object labelled both DOORSTBD and

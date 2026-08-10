@@ -16,6 +16,52 @@ neo4j:
   readTimeoutSeconds: 10
   writeTimeoutSeconds: 30
 
+# The JIRA REST client (docs/jira-issues-dynamic-view-design.md §2, ADR 0013).
+#
+# Every key here is optional and the whole section may be deleted: an unset host or token leaves
+# JIRA unconfigured, the application starts normally, and the JIRA routes answer 503 with a
+# sentence saying so. That is deliberately unlike neo4j.* above, which fails startup when unset —
+# the difference is that this application cannot work without a graph and works fine without JIRA,
+# and a packaged "$SEC_JIRA_TOKEN" would have made a token mandatory on every developer machine
+# and in every container test.
+#
+# So the token is NOT resolved from the environment here. A deployment overlay supplies it, and
+# writes it the same way the credentials above are written, so it is still never committed:
+#
+#   # /etc/sec/sec.yaml, passed with -config=/etc/sec/sec.yaml
+#   jira:
+#     host: "https://jira.example.com"
+#     token: "$SEC_JIRA_TOKEN"
+#
+# Which projects are imported is NOT here: an admin changes that during normal work, so it is
+# Tier-2 data on the project node (:__Meta:__ImportScope), not configuration (CLAUDE.md §2).
+jira:
+  host: ""
+  token: ""
+  # cloud | datacenter — picks the search endpoint. Cloud is removing the classic offset-paginated
+  # /search in favour of the cursor-paginated /search/jql; Data Center has only the classic one.
+  platform: "datacenter"
+  # bearer | basic. Data Center takes a personal access token as a bearer; Cloud pairs an API
+  # token with the account email as basic auth.
+  authScheme: "bearer"
+  email: ""
+  pageSize: 100
+  # A ceiling on one run, so a mis-typed JQL cannot pull a quarter of a million issues into a
+  # Community instance that has no query governor (CLAUDE.md §7).
+  maxIssues: 20000
+  batchSize: 500
+  # Keep each issue's fields block verbatim beside the flattened properties.
+  #
+  # Measured on a real Data Center export (docs/TEST_JIRA_DATA.json): 1 041 fields per issue, about
+  # 68 kB of JSON each. That is ~1.4 GB at the 20 000-issue ceiling below, and it is by far the
+  # larger half of what this source stores. The fidelity is worth having — the flattener stops at
+  # scalars and a JIRA field can nest arbitrarily — but this is the switch to reach for first if
+  # the store becomes the binding constraint.
+  storeRawFields: true
+  connectTimeoutSeconds: 10
+  readTimeoutSeconds: 30
+  maxRetries: 3
+
 # Sidenav structure — order is config, not graph data (CLAUDE.md §2, "Where a given piece of state lives").
 # Served read-only at GET /api/v1/config/navigation.
 navigation:

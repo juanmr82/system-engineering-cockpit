@@ -1,6 +1,17 @@
 <mat-toolbar class="sec-toolbar">
   <span class="sec-toolbar__spacer"></span>
 
+  <a
+    mat-icon-button
+    class="sec-toolbar__action"
+    routerLink="/settings"
+    routerLinkActive="sec-toolbar__action--active"
+    matTooltip="Settings"
+    aria-label="Settings"
+  >
+    <mat-icon svgIcon="gearbox" />
+  </a>
+
   <button
     mat-icon-button
     class="sec-toolbar__action"

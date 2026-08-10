@@ -2,10 +2,12 @@ package com.sec.api
 
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
+import com.sec.api.routes.jiraRoutes
 import com.sec.api.routes.moduleRoutes
 import com.sec.api.routes.reviewRoutes
 import com.sec.api.routes.statisticsRoutes
 import com.sec.api.routes.tableRoutes
+import com.sec.config.JiraSettings
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
@@ -14,6 +16,10 @@ import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
+import com.sec.source.jira.JiraApi
+import com.sec.source.jira.JiraGraphWriter
+import com.sec.source.jira.JiraImporter
+import com.sec.source.jira.JiraProjection
 import io.ktor.server.application.Application
 import io.ktor.server.routing.routing
 
@@ -37,6 +43,11 @@ public fun Application.configureRouting(
     metaWriter: MetaWriter,
     statisticsProjection: StatisticsProjection,
     tableProjection: DoorsTableProjection,
+    jiraSettings: JiraSettings,
+    jiraApi: JiraApi?,
+    jiraProjection: JiraProjection,
+    jiraImporter: JiraImporter,
+    jiraGraphWriter: JiraGraphWriter,
 ) {
     routing {
         healthRoutes(graphDriver)
@@ -50,6 +61,7 @@ public fun Application.configureRouting(
         )
         statisticsRoutes(statisticsProjection)
         tableRoutes(doorsProjection, tableProjection)
+        jiraRoutes(jiraSettings, jiraApi, jiraProjection, jiraImporter, jiraGraphWriter, metaWriter)
         configRoutes()
 
         // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.

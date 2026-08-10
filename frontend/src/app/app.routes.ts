@@ -45,6 +45,13 @@ export const routes: Routes = [
         path: 'jira/kids',
         loadComponent: () => import('./features/jira/kids/jira-kids').then((m) => m.JiraKids),
       },
+      // Reached from the toolbar gear rather than the sidenav: the sidenav's groups are source
+      // families (CLAUDE.md §9) and administration is not one. The tab is a query parameter, so
+      // this route does not grow a child per tab.
+      {
+        path: 'settings',
+        loadComponent: () => import('./features/settings/settings').then((m) => m.Settings),
+      },
       {
         path: 'documents/windchill',
         loadComponent: () =>

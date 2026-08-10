@@ -55,6 +55,20 @@
       <artifactId>ktor-server-config-yaml-jvm</artifactId>
     </dependency>
 
+    <!-- The one HTTP client (ADR 0013). Versions and the engine choice are in the root pom. -->
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-core-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-okhttp-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-content-negotiation-jvm</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>org.neo4j.driver</groupId>
       <artifactId>neo4j-java-driver</artifactId>
@@ -80,6 +94,10 @@
     <dependency>
       <groupId>io.ktor</groupId>
       <artifactId>ktor-server-test-host-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-mock-jvm</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jetbrains.kotlin</groupId>

@@ -118,6 +118,40 @@
         <artifactId>ktor-server-config-yaml-jvm</artifactId>
         <version>${ktor.version}</version>
       </dependency>
+
+      <!--
+        The HTTP client, for the JIRA importer (ADR 0013) and for the Windchill and CAMEO REST
+        clients behind it. There is exactly one HTTP client in this codebase and this is it -
+        a second one would mean two places that decide timeouts, retries and JSON handling.
+
+        OkHttp rather than CIO for the engine: JIRA rate-limits aggressively and an import is a
+        long series of requests to one host, which is what OkHttp's connection pool and its
+        mature timeout handling are for. The cost is one transitive library, accepted knowingly.
+        ktor-client-mock is what lets the client's paging and Retry-After behaviour be tested
+        without a JIRA to point at.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-core-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-okhttp-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-content-negotiation-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-mock-jvm</artifactId>
+        <version>${ktor.version}</version>
+        <scope>test</scope>
+      </dependency>
+
       <dependency>
         <groupId>io.ktor</groupId>
         <artifactId>ktor-server-test-host-jvm</artifactId>

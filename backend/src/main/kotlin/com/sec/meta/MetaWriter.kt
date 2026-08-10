@@ -9,6 +9,7 @@ import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
 import com.sec.domain.UuidV7
 import com.sec.graph.GraphDriver
+import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.cypher.ModuleCypher
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.executeRead
@@ -77,6 +78,89 @@ public class MetaWriter(
 
         graphDriver.executeWrite(queries)
         return SaveModuleSettingsOutcome.Saved
+    }
+
+    /**
+     * Put a JIRA project in the import scope, or change its clause (R2 Shape B).
+     *
+     * The project node must already exist, and the route is what guarantees it: adding a project
+     * fetches it from JIRA and upserts it *before* calling this, so a scope entry can never name a
+     * key JIRA does not have. That ordering is why this is a legal `:__Meta` node at all — every
+     * meta node hangs off the imported graph, and this one hangs off the project.
+     *
+     * Note what this does **not** do: it writes the scope node and nothing else. The project node
+     * beside it is written by [JiraGraphWriter][com.sec.source.jira.JiraGraphWriter], which is an
+     * importer. Two writers, because they obey two different rules (ADR 0013).
+     */
+    public suspend fun saveJiraImportScope(
+        projectId: String,
+        enabled: Boolean,
+        jql: String,
+        user: String = CurrentUser.PLACEHOLDER,
+    ): Boolean {
+        val now = Instant.now().toString()
+        return graphDriver.executeWrite(
+            Query(
+                JiraCypher.UPSERT_IMPORT_SCOPE,
+                mapOf(
+                    "projectId" to projectId,
+                    "metaId" to UuidV7.generate(),
+                    "enabled" to enabled,
+                    "jql" to jql,
+                    "user" to user,
+                    "now" to now,
+                ),
+            ),
+        ) { records -> records.isNotEmpty() }
+    }
+
+    /** Take a project out of scope. Its issues are removed by the importer, not from here. */
+    public suspend fun removeJiraImportScope(projectId: String) {
+        graphDriver.executeWrite(
+            Query(JiraCypher.REMOVE_IMPORT_SCOPE, mapOf("projectId" to projectId)),
+        ) { }
+    }
+
+    /**
+     * The Issues table's chosen columns, as an absolute ordered list.
+     *
+     * Absolute rather than a diff, matching what the review and module dialogs settled on: two
+     * write shapes for one stored setting is how two dialogs come to mean different things by
+     * Save. One transaction, so a save that reorders and deselects in one gesture cannot land
+     * half done (R7).
+     *
+     * The fixed columns are stripped before storing. They are always shown, so a stored row saying
+     * so would be a second place that decides it — and the day the fixed pair changes, the stored
+     * rows would disagree with the code.
+     */
+    public suspend fun saveJiraColumns(
+        sourceId: String,
+        paths: List<String>,
+        fixedPaths: List<String>,
+        user: String = CurrentUser.PLACEHOLDER,
+    ) {
+        val now = Instant.now().toString()
+        val chosen = paths.filterNot { it in fixedPaths }.distinct()
+
+        val settings = chosen.mapIndexed { index, path ->
+            mapOf("path" to path, "visible" to true, "position" to index, "metaId" to UuidV7.generate())
+        }
+
+        graphDriver.executeWrite(
+            buildList {
+                // Deleted first, so a path that moved from selected to deselected in the same save
+                // cannot be re-created by the upsert that follows it.
+                add(Query(JiraCypher.DELETE_COLUMN_SETTINGS, mapOf("sourceId" to sourceId, "keep" to chosen)))
+                if (settings.isNotEmpty()) {
+                    add(
+                        Query(
+                            JiraCypher.UPSERT_COLUMN_SETTINGS,
+                            mapOf("sourceId" to sourceId, "settings" to settings, "user" to user, "now" to now),
+                        ),
+                    )
+                }
+            },
+        )
     }
 
     /**

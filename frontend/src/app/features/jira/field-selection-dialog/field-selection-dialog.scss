@@ -1,0 +1,114 @@
+@use 'mixins' as sec;
+
+.sec-field-select__title {
+  color: var(--sec-blue);
+}
+
+.sec-field-select {
+  display: block;
+}
+
+.sec-field-select__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-block-end: 0.5rem;
+  border-block-end: 1px solid var(--sec-line);
+}
+
+.sec-field-select__search {
+  flex: 1 1 240px;
+
+  // The bar sets its own rhythm; the form field's subscript reserve would double its height.
+  --mat-form-field-container-height: 34px;
+}
+
+.sec-field-select__count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--sec-ink-2);
+}
+
+.sec-field-select__list,
+.sec-field-select__leaves {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sec-field-select__group {
+  padding-block: 0.375rem;
+
+  & + & {
+    border-block-start: 1px solid var(--sec-line-soft);
+  }
+}
+
+.sec-field-select__field,
+.sec-field-select__leaf {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// The sub-keys sit under their field on a depth rail — the same vocabulary the requirement tree
+// uses for containment, rather than a second way of drawing "inside".
+.sec-field-select__leaves {
+  margin-inline-start: 0.75rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid var(--sec-line-soft);
+}
+
+.sec-field-select__label {
+  color: var(--sec-ink);
+}
+
+.sec-field-select__type,
+.sec-field-select__fixed {
+  // Non-content text: 10px uppercase, letter-spaced, in --sec-ink-3 (§8 rule 4).
+  font-size: var(--sec-text-label);
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
+}
+
+// A real value from a real issue. Quiet, truncated, and never italic (§8).
+.sec-field-select__sample {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-3);
+}
+
+.sec-field-select__sample--own {
+  margin: 0 0 0 2.25rem;
+}
+
+.sec-field-select__warnings {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0 0.5rem 1.5rem;
+  border-inline-start: 3px solid var(--sec-highlight-undefined);
+  color: var(--sec-ink-2);
+}
+
+.sec-field-select__empty {
+  margin: 1rem 0;
+  color: var(--sec-ink-3);
+}
+
+.sec-field-select__error {
+  margin: 0 1.5rem;
+  color: var(--sec-highlight-error);
+}
+
+// "Defined in JIRA, no imported issue has a value yet." A quiet note, not a warning: the field
+// existing is information, and its emptiness is a fact about the project rather than a fault.
+.sec-field-select__empty-field {
+  font-size: var(--sec-text-label);
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
+}

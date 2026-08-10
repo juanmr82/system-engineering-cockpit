@@ -3,6 +3,7 @@ package com.sec
 import com.sec.api.configureProblemDetails
 import com.sec.api.configureRouting
 import com.sec.config.ConfigArgs
+import com.sec.config.JiraSettings
 import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
 import com.sec.meta.MetaSchema
@@ -14,6 +15,10 @@ import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.RequirementCardProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
+import com.sec.source.jira.JiraGraphWriter
+import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraImporter
+import com.sec.source.jira.JiraProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -51,12 +56,33 @@ public fun Application.module() {
 
     runBlocking { MetaSchema.apply(graphDriver) }
 
-    configureApp(graphDriver)
+    // One HttpClient for the process lifetime, for the same reason there is one Driver: it owns a
+    // connection pool, and building one per import would throw that away on every click. Absent
+    // rather than empty when JIRA is unconfigured, so there is no half-built client to call by
+    // accident — the routes check for null and answer 503.
+    val jiraApi = if (appConfig.jira.isConfigured) {
+        JiraHttpClient(appConfig.jira).also { client ->
+            monitor.subscribe(ApplicationStopping) { client.close() }
+            logger.info { "JIRA client configured for ${appConfig.jira.host} (${appConfig.jira.platform})" }
+        }
+    } else {
+        logger.info { "JIRA is not configured; the JIRA views will say so" }
+        null
+    }
+
+    configureApp(graphDriver, appConfig.jira, jiraApi)
 }
 
 // Everything that does not need a live database, so the HTTP surface — plugins, error mapping,
 // routing — can be exercised in a test without Docker. module() adds the startup steps that do.
-internal fun Application.configureApp(graphDriver: GraphDriver) {
+//
+// JIRA defaults to unconfigured so a test that only cares about the DOORS surface says nothing
+// about it, and gets the same "not configured" answers a real backend without JIRA would give.
+internal fun Application.configureApp(
+    graphDriver: GraphDriver,
+    jiraSettings: JiraSettings = JiraSettings.UNCONFIGURED,
+    jiraApi: com.sec.source.jira.JiraApi? = null,
+) {
     install(ContentNegotiation) {
         // encodeDefaults: a field whose value equals its declared default is still part of the
         // contract, and kotlinx omits it unless told otherwise. That silently dropped
@@ -88,6 +114,12 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
 
+    // The JIRA source. Two writers on purpose (ADR 0013): JiraGraphWriter writes imported nodes
+    // and MetaWriter writes Tier 2, and neither can reach the other's statements.
+    val jiraProjection = JiraProjection(graphDriver)
+    val jiraGraphWriter = JiraGraphWriter(graphDriver, jiraSettings.batchSize)
+    val jiraImporter = JiraImporter(jiraApi, jiraGraphWriter, jiraProjection, jiraSettings)
+
     configureRouting(
         graphDriver,
         doorsProjection,
@@ -97,5 +129,10 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
         metaWriter,
         statisticsProjection,
         tableProjection,
+        jiraSettings,
+        jiraApi,
+        jiraProjection,
+        jiraImporter,
+        jiraGraphWriter,
     )
 }

@@ -1,0 +1,94 @@
+@use 'mixins' as sec;
+
+.sec-import-report__title {
+  color: var(--sec-blue);
+}
+
+.sec-import-report {
+  display: block;
+}
+
+.sec-import-report__lead {
+  margin: 0 0 1rem;
+  color: var(--sec-ink);
+}
+
+.sec-import-report__section {
+  padding-block-start: 0.75rem;
+  // Separate with a hairline, never a shadow or a fill (§8 rule 1).
+  border-block-start: 1px solid var(--sec-line-soft);
+
+  & + & {
+    margin-block-start: 0.75rem;
+  }
+}
+
+.sec-import-report__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0 0 0.5rem;
+  // Non-content text: 10px uppercase, letter-spaced, in --sec-ink-3 (§8 rule 4).
+  font-size: var(--sec-text-label);
+  font-weight: 600;
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
+}
+
+.sec-import-report__meta,
+.sec-import-report__figures {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  margin: 0;
+
+  dt {
+    color: var(--sec-ink-2);
+  }
+
+  dd {
+    margin: 0;
+    text-align: end;
+    // Counts read as data, not prose (§8 typography).
+    font-variant-numeric: tabular-nums;
+    color: var(--sec-ink);
+  }
+}
+
+.sec-import-report__value--strong {
+  font-weight: 600;
+  color: var(--sec-blue);
+}
+
+.sec-import-report__changes,
+.sec-import-report__warnings {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.125rem;
+  color: var(--sec-ink-2);
+
+  li + li {
+    margin-block-start: 0.25rem;
+  }
+}
+
+.sec-import-report__section--warnings {
+  // A rule, not a background (§8 rule 3). The colour marks the edge of the block.
+  //
+  // --sec-highlight-undefined, not --sec-highlight-error: every warning this section can carry is
+  // something *referring to something that is not there* — a selected column whose JIRA field has
+  // gone, a project that did not answer — which is exactly what that token means. The run itself
+  // finished, so the error red would overstate it.
+  padding-inline-start: 0.75rem;
+  border-inline-start: 3px solid var(--sec-highlight-undefined);
+  border-block-start: 0;
+  margin-block-start: 1rem;
+}
+
+.sec-import-report__warning-icon {
+  --mat-icon-color: var(--sec-highlight-undefined);
+
+  inline-size: 1rem;
+  block-size: 1rem;
+  font-size: 1rem;
+}

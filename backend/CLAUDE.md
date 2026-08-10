@@ -48,6 +48,11 @@ types, `__metaKind` values and meta payload keys each have exactly one declarati
   `__` namespace, `:SEItem`, `:__UNDEFINED`, all of Tier 2. Source-agnostic, imports nothing.
 - `source/doors/DoorsNames.kt` — `DoorsAttr`, `DoorsModuleAttr`, `DoorsProp`, `DoorsRel`,
   `DoorsLabel`. **A new source adds its own names file; it never edits another's.**
+- `source/jira/JiraNames.kt` — `JiraFieldId`, `JiraProjectAttr`, `JiraProp`, `JiraRel`, `JiraLabel`,
+  `JiraLinkProp`, `JiraId`. Written by adding a file, exactly as that rule intends: no DOORS name
+  was touched. One trap it paid for — a Kotlin object whose *name* equals a declared label's
+  *value* fails the inverse guard, because the import line reads as the label spelled out. That is
+  why the field-id object is `JiraFieldId` and not `JiraField`.
 
 `props["__id"]` and `labels.contains("DOORSTBD")` are defects. So is a second constant for a name
 that already has one — `__UNDEFINED` was declared twice before this rule existed.
@@ -133,6 +138,14 @@ GET  /api/v1/modules/{ref}/tables      ← reconstructed DOORS tables, no parame
 GET  /api/v1/items/{ref}/table         ← the table a table, row or cell belongs to
 GET  /api/v1/statistics/requirements     ← Statistics view; ?module={ref} scopes it
 GET  /api/v1/statistics/requirements/cycles  ← loop detection, its own endpoint so Band 4 loads apart
+GET  /api/v1/jira/connection            ← is JIRA configured, and which one; answered when it is not
+GET  /api/v1/jira/projects              ← projects in the graph, plus what JIRA offers
+POST /api/v1/jira/projects              ← add to the import scope, or change its JQL clause
+DELETE /api/v1/jira/projects/{ref}      ← out of scope, and its issues with it
+POST /api/v1/jira/import                ← the import run; returns its report (ADR 0013)
+GET  /api/v1/jira/issues                ← the Issues table; ?project=&offset=&limit=, capped
+GET  /api/v1/jira/fields                ← the field-selection tree, with the current selection
+POST /api/v1/jira/fields                ← the chosen columns, absolute and ordered
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
 GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
 POST /api/v1/cypher/explain             ← see docs/CYPHER_API_DESIGN.md
@@ -155,6 +168,14 @@ Feature-shaped write endpoints such as `POST /modules/{ref}/settings` exist beca
 dialog is one transaction, not N annotation calls. They **route through the same guarded
 meta writer** as `POST /items/{ref}/annotations`. One meta write path, however many
 endpoints reach it.
+
+**There is exactly one other thing in this process that writes the graph, and it is an importer.**
+`source/jira/JiraGraphWriter` writes `:SEItem:Jira*` nodes and their source relationships, is
+reached only by `JiraImporter`, and `JiraImporter` is reached only by `POST /jira/import` and by
+`POST /jira/projects` — which upserts one project node so the Tier-2 scope node has something legal
+to hang off. That is the whole of it, and it is what keeps R1 true now that an importer lives here
+(ADR 0013). Neither writer is generic: no `setProperty`, no `update`, no map parameter whose keys a
+caller chooses. Do not add one.
 
 **The built frontend ships inside the backend jar.** `mvn -Pui package` copies
 `frontend/dist/frontend/browser` into the artifact under `static/`, and `api/routes/UiRoutes.kt`

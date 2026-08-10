@@ -3,6 +3,146 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-10 (session 16) — JIRA, end to end
+
+**Uncommitted.** `docs/jira-issues-dynamic-view-design.md` is built, minus §7's icons. The flow the
+user asked for works as one path: a click in the UI → `POST /api/v1/jira/import` → the backend reads
+JIRA → writes Neo4j → returns a run report → a dialog.
+
+**Read `docs/adr/0013-jira-import-in-the-backend.md` and §10 of the design doc before touching any
+of this.** The design doc was written outside this repository's rules, and §10 is the table of the
+**eight** places it was overruled — six of them by `CLAUDE.md` R1–R6, ADR 0010 or ADR 0012, all of
+which predate it.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The JIRA importer runs in the backend**, in Kotlin — the one exception to "importers are Python" | `source/jira/`, ADR 0013, root `CLAUDE.md` §1 |
+| 2 | **Two writers that cannot reach each other** — `MetaWriter` for `:__Meta`, `JiraGraphWriter` for imported nodes | this is how R1 stays true now that an importer lives in-process |
+| 3 | **Everything is flattened, selection happens on read** — `status.name`, `customfield_10032`, `:__AttributeSetting` on a `:JiraSource` anchor | `JiraFields.kt`, `JiraCypher.SELECTED_COLUMNS` |
+| 4 | **A new `__metaKind`: `importScope`** — Shape B on `:JiraProject`, so a scope entry cannot name a typo | root `CLAUDE.md` R2 catalogue |
+| 5 | **`/settings`, from a toolbar gear**, with a JIRA Integration tab | `features/settings/`, `frontend/CLAUDE.md` §9 amended |
+| 6 | **`ktor-client-okhttp`** — the one HTTP client, added to §4 | root `pom.xml` |
+
+### The two decisions the user made, and they are not the obvious ones
+
+**An issue that leaves the import scope is hard-deleted, not marked `:__DELETED`.** That is a
+deliberate departure from ADR 0012, taken on the user's reasoning — *"if I change the scope I don't
+care about it any more"* — and it is right for a reason ADR 0012's own argument supplies: DOORS
+deletes an object and **leaves the links pointing at it**, which is the evidence worth keeping; JIRA
+removes the links with the issue, so there is nothing to preserve. And the reconciled set here is a
+JQL scope an admin edits, so the common case is not a deletion at all. ADR 0013 §2 argues it in full.
+**Do not "fix" this to match DOORS.**
+
+**Icons (§7) are not built**, by choice. They need bytes on disk — a second persistence mechanism —
+and a cache directory that works under the user profile on the offline Windows box.
+
+### The field catalogue is a *source of fields*, not a label lookup — and that was a real bug
+
+`GET /rest/api/2/field` was always imported (pipeline step 2, `:SEItem:JiraField` nodes), but the
+selection tree was built from the data alone. **A field that is unset on every issue is null in the
+JSON, and `SET n += props` removes a property whose value is null** — deliberately, because that is
+what clears a field a user cleared in JIRA — so the key exists on no node and `UNWIND keys(i)` is
+blind to it however many issues are scanned. The field is nevertheless defined in JIRA. The design
+doc's §6.1 ("sample 5 issues per type, collect the non-null fields") has the same blind spot and no
+sample size fixes it.
+
+The tree is now the **union of the catalogue and the discovered paths**, and what the catalogue can
+promise depends on the declared schema:
+
+- **scalar, or an array of scalars** → the schema states the exact path the flattener will write, so
+  the column is offered now and is blank until somebody fills the field in;
+- **object or array-of-object** → shown with its name and type, **not selectable**, because its
+  sub-keys come from data and there is none. Guessing `name` would hand somebody a column blank for
+  ever.
+
+`JiraFields.flattensToOwnPath` is that one rule, pure, and `JiraFieldsTest` asserts it against what
+the flattener actually does so the prediction and the writer cannot drift apart. The §6.4
+stale-column warning was narrowed at the same time: it fires when *neither* source knows a path, not
+when the data alone does not — otherwise every correctly-chosen column of an empty field is reported
+as stale.
+
+### Three things that will bite whoever touches this next
+
+1. **A Kotlin object whose name equals a declared label's *value* fails `GraphNamesTest`.** The
+   inverse check reads the Cypher file's source, and `import com.sec.source.jira.JiraField.KEY`
+   contains the literal `JiraField`, which is `JiraLabel.FIELD`. That is why the field-id object is
+   **`JiraFieldId`**. DOORS avoided this by an accident of casing (`DoorsLabel` vs `DOORSModule`).
+2. **`coalesce(n.__importedAt, '')`** — the same trap ADR 0012 names, now in a second importer.
+   `NULL <> $ts` is NULL, which matches nothing, so the un-coalesced form reconciles away exactly
+   nothing on the first run after an upgrade and reports success. `JiraFeatureTest` has a test named
+   after it.
+3. **In a spec, `whenStable()` never resolves with a request in flight** (carried-forward trap 15,
+   hit again). A second `settle()` after a write times the spec out rather than failing it. The
+   settings spec has a `renderAfterWrite()` that drains microtasks by hand instead — copy that shape.
+
+### Verified
+
+| | Status |
+|---|---|
+| `mvn verify` | **green — 150 backend tests** (was 94; +56, all JIRA: 22 `JiraFieldsTest`, 14 `JiraRowsTest`, 12 `JiraHttpClientTest`, 8 `JiraRealExportTest`) |
+| `mvn -Pdocker test` | **NOT RUN — the Docker daemon is still not running on this machine.** See below |
+| `npm run lint` | **green** |
+| `npm test` | **green — 226 specs in 19 files** (was 199; +27) |
+| `npm run build` | **green** |
+| The flattener, **against real JIRA data** | **green — `docs/TEST_JIRA_DATA.json`**, one page of a live Data Center search: 50 issues, five projects, 1 041 fields each. See below |
+| The graph | **untouched.** Nothing was written to it, no importer was run, and no browser was opened |
+| A live JIRA | **never contacted.** There is no JIRA to point at here; every test drives a scripted `JiraApi` or a Ktor `MockEngine` |
+
+### `docs/TEST_JIRA_DATA.json` was already in the tree, untracked, and it earned its keep
+
+It is a real export and it is the only thing here that has met data nobody designed for this code.
+`JiraRealExportTest` runs the flattener over it and asserts **storability rather than values** — a
+property map Neo4j will not accept fails the whole `UNWIND` batch with an error naming the batch and
+not the field, and finding that out against a customer's 784 issues is the expensive way. It checks
+that every value is a scalar or a homogeneous list, that no field lands in the `__` namespace, that
+every issue derives the Tier-1 four and a unique `__id`, that `__sortKey` reproduces issue order on
+real five-digit keys, and that real project keys pass the JQL validator.
+
+**It skips cleanly when the file is absent**, deliberately: 3.4 MB of one company's real issue data
+does not belong in the repository. `JiraFieldsTest` is the suite that must always run.
+
+Two numbers came out of it and both changed the code:
+
+- **1 041 raw fields per issue flatten to 1 729 paths, of which 735 are non-null.** Only the 735
+  become node properties — `SET n += props` removes a property whose value is null — so that is what
+  the field dialog shows. `DISCOVERY_SCAN_LIMIT` was cut from 2 000 issues to **500** (the `UNWIND
+  keys(i)` is one row per issue *per property*: 350 000 rows at 500, three and a half million at
+  5 000, on a dialog open) and `MAX_DISCOVERED_PATHS` raised to 2 500 so a busier instance is not
+  silently truncated alphabetically.
+- **`__rawFields` is ~68 kB per issue**, so ~1.4 GB at the 20 000-issue ceiling. That is the larger
+  half of what this source stores, and `jira.storeRawFields: false` is the switch to reach for first
+  if the store becomes the constraint. The measurement is now in `application.yaml` beside the flag.
+
+**⚠ Two things are unverified and they are the two that matter.**
+
+`JiraFeatureTest` — **19 tests, written and compiling, never executed.** It is where the
+reconciliation is actually tested, because the reconciliation is Cypher. It covers idempotence, the
+hard delete, the `coalesce` trap, placeholder creation and promotion, orphan collection, `__child`
+for both containment cases, the R2 byte-identical-anchor assertion, `MATCH (m:__Meta) DETACH
+DELETE m` still being safe, and the two catalogue-driven field tests above. **Start Docker and run `mvn -Pdocker test` before trusting any of this.**
+The same warning stands from session 15 for the six DOORS `*FeatureTest` classes, which are still
+stale — the surefire reports for them predate the deleted-in-DOORS commits.
+
+**Nothing has ever run against a real JIRA.** The client's paging, both platforms' end-of-page
+signals, the auth headers and the error mapping are covered by `MockEngine`, which proves the code
+does what it was written to do and not that JIRA behaves as §1 describes. The first run against a
+real instance is the test that has not happened.
+
+### Left for a follow-up
+
+- **Column *order* is the order the field tree lists them in.** The server stores a `position`, so
+  adding drag-to-reorder changes no stored shape.
+- **The import is synchronous.** ADR 0013 records where that stops being true and what the answer is
+  (a job id, not a longer timeout). A `Mutex` already refuses a concurrent second run.
+- Everything under **⚠ Resume here** in the session 9 section is still open and untouched: the TBD /
+  TBC `Object Type` widening, the review settings dialog that lost data once, and the unbuilt
+  `/api/v1/cypher/run`, `/checks/attribute-policy` and `/config/navigation`. Session 15's
+  documentation defect **3** — the Breakdown tab's removed "read here as refines" banner, still
+  described as present in root `CLAUDE.md` R5 and `docs/requirement-breakdown-tree.md` §2 — is also
+  unchanged.
+
+---
+
 ## State as of 2026-08-10 (session 15) — deleted in DOORS, the expandable card, JIRA in the nav
 
 **Written retrospectively.** The work landed on 2026-08-09 as **PR #2** and **PR #3** and neither

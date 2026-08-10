@@ -1,0 +1,99 @@
+<div class="sec-jira-issues">
+  <header class="sec-jira-issues__header">
+    <p class="sec-jira-issues__eyebrow">JIRA</p>
+    <h1 class="sec-jira-issues__title">Issues</h1>
+  </header>
+
+  @if (api.connection.isLoading() && !api.connection.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (!configured()) {
+    <!-- The one state this view can be in that no button can fix. It names where the fix is,
+         rather than offering an import that would answer 503. -->
+    <sec-empty-state
+      title="JIRA is not connected"
+      description="This installation has no JIRA host or token set. An administrator configures it in the backend configuration file."
+    />
+  } @else {
+    <div class="sec-jira-issues__bar">
+      <button
+        mat-flat-button
+        type="button"
+        class="sec-jira-issues__import"
+        [disabled]="importing()"
+        (click)="runImport()"
+      >
+        <mat-icon svgIcon="save" />
+        {{ importing() ? 'Importing…' : 'Import issues' }}
+      </button>
+
+      <a
+        mat-stroked-button
+        routerLink="/settings"
+        [queryParams]="{ tab: 'jira' }"
+        matTooltip="Choose projects and columns"
+      >
+        <mat-icon svgIcon="gearbox" />
+        Settings
+      </a>
+
+      <span class="sec-jira-issues__spacer"></span>
+
+      <p class="sec-jira-issues__range">{{ rangeLabel() }}</p>
+
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="Previous page"
+        matTooltip="Previous page"
+        [disabled]="!canGoBack()"
+        (click)="previousPage()"
+      >
+        <mat-icon svgIcon="minus" />
+      </button>
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="Next page"
+        matTooltip="Next page"
+        [disabled]="!canGoForward()"
+        (click)="nextPage()"
+      >
+        <mat-icon svgIcon="plus" />
+      </button>
+    </div>
+
+    @if (importing()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    @if (actionError(); as message) {
+      <p class="sec-jira-issues__error" role="alert">{{ message }}</p>
+    }
+
+    @if (api.issues.isLoading() && !api.issues.hasValue()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (api.issues.error()) {
+      <div class="sec-jira-issues__error" role="alert">
+        <p>Couldn't load issues.</p>
+        <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else if (rows().length === 0) {
+      <sec-empty-state
+        title="No issues imported yet"
+        description="Choose the JIRA projects to import in Settings, then press Import issues."
+      />
+    } @else {
+      <!-- The theme class goes on this wrapper, never on <ag-grid-angular>: ag-grid assigns
+           element.className on the three elements it manages (styles/_grid.scss). -->
+      <div class="sec-jira-issues__table-scroll sec-grid sec-grid--middle">
+        <ag-grid-angular
+          class="sec-jira-issues__grid"
+          [gridOptions]="gridOptions"
+          [columnDefs]="columnDefs()"
+          [rowData]="rows()"
+          [getRowId]="getRowId"
+        />
+      </div>
+    }
+  }
+</div>

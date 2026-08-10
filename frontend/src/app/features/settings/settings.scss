@@ -1,0 +1,33 @@
+@use 'mixins' as sec;
+
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-settings {
+  @include sec.page-shell;
+}
+
+.sec-settings__header {
+  flex: none;
+}
+
+.sec-settings__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-settings__title {
+  @include sec.view-title;
+}
+
+// The same pair the module settings dialog's tabs use: the group takes the remaining height and
+// each tab's own scroll container works inside it, without a rule reaching into Material's
+// internals. `flex: 1` alone is not enough — `min-height: 0` is what lets it shrink below its
+// content so the panel inside scrolls rather than the page.
+.sec-settings__tabs {
+  flex: 1;
+  min-height: 0;
+}

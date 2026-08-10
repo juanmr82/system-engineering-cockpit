@@ -12,8 +12,9 @@
   border-bottom: var(--sec-hairline) solid var(--sec-blue-deep);
 }
 
-// Nothing sits on the left: the wordmark belongs to the sidenav header (layout/sidenav/logo.ts),
-// and the user menu is the only toolbar action there is — there is no global save (R7, §9).
+// Nothing sits on the left: the wordmark belongs to the sidenav header (layout/sidenav/logo.ts).
+// Two actions sit on the right — settings and the user menu — and neither writes anything, which
+// is what "there is no global save" (R7, §9) is actually about.
 .sec-toolbar__spacer {
   flex: 1 1 auto;
 }
@@ -22,6 +23,21 @@
 .sec-toolbar__action {
   --mat-icon-button-icon-color: var(--sec-paper);
   --mat-icon-button-state-layer-color: var(--sec-paper);
+}
+
+// The active route gets a rule, not a filled pill — the same mark the sidenav uses, turned to sit
+// under a toolbar icon rather than beside a list item.
+.sec-toolbar__action--active {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset-inline: 25%;
+    inset-block-end: 6px;
+    block-size: 2px;
+    background: var(--sec-blue-pale);
+  }
 }
 
 // The focus ring is mid-blue on white surfaces; on navy it needs the pale end of the ramp to

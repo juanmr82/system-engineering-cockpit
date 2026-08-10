@@ -30,6 +30,7 @@ public object ApiPaths {
     public const val MODULES: String = "$V1/modules"
     public const val ITEMS: String = "$V1/items"
     public const val STATISTICS: String = "$V1/statistics"
+    public const val JIRA: String = "$V1/jira"
 
     /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and

@@ -1,0 +1,59 @@
+@use 'mixins' as sec;
+
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-jira-issues {
+  @include sec.page-shell;
+}
+
+.sec-jira-issues__header {
+  flex: none;
+}
+
+.sec-jira-issues__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-jira-issues__title {
+  @include sec.view-title;
+}
+
+// The import trigger, the settings link and the pager share one sticky bar, so the controls stay
+// reachable while the table scrolls under them — the same arrangement the Modules table uses.
+.sec-jira-issues__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-jira-issues__spacer {
+  flex: 1 1 auto;
+}
+
+.sec-jira-issues__range {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--sec-ink-2);
+}
+
+.sec-jira-issues__error {
+  margin: 0.5rem 0;
+  color: var(--sec-highlight-error);
+}
+
+// A grid needs a bounded height, the same as a sticky header does — `flex: 1` alone is not enough
+// (CLAUDE.md §6).
+.sec-jira-issues__table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.sec-jira-issues__grid {
+  block-size: 100%;
+}

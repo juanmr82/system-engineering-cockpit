@@ -476,8 +476,16 @@ section as the contract the shell must continue to satisfy.
   `corner-full` (a pill); the sidenav overrides it to `0` so hover/focus/active states are
   square, matching this rule.
 - **User icon** (right of toolbar): opens a `mat-menu` with display name, email, roles,
-  connected graph/database name, and a sign-out item. It is the **only** toolbar action —
-  there is no global save (R7).
+  connected graph/database name, and a sign-out item.
+- **Settings gear** (left of the user icon): routes to `/settings`. **Amended** — this used to read
+  "the user icon is the only toolbar action", and the reason it gave is why the gear is allowed:
+  *there is no global save (R7)*. That rule is about a control that **writes** across views, and a
+  link to a route writes nothing. The sidenav was the other candidate and is wrong for its own
+  reason: its groups are source families, and administration is not one. Anything that would write
+  from the toolbar is still forbidden. See ADR 0013.
+- **`/settings` carries no guard**, deliberately. There is no authentication in this application
+  yet, so a guard here would read a constant `true` — not a seam for RBAC but a thing to delete when
+  it lands, which meanwhile looks to a reader like access control exists. The route is the seam.
 - Every route is lazy (`loadComponent`) and renders a titled empty state naming what will
   live there. Empty states are an invitation to act, not an apology.
 - Keyboard: visible focus rings on toolbar buttons and every nav item; the sidenav is a
@@ -492,6 +500,7 @@ section as the contract the shell must continue to satisfy.
 | `/requirements/review` | `RequirementReviewComponent` | Requirements |
 | `/jira/issues` | `JiraIssues` | JIRA |
 | `/jira/kids` | `JiraKids` | JIRA |
+| `/settings` | `Settings` | *(toolbar gear, not the sidenav)* — tab in `?tab=`, so the route table does not grow a child per tab |
 | `/documents/windchill` | `WindchillDocumentsComponent` | Documents |
 | `/mbse/soi-views` | `SoiViewsComponent` | CAMEO |
 | `/mbse/functions` | `FunctionsComponent` | CAMEO |

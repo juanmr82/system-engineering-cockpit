@@ -3,6 +3,7 @@ package com.sec.domain
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
 import com.sec.graph.cypher.ItemCypher
+import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.cypher.ModuleCypher
 import com.sec.graph.cypher.RequirementCardCypher
 import com.sec.graph.cypher.ReviewCypher
@@ -13,6 +14,9 @@ import com.sec.meta.MetaSchema
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsProp
 import com.sec.source.doors.DoorsRel
+import com.sec.source.jira.JiraLabel
+import com.sec.source.jira.JiraProp
+import com.sec.source.jira.JiraRel
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
@@ -46,19 +50,22 @@ class GraphNamesTest {
     // -- what the Cypher is allowed to say -------------------------------------------------
 
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED) + NodeLabel.meta + DoorsLabel.all
+        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED) + NodeLabel.meta +
+            DoorsLabel.all + JiraLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
-        Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.LINK_FROM, Rel.LINK_TO,
+        Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.IMPORT_SCOPE_FOR, Rel.LINK_FROM, Rel.LINK_TO,
         DoorsRel.REFERS_TO,
+        JiraRel.ISSUE_LINK, JiraRel.HAS_TYPE,
     )
 
     private val declaredNamespaceNames: Set<String> = setOf(
         Prop.ID, Prop.NAME, Prop.VERSION, Prop.SORT_KEY, Prop.MODULE_URL, Prop.OBJECT_URL,
-        Prop.TYPE_RAW, Prop.META_ID, Prop.META_KIND, Prop.SCHEMA_VERSION,
+        Prop.TYPE_RAW, Prop.IMPORTED_AT, Prop.META_ID, Prop.META_KIND, Prop.SCHEMA_VERSION,
         Prop.CREATED_BY, Prop.CREATED_AT, Prop.UPDATED_BY, Prop.UPDATED_AT,
         DoorsProp.TABLE_ROW_INDEX, DoorsProp.TABLE_COLUMN_INDEX, DoorsProp.TABLE_URL,
+        JiraProp.PROJECT_KEY, JiraProp.RAW_FIELDS,
     ) + declaredLabels.filter { it.startsWith(Prop.NAMESPACE) } +
         declaredRelationships.filter { it.startsWith(Prop.NAMESPACE) }
 
@@ -104,6 +111,21 @@ class GraphNamesTest {
             StatisticsCypher.MODULES_IN_SCOPE, StatisticsCypher.MODULE_OBJECTS,
             StatisticsCypher.COUNT_MODULE_OBJECTS, StatisticsCypher.DANGLING_TARGET_MODULES,
             StatisticsCypher.ALL_TRACE_EDGES, StatisticsCypher.LOOP_MEMBERS,
+        )
+        add(
+            "JiraCypher",
+            *JiraCypher.SCHEMA.toTypedArray(),
+            JiraCypher.UPSERT_SOURCE, JiraCypher.UPSERT_PROJECTS, JiraCypher.UPSERT_ISSUE_TYPES,
+            JiraCypher.UPSERT_FIELDS, JiraCypher.UPSERT_ISSUES, JiraCypher.LINK_ISSUE_TYPES,
+            JiraCypher.LINK_HIERARCHY, JiraCypher.LINK_ISSUES,
+            JiraCypher.DELETE_STALE_ISSUES, JiraCypher.PRUNE_HIERARCHY,
+            JiraCypher.PRUNE_ISSUE_LINKS, JiraCypher.DELETE_ORPHAN_STUBS,
+            JiraCypher.DELETE_PROJECT_ISSUES,
+            JiraCypher.ISSUE_PAGE, JiraCypher.COUNT_ISSUES, JiraCypher.DISCOVER_FIELD_PATHS,
+            JiraCypher.FIELD_CATALOG, JiraCypher.LIST_PROJECTS, JiraCypher.ENABLED_PROJECTS,
+            JiraCypher.SELECTED_COLUMNS,
+            JiraCypher.UPSERT_IMPORT_SCOPE, JiraCypher.REMOVE_IMPORT_SCOPE,
+            JiraCypher.UPSERT_COLUMN_SETTINGS, JiraCypher.DELETE_COLUMN_SETTINGS,
         )
         add("SystemCypher", SystemCypher.PING)
         add("TableCypher", TableCypher.MODULE_TABLES, TableCypher.RESOLVE_TABLE)
@@ -270,7 +292,12 @@ class GraphNamesTest {
         /** Any `__` name, wherever it appears: property access, map key, label or type. */
         val NAMESPACE_NAME = Regex("""__[A-Za-z][A-Za-z0-9_]*""")
 
-        /** A source label carried as a Cypher string, which the pattern regex cannot see. */
-        val QUOTED_SOURCE_LABEL = Regex("""'(DOORS[A-Za-z0-9_]*)'""")
+        /**
+         * A source label carried as a Cypher string, which the pattern regex cannot see.
+         *
+         * Both source prefixes, because a JIRA `appliesToLabels` would be exactly as invisible as
+         * the DOORS one this was written for.
+         */
+        val QUOTED_SOURCE_LABEL = Regex("""'((?:DOORS|Jira)[A-Za-z0-9_]*)'""")
     }
 }

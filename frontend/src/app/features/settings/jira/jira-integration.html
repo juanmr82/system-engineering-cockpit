@@ -1,0 +1,171 @@
+<div class="sec-jira-settings">
+  @if (api.connection.isLoading() && !api.connection.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (!configured()) {
+    <!-- Host and token are backend configuration and are not editable here (design doc §9), so
+         this state names where the fix is rather than offering a form that writes nowhere. -->
+    <section class="sec-jira-settings__panel sec-jira-settings__panel--absent">
+      <h2 class="sec-jira-settings__heading">Not connected</h2>
+      <p class="sec-jira-settings__note">
+        No JIRA host or token is set. Both are backend configuration: add a <code>jira</code>
+        section to the deployment configuration file and restart the service. Nothing on this tab
+        can change them.
+      </p>
+    </section>
+  } @else {
+    <section class="sec-jira-settings__panel">
+      <h2 class="sec-jira-settings__heading">Connection</h2>
+      <dl class="sec-jira-settings__facts">
+        <dt>Host</dt>
+        <dd>{{ connection()?.host }}</dd>
+        <dt>Platform</dt>
+        <dd>{{ connection()?.platform }}</dd>
+        <dt>Imported issues</dt>
+        <dd>{{ totalIssues() }}</dd>
+      </dl>
+      <p class="sec-jira-settings__note">
+        This application only reads from JIRA. It never creates, edits or transitions an issue.
+      </p>
+    </section>
+
+    <section class="sec-jira-settings__panel">
+      <h2 class="sec-jira-settings__heading">Projects to import</h2>
+
+      @if (api.projects.isLoading() && !api.projects.hasValue()) {
+        <mat-progress-bar mode="indeterminate" />
+      }
+
+      <div class="sec-jira-settings__add">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="sec-jira-settings__picker">
+          <mat-label>Add a project</mat-label>
+          <mat-select
+            [value]="projectToAdd()"
+            (valueChange)="projectToAdd.set($event)"
+            [disabled]="busy()"
+          >
+            @for (project of available(); track project.key) {
+              <mat-option [value]="project.key">{{ project.key }} — {{ project.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <button
+          mat-flat-button
+          type="button"
+          [disabled]="busy() || !projectToAdd()"
+          (click)="addProject()"
+        >
+          <mat-icon svgIcon="plus" />
+          Add
+        </button>
+      </div>
+
+      @if (available().length === 0) {
+        <p class="sec-jira-settings__note">
+          Every project this account can browse is already listed, or JIRA could not be reached to
+          ask.
+        </p>
+      }
+
+      @if (inScope().length === 0) {
+        <p class="sec-jira-settings__note">
+          No projects are being imported yet. Add one above, then press Import issues.
+        </p>
+      } @else {
+        <div class="sec-jira-settings__scroll">
+          <table class="sec-jira-settings__table">
+            <thead>
+              <tr>
+                <th scope="col">Project</th>
+                <th scope="col">Extra filter</th>
+                <th scope="col" class="sec-jira-settings__numeric">Issues</th>
+                <th scope="col">Imported</th>
+                <th scope="col"><span class="sec-jira-settings__sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (project of inScope(); track project.ref) {
+                <tr>
+                  <th scope="row" class="sec-jira-settings__project">
+                    <span class="sec-jira-settings__key">{{ project.key }}</span>
+                    <span class="sec-jira-settings__name">{{ project.name }}</span>
+                  </th>
+                  <td>
+                    <!-- Commits on blur, not per keystroke: one gesture, one request (R7). -->
+                    <mat-form-field
+                      appearance="outline"
+                      subscriptSizing="dynamic"
+                      class="sec-jira-settings__jql"
+                    >
+                      <input
+                        matInput
+                        type="text"
+                        placeholder="e.g. status != Done"
+                        [attr.aria-label]="'Extra JQL filter for ' + project.key"
+                        [value]="project.jql"
+                        [disabled]="busy()"
+                        (blur)="setJql(project, $any($event.target).value)"
+                      />
+                    </mat-form-field>
+                  </td>
+                  <td class="sec-jira-settings__numeric">{{ project.issueCount }}</td>
+                  <td>
+                    <!-- aria-label as the component's own input, not [attr.aria-label]: the
+                         accessible control is a button Material renders inside the host, and an
+                         attribute on the host labels the wrapper instead of the switch. -->
+                    <mat-slide-toggle
+                      [checked]="project.enabled"
+                      [disabled]="busy()"
+                      [aria-label]="'Import ' + project.key"
+                      (change)="setEnabled(project, $event.checked)"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      [attr.aria-label]="'Remove ' + project.key"
+                      matTooltip="Remove this project and its imported issues"
+                      [disabled]="busy()"
+                      (click)="removeProject(project)"
+                    >
+                      <mat-icon svgIcon="close" />
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="sec-jira-settings__panel">
+      <h2 class="sec-jira-settings__heading">Import</h2>
+      <p class="sec-jira-settings__note">
+        Reads every issue in the projects above and writes them to the graph. Issues the search no
+        longer returns are removed. Nothing is written back to JIRA.
+      </p>
+
+      @if (busy()) {
+        <mat-progress-bar mode="indeterminate" />
+      }
+
+      <div class="sec-jira-settings__actions">
+        <button mat-flat-button type="button" [disabled]="!canImport()" (click)="runImport()">
+          <mat-icon svgIcon="save" />
+          Import issues
+        </button>
+
+        <button mat-stroked-button type="button" [disabled]="busy()" (click)="openColumns()">
+          <mat-icon svgIcon="gearbox" />
+          Columns to show
+        </button>
+      </div>
+
+      @if (error(); as message) {
+        <p class="sec-jira-settings__error" role="alert">{{ message }}</p>
+      }
+    </section>
+  }
+</div>

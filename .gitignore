@@ -41,6 +41,12 @@ scripts/win/sec-env.local.ps1
 importers/reports/
 *.log
 
+# --- Local JIRA export used by JiraRealExportTest ---
+# A real search response dropped here makes those 8 tests run; without it they skip. Not committed:
+# it is one instance's own issue data and megabytes of it, and the tests that must always run are
+# the ones in JiraFieldsTest.
+docs/TEST_JIRA_DATA.json
+
 # --- OS ---
 .DS_Store
 Thumbs.db

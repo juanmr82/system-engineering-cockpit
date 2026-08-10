@@ -53,6 +53,21 @@ public object Prop {
     /** The source's own type wording, preferred over a label chip whenever it is present (R5). */
     public const val TYPE_RAW: String = "__typeRaw"
 
+    /**
+     * The run stamp an importer writes on every node and every relationship one run confirms.
+     *
+     * Source-agnostic because reconciliation is: anything still carrying an older stamp when the
+     * merge phases are done is something this run's source did not mention. The DOORS importer
+     * writes it from Python and decides in Cypher (ADR 0012); the JIRA importer writes it from
+     * Kotlin and decides the same way (ADR 0013). What each importer *does* with the answer
+     * differs — DOORS marks, JIRA deletes — but the question is the same one.
+     *
+     * **Always read it as `coalesce(n.__importedAt, '')`.** A node written before this property
+     * existed has NULL, and `NULL <> $ts` evaluates to NULL, which matches nothing — so the
+     * un-coalesced form silently reconciles away exactly nothing on the first run after an upgrade.
+     */
+    public const val IMPORTED_AT: String = "__importedAt"
+
     // --- Tier 2: the contract of every :__Meta node (R2) ---
 
     public const val META_ID: String = "__metaId"
@@ -67,6 +82,22 @@ public object Prop {
     public const val CREATED_AT: String = "__createdAt"
     public const val UPDATED_BY: String = "__updatedBy"
     public const val UPDATED_AT: String = "__updatedAt"
+}
+
+/**
+ * Values of Tier-1 properties that are a closed vocabulary rather than copied source data.
+ *
+ * Small, and it stays small: almost everything a `__` property holds is derived per node. This
+ * exists because the JIRA importer runs in this process and now *writes* `__version`, which until
+ * then only `Aliases` read — and a value written in one file and compared in another is exactly
+ * the shape ADR 0010 exists to prevent.
+ */
+public object PropValue {
+    /**
+     * [Prop.VERSION] for everything imported so far. Rendered as *Current*, and deliberately not
+     * called a baseline — see [Aliases.renderVersionValue].
+     */
+    public const val CURRENT_VERSION: String = "current"
 }
 
 /**
@@ -91,6 +122,7 @@ public object Rel {
     // Shape B — a rule scoped to a set
     public const val POLICY_FOR: String = "__policyFor"
     public const val ATTRIBUTE_SETTING_FOR: String = "__attributeSettingFor"
+    public const val IMPORT_SCOPE_FOR: String = "__importScopeFor"
 
     // Shape C — a reified user-drawn link
     public const val LINK_FROM: String = "__linkFrom"
@@ -143,11 +175,12 @@ public object NodeLabel {
     public const val CLASSIFICATION: String = "__Classification"
     public const val POLICY: String = "__Policy"
     public const val ATTRIBUTE_SETTING: String = "__AttributeSetting"
+    public const val IMPORT_SCOPE: String = "__ImportScope"
     public const val LINK: String = "__Link"
 
     /** Every Tier-2 label, second-label first. Used by the Cypher guard test. */
     public val meta: Set<String> = setOf(
-        META, NOTE, TAG, REVIEW, FLAG, CLASSIFICATION, POLICY, ATTRIBUTE_SETTING, LINK,
+        META, NOTE, TAG, REVIEW, FLAG, CLASSIFICATION, POLICY, ATTRIBUTE_SETTING, IMPORT_SCOPE, LINK,
     )
 }
 
@@ -166,6 +199,17 @@ public object MetaKind {
     public const val CLASSIFICATION: String = "classification"
     public const val POLICY: String = "policy"
     public const val ATTRIBUTE_SETTING: String = "attributeSetting"
+
+    /**
+     * Shape B: which projects of a source an import run is allowed to fetch, and the extra JQL
+     * clause that narrows it.
+     *
+     * It anchors to the `:JiraProject` node rather than floating free, which is the whole reason
+     * it is legal as `:__Meta` at all (R2: every meta node hangs off the imported graph). Adding a
+     * project in the UI therefore fetches it from JIRA and upserts the project node *first* — so a
+     * project in scope is one JIRA confirmed exists, and the scope cannot name a typo.
+     */
+    public const val IMPORT_SCOPE: String = "importScope"
     public const val LINK: String = "link"
 
     public val labels: Map<String, String> = mapOf(
@@ -176,6 +220,7 @@ public object MetaKind {
         CLASSIFICATION to NodeLabel.CLASSIFICATION,
         POLICY to NodeLabel.POLICY,
         ATTRIBUTE_SETTING to NodeLabel.ATTRIBUTE_SETTING,
+        IMPORT_SCOPE to NodeLabel.IMPORT_SCOPE,
         LINK to NodeLabel.LINK,
     )
 
@@ -216,6 +261,22 @@ public object MetaProp {
 
     /** `:__AttributeSetting` — this attribute is how the requirement will be shown to be met. */
     public const val VERIFICATION: String = "verification"
+
+    /**
+     * `:__AttributeSetting` — column position, for a table whose columns a user orders.
+     *
+     * Optional, and absent on every DOORS setting: that table's column order follows attribute
+     * discovery. An added optional key is not a new payload generation, so
+     * [MetaValue.CURRENT_SCHEMA_VERSION] is unchanged — a reader that has never heard of it reads
+     * a generation-1 node correctly.
+     */
+    public const val ORDER: String = "order"
+
+    /** `:__ImportScope` — whether this project is fetched by an import run. */
+    public const val ENABLED: String = "enabled"
+
+    /** `:__ImportScope` — the admin's extra JQL clause, ANDed with the project filter. */
+    public const val JQL: String = "jql"
 }
 
 /** Values of controlled vocabularies stored in a meta payload. Wording comes from [Aliases]. */

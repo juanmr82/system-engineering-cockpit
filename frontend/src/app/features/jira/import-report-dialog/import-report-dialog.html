@@ -1,0 +1,88 @@
+<h2 mat-dialog-title class="sec-import-report__title">Import finished</h2>
+
+<mat-dialog-content class="sec-import-report">
+  <p class="sec-import-report__lead">
+    {{ report.projects.length }} project{{ report.projects.length === 1 ? '' : 's' }} imported in
+    {{ duration() }}.
+  </p>
+
+  <dl class="sec-import-report__meta">
+    <dt>Projects</dt>
+    <dd>{{ projectsLabel() }}</dd>
+  </dl>
+
+  <section class="sec-import-report__section">
+    <h3 class="sec-import-report__heading">Issues</h3>
+    <dl class="sec-import-report__figures">
+      @for (line of issueLines(); track line.label) {
+        <dt>{{ line.label }}</dt>
+        <dd [class.sec-import-report__value--strong]="line.emphasis">{{ line.value }}</dd>
+      }
+    </dl>
+  </section>
+
+  <section class="sec-import-report__section">
+    <h3 class="sec-import-report__heading">Relationships</h3>
+    <dl class="sec-import-report__figures">
+      @for (line of linkLines(); track line.label) {
+        <dt>{{ line.label }}</dt>
+        <dd>{{ line.value }}</dd>
+      }
+    </dl>
+  </section>
+
+  <section class="sec-import-report__section">
+    <h3 class="sec-import-report__heading">Catalogue</h3>
+    <dl class="sec-import-report__figures">
+      @for (line of catalogueLines(); track line.label) {
+        <dt>{{ line.label }}</dt>
+        <dd>{{ line.value }}</dd>
+      }
+    </dl>
+
+    <!-- Field changes are shown only when there are some. A pair of empty lists on every run
+         trains a reader to stop looking at this section, which is the one place a renamed or
+         withdrawn field is ever announced. -->
+    @if (hasFieldChanges()) {
+      <ul class="sec-import-report__changes">
+        @if (report.fieldsAdded.length > 0) {
+          <li>
+            <b>{{ report.fieldsAdded.length }}</b> new field{{
+              report.fieldsAdded.length === 1 ? '' : 's'
+            }}
+            available to show as columns.
+          </li>
+        }
+        @if (report.fieldsRemoved.length > 0) {
+          <li>
+            <b>{{ report.fieldsRemoved.length }}</b> field{{
+              report.fieldsRemoved.length === 1 ? '' : 's'
+            }}
+            no longer exist{{ report.fieldsRemoved.length === 1 ? 's' : '' }} in JIRA.
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <!-- Warnings are not errors: the run finished. They are the things that need a human decision,
+       and they are never auto-resolved — a selected column whose field JIRA has dropped stays
+       selected until somebody says otherwise (design doc §6.4). -->
+  @if (report.warnings.length > 0) {
+    <section class="sec-import-report__section sec-import-report__section--warnings" role="status">
+      <h3 class="sec-import-report__heading">
+        <mat-icon svgIcon="alert" class="sec-import-report__warning-icon" />
+        Needs attention
+      </h3>
+      <ul class="sec-import-report__warnings">
+        @for (warning of report.warnings; track warning) {
+          <li>{{ warning }}</li>
+        }
+      </ul>
+    </section>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-flat-button type="button" (click)="close()">Close</button>
+</mat-dialog-actions>

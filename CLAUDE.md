@@ -16,9 +16,19 @@ out of several source tools and joined in one Neo4j graph:
 | Source | What it contributes | Importer |
 |---|---|---|
 | IBM DOORS | Requirements, modules, hierarchy, traceability links | Python + `.bat`, **Windows 11 only** |
+| Atlassian JIRA | Issues, projects, issue links, sub-tasks | **Kotlin, in the backend** — ADR 0013 |
 | PTC Windchill | Document metadata | Python |
 | Cameo Systems Modeler | MBSE elements — SOI views, functions | Python |
 | *(future)* | Test management, PLM, ... | must join on `SEItem`, nothing else |
+
+**JIRA's importer runs inside the backend, and that is the one exception to "importers are Python
+programs" (ADR 0013).** DOORS needs a Windows DOORS client, so its importer is a separate process by
+necessity; JIRA is a REST API and the requested flow is interactive — a user clicks, the backend
+reads JIRA and writes the graph, and a report comes back in a dialog. R1's read-only guarantee is
+kept **structurally** rather than by the process boundary: `meta/MetaWriter` writes `:__Meta` and
+nothing else, `source/jira/JiraGraphWriter` writes imported nodes and is reached only by
+`JiraImporter`, and neither is generic enough to be borrowed. Do not add a second in-backend
+importer without its own ADR, and never give either writer a method that takes caller-chosen keys.
 
 The graph grows incrementally. **Every architectural decision must survive a new source
 being added without touching the existing ones.** That constraint is the whole point of
@@ -156,7 +166,19 @@ settings dialog.
 | `__metaKind` | Label | Relationship | Payload |
 |---|---|---|---|
 | `policy` | `:__Policy` | `__policyFor` | `attributeName`, `rule` (`mandatory` / `forbidden` / `pattern`), `appliesToLabels` |
-| `attributeSetting` | `:__AttributeSetting` | `__attributeSettingFor` | `attributeName`, `visible` (bool), `verification` (bool) |
+| `attributeSetting` | `:__AttributeSetting` | `__attributeSettingFor` | `attributeName`, `visible` (bool), `verification` (bool), optional `order` (int) |
+| `importScope` | `:__ImportScope` | `__importScopeFor` | `enabled` (bool), `jql` |
+
+`importScope` says which projects of a source an import run may fetch, and it anchors to the
+`:JiraProject` node rather than floating free — which is the whole reason it is legal as `:__Meta`
+at all. Adding a project in the UI therefore fetches it from JIRA and upserts the project node
+**first**, then attaches the scope node, so a scope entry can never name a typo. One node per
+project, enforced by the write query since Community cannot constrain it.
+
+`order` on `:__AttributeSetting` is optional and absent on every DOORS setting — that table's column
+order follows attribute discovery, while the JIRA Issues table's is chosen. An added optional key is
+not a new payload generation, so `__schemaVersion` stays 1: a reader that has never heard of it
+reads a generation-1 node correctly.
 
 This is the "which attributes are mandatory" case. One node governs every object in the
 module. **Never model this per item** — 984 nodes that still cannot answer "what is the
@@ -289,7 +311,12 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | an attribute the object carries with **no value** (`""`) | **Empty**, in `--sec-ink-3`, upright — never italic (§8). The row belongs in the list, because `""` means "exists and is empty"; leaving the value blank reads as the panel having failed to show something (`docs/REQ_REVIEW.md` §7) |
 | an item with no incoming `refersTo` in the closure | **No incoming links** — never "no upstream links" |
 | `:__AttributeSetting` `verification: true`, in the Breakdown tab | the **Verification** box; with none flagged, *No verification attribute defined yet for this requirement* — quietly, because it is an absence of configuration, not a finding |
-| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting** |
+| `:__Meta` kinds | **Review**, **Tag**, **Note**, **Flag**, **Rule**, **Link**, **Classification**, **Attribute setting**, **Import scope** |
+| a JIRA field path — `status.name`, `customfield_10032` | the **field catalogue's** own name for it, resolved on read from `:JiraField` — *Status › name*, *Story Points*. Source data, so it is displayed; and it is deliberately **never stored** on the `:__AttributeSetting` node, for the reason a `:__Classification` never stores *L2 – Segment* — a field renamed in JIRA renames its column on the next import instead of needing a migration. A path is a `colId`, never a header |
+| `__projectKey`, `__rawFields` | never shown. The second is the whole `fields` block as JIRA returned it, and the `__` prefix is what keeps it out of the column list the discovery query builds |
+| `issueLink` | **Links**. The link type is **not** the relationship's name: it travels as properties carrying *both* of JIRA's phrases, so *PROJ-1 blocks PROJ-2* and *PROJ-2 is blocked by PROJ-1* are readable from either end without a second lookup (ADR 0013) |
+| a JIRA issue that is linked to but outside the import scope | the existing `:__UNDEFINED` state, **Not yet imported** — deliberately not a second "out of scope" state, which would have needed its own wording on every screen and its own answer to the same question |
+| an import run's `warnings` | **Needs attention** — the run finished; these are the things needing a human decision. A selected column whose JIRA field has gone is named, never removed for the admin (design doc §6.4) |
 | `:__Note` in the review table | **Comment** — one per object, never a thread |
 | consistency-check findings on an object | **Issues** — the review table column, in error red. Fixed rules render as a sentence (*Object Type shall not be TBD*), configured ones as the unfilled attribute's name. Computed on read, never stored (R2) |
 | `DOORSTBD` in a check message | **TBD** — as in *Object Type shall not be TBD*; the label itself never reaches the user |
@@ -471,6 +498,7 @@ Pin these in the root `pom.xml` and `package.json`. Do not float versions.
 | Angular Material | **22** | matched major to Angular |
 | Node | **22+** | required by Angular 22 |
 | TypeScript | **6.x** | required by Angular 22 |
+| Ktor client | **3.5.x**, OkHttp engine | The **one** HTTP client, added for the JIRA importer (ADR 0013) and shared by the Windchill and CAMEO clients behind it. OkHttp rather than CIO because an import is a long series of requests to one rate-limiting host. `ktor-client-mock` is what lets paging and `Retry-After` be tested without a JIRA to point at |
 | ag-grid Community | **36.1.0**, exact | `ag-grid-angular` + `ag-grid-community`, both MIT. The **only** table implementation — see ADR 0006 and §6. Pinned exactly, not `^`: ag-grid ships majors fast and an upgrade is a deliberate act. |
 | echarts | **6.1.0**, exact | Apache-2.0. The **only** charting implementation — see ADR 0008 and §6. Pinned exactly for the same reason ag-grid is. Imported through `shared/charts/echarts-core`, never from `'echarts'` wholesale |
 | ngx-echarts | **22.0.0**, exact | Apache-2.0, matched major to Angular. The standalone `NgxEchartsDirective` only; `NgxEchartsModule` is in the package and is never imported |

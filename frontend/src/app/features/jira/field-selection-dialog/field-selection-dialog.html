@@ -1,0 +1,133 @@
+<h2 mat-dialog-title class="sec-field-select__title">Columns to show</h2>
+
+<mat-dialog-content class="sec-field-select">
+  @if (tree.isLoading() && !tree.hasValue()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (tree.error()) {
+    <p class="sec-field-select__error" role="alert">
+      Couldn't load the fields. Import issues first, then try again.
+    </p>
+  } @else {
+    <div class="sec-field-select__bar">
+      <mat-form-field appearance="outline" class="sec-field-select__search" subscriptSizing="dynamic">
+        <input
+          matInput
+          type="text"
+          placeholder="Search fields"
+          aria-label="Search fields"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
+      </mat-form-field>
+
+      <p class="sec-field-select__count">
+        <b>{{ selectedCount() }}</b> selected
+      </p>
+
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="selectedCount() === 0"
+        (click)="clearAll()"
+      >
+        Clear
+      </button>
+    </div>
+
+    <!-- Stale selections are named, never removed for the admin: silently reshaping a saved view
+         is worse than showing a stale column, because nobody finds out (design doc §6.4). -->
+    @if (warnings().length > 0) {
+      <ul class="sec-field-select__warnings" role="status">
+        @for (warning of warnings(); track warning) {
+          <li>{{ warning }}</li>
+        }
+      </ul>
+    }
+
+    @if (visibleGroups().length === 0) {
+      <p class="sec-field-select__empty">No fields match "{{ search() }}".</p>
+    } @else {
+      <ul class="sec-field-select__list">
+        @for (group of visibleGroups(); track group.node.path) {
+          <li class="sec-field-select__group">
+            <div class="sec-field-select__field">
+              <mat-checkbox
+                [checked]="stateOf(group).checked"
+                [indeterminate]="stateOf(group).indeterminate"
+                [disabled]="!isGroupSelectable(group)"
+                (change)="toggleGroup(group, $event.checked)"
+              >
+                <span class="sec-field-select__label">{{ group.node.label }}</span>
+              </mat-checkbox>
+
+              @if (group.node.type) {
+                <span class="sec-field-select__type">{{ group.node.type }}</span>
+              }
+              @if (group.node.fixed) {
+                <span
+                  class="sec-field-select__fixed"
+                  matTooltip="Always shown, so it cannot be turned off"
+                  >Always shown</span
+                >
+              }
+              <!-- Defined in JIRA, unset on every imported issue. Shown rather than hidden: the
+                   field exists, and somebody about to start using it wants its column ready. A
+                   scalar can be chosen now because its schema states the path exactly; an object
+                   cannot, because its sub-fields only appear with the first value. -->
+              @if (!group.node.hasValues) {
+                <span
+                  class="sec-field-select__empty-field"
+                  [matTooltip]="
+                    group.node.selectable
+                      ? 'Defined in JIRA. Its column will be empty until an issue has a value.'
+                      : 'Defined in JIRA. Its sub-fields appear once an issue has a value.'
+                  "
+                  >No values yet</span
+                >
+              }
+            </div>
+
+            <!-- A field with sub-keys: each one is its own column, and the parent above is the
+                 tri-state that turns them on and off together (design doc §6.2). -->
+            @if (group.leaves.length > 0) {
+              <ul class="sec-field-select__leaves">
+                @for (leaf of group.leaves; track leaf.path) {
+                  <li class="sec-field-select__leaf">
+                    <mat-checkbox
+                      [checked]="isSelected(leaf)"
+                      [disabled]="leaf.fixed"
+                      (change)="toggle(leaf, $event.checked)"
+                    >
+                      <span class="sec-field-select__label">{{ leaf.label }}</span>
+                    </mat-checkbox>
+                    @if (leaf.sample) {
+                      <span class="sec-field-select__sample">{{ leaf.sample }}</span>
+                    }
+                    @if (leaf.fixed) {
+                      <span class="sec-field-select__fixed">Always shown</span>
+                    }
+                  </li>
+                }
+              </ul>
+            } @else if (group.node.sample) {
+              <p class="sec-field-select__sample sec-field-select__sample--own">
+                {{ group.node.sample }}
+              </p>
+            }
+          </li>
+        }
+      </ul>
+    }
+  }
+</mat-dialog-content>
+
+@if (saveError(); as message) {
+  <p class="sec-field-select__error" role="alert">{{ message }}</p>
+}
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" [disabled]="saving()" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="saving()" (click)="save()">
+    {{ saving() ? 'Saving…' : 'Save' }}
+  </button>
+</mat-dialog-actions>
