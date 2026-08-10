@@ -220,7 +220,8 @@ SET r.__importedAt = row.imported_at"""
 # Phase 6: reconciliation (ADR 0012)
 #
 # The export says what the module contains now; the run stamp says what this run confirmed.
-# Everything below is the difference between those two, expressed as six set-based statements.
+# Everything below is the difference between those two, expressed as seven set-based statements,
+# numbered 1 to 6 because step 4 takes two of them.
 #
 # The one thing none of them does is make a deleted object go away. DOORS deletes an object and
 # keeps the links pointing at it, so a requirement that no longer exists is still referenced by
@@ -663,7 +664,7 @@ def _reconcile(
     are a real defect in the requirements data that only this application is in a position to
     show. So the object is labelled ``:__DELETED`` and keeps everything else it had.
 
-    Six statements, in an order that matters. None of them takes a parameter that grows with the
+    Seven statements, in an order that matters. None of them takes a parameter that grows with the
     module -- the diff is the run-stamp comparison the database makes for itself -- and every one
     is scoped by a label, and by ``__moduleUrl`` wherever the question is about one module.
     """

@@ -3,6 +3,175 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-10 (session 15) — deleted in DOORS, the expandable card, JIRA in the nav
+
+**Written retrospectively.** The work landed on 2026-08-09 as **PR #2** and **PR #3** and neither
+updated this file, so what follows was reconstructed from the three commits and re-verified against
+the tree on 2026-08-10. **`git status` is clean**; all three feature branches are merged and still
+exist locally and on the remote.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **An object deleted in DOORS is labelled `:__DELETED`, not removed** — and every link still pointing at it is shown as the defect it is | `doors/importer.py` phase 6, ADR 0012, and every review/statistics projection |
+| 2 | **`__inputLinks` are imported**, which closes `incomingComplete` and **deletes a standing caveat from two views** | `doors/importer.py`, `ReviewDtos.kt`, the graph dialog |
+| 3 | **A graph node can show its whole statement** — a chevron under the clamped text, drawn only where the clamp actually hides something | `shared/requirement-card/`, `graph-canvas.ts` |
+| 4 | **JIRA is a fourth source family in the sidenav**, with Issues and KIDS as empty states | `application.yaml`, `nav-group.ts`, `features/jira/` |
+
+### 1 and 2 are one decision, and ADR 0012 is the thing to read
+
+Not summarised here beyond the shape of it, because the ADR is 199 lines and argues every branch it
+did not take. The shape: **DOORS deletes an object and leaves the links pointing at it**, so a
+requirement goes on refining something that no longer exists. That is a defect nothing else in the
+toolchain shows — and the obvious implementation destroys the evidence, because deleting the object
+here too makes the referencing module look correct again.
+
+So it keeps its id, its attributes and its type labels, gains `:__DELETED`, and leaves the tree and
+every module listing. It is reachable **only** from the links that point at it, and those are drawn
+struck through in error red, counted in Issues, filterable in the review table, and totalled in the
+Statistics traceability band. Every one of them says the fix is **in DOORS** — this application
+holds no copy of the link to remove.
+
+Three things about it that are load-bearing and easy to undo by accident:
+
+- **`:__DELETED` is the one Tier-1 name that is not a function of a single export.** It is a
+  function of two — the export in hand and what the graph already held — which is a real departure
+  from R1's "re-run the import, get byte-identical results", taken with open eyes because the fact
+  being recorded *is* a difference between two imports.
+- **Re-import deletes Tier 2, and this is the only place an importer ever may.** Annotations go
+  with the object they were written on. Root `CLAUDE.md` R2 now names the exception rather than
+  leaving it undocumented; a second one needs its own ADR.
+- **There is no prune guard, deliberately.** A truncated export costs annotations and nothing else —
+  re-importing the complete export restores the source data in full. The mitigation is
+  `objects_newly_deleted` in the run report, and a guard was rejected because it buys a confirmation
+  prompt at the price of a `--force` flag people learn to always pass.
+
+The reconciliation is **seven set-based statements** driven by an `__importedAt` run stamp, with no
+parameter that grows with the module. They are asserted clause by clause, without a database, by
+`importers/src/sec_import/doors/tests/test_reconcile_cypher.py` — 15 tests, each named after the
+thing that breaks if the clause goes missing. That file earns its place: several of the clauses are
+one word long, and dropping one leaves an importer that still reports success while destroying the
+links the whole design exists to expose. The two that would go first are
+`coalesce(n.__importedAt, '')` (`NULL <> $ts` is NULL, which matches nothing, so the whole module
+survives its first reconciliation) and the `NOT s:__DELETED` in the stale-`refersTo` prune (without
+it, the first thing deleted is exactly the evidence).
+
+**Change 2 is why a caveat disappeared rather than moved.** A module's export states every link
+pointing *at* it, so importing `__inputLinks` makes an incoming link visible before the referencing
+module exists here at all. The old *"only outgoing links are imported"* sentence would now tell a
+reviewer to distrust an emptiness that carries real information, so it is gone from the review table
+header and the dependency graph. What remains is the unresolved-modules banner, which names modules
+and appears only when there are some.
+
+### 3 is a canvas change wearing a card's clothes
+
+The clamp to six lines is right — one forty-line requirement would make its band taller than the
+screen. Having no way past it is not.
+
+**The expansion state lives in `GraphCanvas`, not in the card, and that is the whole of the work.**
+Every position on screen was computed from a height measured *before* the click, so a card that
+grows where it stands overlaps the ones beneath it. The canvas keeps a ref-keyed set, feeds it into
+the off-screen measure pass, and the existing measure → lay out → compress → draw pipeline treats
+the expansion as the height change it is. The card exposes it as a `model`, so the Breakdown tab
+gets a working toggle while binding nothing.
+
+The chevron is drawn **only where the clamp is actually hiding something, measured rather than
+assumed** — an `afterRenderEffect` compares `scrollHeight` against `clientHeight` after every
+render. A graph node with a long statement gets the control, a two-line one does not, and a
+Breakdown row never does, without either view being asked which it is. Two consequences were handled
+rather than left: expanding marks the viewport dirty (auto-fit answers a taller diagram by scaling
+down, and on a large graph that crosses the 50% compact threshold, which drops every card's body and
+takes the text that was just asked for with it), and double-clicking the chevron no longer re-seeds
+the graph.
+
+**jsdom reports every height as 0**, so the arithmetic is covered on numbers by an exported
+`isClamped` and the specs cover the binding around it. That is the shape to copy for anything else
+that measures.
+
+### 4 is small, and has one thing to keep in sync by hand
+
+Two lazy routes rendering the same titled empty state Windchill and the Cameo views render. Order
+lives in the backend's `application.yaml`, which owns it for every user; the frontend's
+`DEFAULT_NAV_GROUPS` fallback was updated in step with it, and the pair is kept in sync **by hand**,
+which a comment says at the site.
+
+**Today the fallback is what actually renders** — `GET /api/v1/config/navigation` is still unwired
+(it remains a comment in `api/Routes.kt`), so the YAML takes effect only when that lands. Verified
+this session, not assumed: the endpoint has been listed as a 404 since session 9 and still is.
+
+*KIDS* is left as the label given. Nothing claims to know what it expands to and the empty-state
+sentence is deliberately thin rather than invented.
+
+### ⚠ Three documentation defects — two found and fixed, one still open
+
+**1. `importers/CLAUDE.md` contradicted itself and the code about annotations — FIXED this session.**
+In the load-bearing-clauses list it said the ghost keeps *"`refersTo` only to other `:DOORSObject`s,
+**and `:__Meta`** — R2 forbids leaving a note hanging off nothing"*. The code does the opposite:
+`_DELETE_GHOST_META` detach-deletes them, and a later bullet in that same file said so correctly.
+The stale clause was a fragment of the **superseded first version** of ADR 0012, whose reasoning
+that same ADR now lists under rejected alternatives — R2 forbids the *application* writing to
+imported nodes and forbids a meta node hanging off nothing; it does not require an annotation to
+outlive its subject. It was the dangerous one of the three: nothing enforces it, and it read as
+licence to spare `:__Meta` from the strip.
+
+Clause 3 now reads *"the ghost keeps `refersTo` to other `:DOORSObject`s and **nothing else** — its
+annotations are deleted outright and every other edge is stripped, because those are the only edges
+a reviewer can act on"*, which is what statements 4a and 4b do and what the bullet further down that
+file already said.
+
+**2. Six statements or seven — FIXED this session.** The code is seven
+(`RECONCILE_STATEMENTS`), numbered as six steps because 4a and 4b are one decision. Four places said
+six: ADR 0012, `importers/CLAUDE.md`, and two comments in `importer.py` itself. All four now say
+seven **and say why they are numbered to six**, so the count and the numbering can no longer be read
+as disagreeing. Comments only — `pytest` re-run, 64 green.
+
+**3. Session 14's flagged inconsistency is still open, unchanged.** The Breakdown tab's standing
+*"read here as refines"* banner was removed at the user's request, but root `CLAUDE.md` R5 (*"a
+display convention of that one tab, stated visibly in it"*) and `docs/requirement-breakdown-tree.md`
+§2 (*"Say so once, visibly, in the tab…"*) both still describe it as present. Confirmed by reading
+both files today. Still a product call: amend the documents, or give the wording a new home.
+
+### Verified
+
+Re-run today against the merged tree, not copied from the commit messages.
+
+| | Status |
+|---|---|
+| `mvn verify` | **green — 94 backend tests** (was 90; +4, all in `DoorsChecksTest`) |
+| `mvn -Pdocker test` | **NOT RUN — the Docker daemon is not running on this machine.** See the warning below |
+| `npm run lint` | **green** |
+| `npm test` | **green — 199 specs in 16 files** (was 177; +9 from the expandable card, the rest from the deleted-in-DOORS views) |
+| `npm run build` | **green** |
+| The importer suite | **green — 64 tests**, including the 15 in `test_reconcile_cypher.py`. Run it with `importers/.venv/Scripts/python.exe -m pytest`; bare `python` fails to import `sec_import` |
+| The graph | **untouched this session.** Nothing was written to it, no importer was run, and no browser was opened |
+
+**⚠ The container suite has not been run against any of this work.** The newest reports in
+`backend/target/surefire-reports` for the six `*FeatureTest` classes are timestamped **2026-08-09
+02:36**, which is before all three commits (14:12, 14:12 and 20:12 the same day). They still say 82,
+which is session 14's number. `ReviewFeatureTest` **was modified** by the deleted-in-DOORS commit, so
+that number is stale in the one place it matters most — the reconciliation makes its decisions in
+Cypher, and Cypher is what container tests are for. **Start Docker and run `mvn -Pdocker test` before
+trusting anything about this feature.** A trap while you are there: reading a total out of
+`surefire-reports` sums fresh and stale reports indiscriminately — 176 looks like a real number and
+is two runs added together.
+
+What the deleted-in-DOORS commit *does* record as verified, end to end against Neo4j 2026.06
+Community with the two reference exports: deleting `SRD-131` from the SRD export leaves
+`SEG-REQ-1264` and `SEG-REQ-1096` showing a link to a deleted object, a second identical import
+changes nothing, and re-importing the complete export puts `SRD-131` back in the tree. That was not
+reproduced today.
+
+### Still open, carried forward
+
+Everything under **⚠ Resume here** in the session 9 section below is unchanged and none of it was
+touched: the **TBD / TBC `Object Type` widening** (79 hits, still the user's call), the **review
+settings dialog that lost data once and was never explained** — still suspect, still *do not verify
+dialogs against live modules* — and the unbuilt `/api/v1/cypher/run`, `/checks/attribute-policy` and
+`/config/navigation` endpoints. From session 14: the dependency graph's **step 8** (list tab,
+keyboard navigation) and **§9 question 1** (draw `__child` as faint containment edges, off by
+default) are both still undecided and unbuilt.
+
+---
+
 ## State as of 2026-08-09 (session 14) — the dependency graph, and CLAUDE.md split in three
 
 Two commits, merged as **PR #1** from `feature/requirement-dependency-graph`. **`git status` is

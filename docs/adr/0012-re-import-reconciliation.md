@@ -44,10 +44,11 @@ just that one did.
 What it loses is its place in the module. It leaves the tree, it stops being listed as part of the
 module, and it keeps only the links a reviewer can act on.
 
-The decision is made in Cypher, in six set-based statements, on the back of a **run stamp**:
+The decision is made in Cypher, in seven set-based statements, on the back of a **run stamp**.
 `__importedAt` is written on every object, every `__child` and every `refersTo` this run confirms,
 and anything still carrying an older stamp when the merge phases are done is something this export
-did not mention.
+did not mention. They are numbered 1 to 6 below because step 4 is one decision taken in two
+statements — delete the annotations, then strip what is left.
 
 1. **Mark.** Objects of this module not stamped by this run get `:__DELETED`. Re-merging an object
    removes the label again, so an object undeleted in DOORS — or restored from a baseline — comes

@@ -37,14 +37,16 @@ Section numbers below are the root file's own and are deliberately unchanged —
   the requirement that went away. Re-merging the object removes the label again.
 - **The decision is a run stamp, not a diff sent over the wire.** `__importedAt` is written on
   every object, `__child` and `refersTo` a run confirms; anything still carrying an older stamp
-  is something the export did not mention. Six set-based statements follow, and **no parameter
-  grows with the module** — that is the performance contract, and
-  `tests/test_reconcile_cypher.py` asserts it. Four clauses in them are load-bearing:
+  is something the export did not mention. Seven set-based statements follow — ADR 0012 numbers them
+  1 to 6, because step 4 is one decision taken in two — and **no parameter grows with the module**,
+  which is the performance contract `tests/test_reconcile_cypher.py` asserts. Four clauses in them
+  are load-bearing:
   1. `coalesce(n.__importedAt, '')` — `NULL <> $ts` is NULL, which matches nothing;
   2. the stale-`refersTo` prune **excludes `:__DELETED`**, or the first thing deleted would be
      the very links a ghost exists to expose;
-  3. the ghost keeps `refersTo` only to other `:DOORSObject`s, **and `:__Meta`** — R2 forbids
-     leaving a note hanging off nothing;
+  3. the ghost keeps `refersTo` to other `:DOORSObject`s and **nothing else** — its annotations are
+     deleted outright and every other edge is stripped, because those are the only edges a reviewer
+     can act on;
   4. the two collection statements are **global, not module-scoped**: re-importing one module is
      what strands a ghost belonging to another.
 - **Ghosts are out of every module listing** — the review table, the statistics scan, attribute
