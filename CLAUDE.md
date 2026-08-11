@@ -465,7 +465,7 @@ Pin these in the root `pom.xml` and `package.json`. Do not float versions.
 | Neo4j Java driver | **6.x** | matches the 2026 server series |
 | JVM | **21 (LTS)** | `maven.compiler.release` and the Kotlin plugin's `jvmTarget`. Maven compiles with the JDK it runs on, so `JAVA_HOME` **is** the build JDK — `sec-env.ps1` prefers 21 for that reason |
 | Kotlin | **2.4.x** | |
-| Ktor | **3.5.x** | latest stable at time of writing (3.5.1, June 2026). Netty engine. |
+| Ktor | **3.5.x** | latest stable at time of writing (3.5.1, June 2026). Netty engine. Server-side this also carries `ktor-server-sse`, for an import run's live progress feed. **Ktor is a client here too** — JIRA is the one source whose importer runs inside the backend (ADR 0013), on the **OkHttp** engine for its connection pool, with `ktor-client-logging` beside it and `ktor-client-mock` in test scope. Deliberately **no** `ktor-client-content-negotiation`: the JIRA client decodes each body explicitly, so a host that is not JIRA answering `200 text/html` reports as a malformed response rather than as a content-type transformation error. Every artifact is `${ktor.version}` — one version, one decision |
 | Maven | **3.9.x** | `mvnw` / `mvnw.cmd` committed, `distributionType=only-script` so there is no wrapper jar to be quarantined. A real Maven install is preferred over the wrapper — see ADR 0007 |
 | Angular | **22** (released 3 June 2026) | |
 | Angular Material | **22** | matched major to Angular |
@@ -501,6 +501,32 @@ Each loads when you work in that directory; numbering is unchanged, so "§6" sti
 - §5 Backend — Ktor → `backend/CLAUDE.md`
 - §6 Frontend, §8 Visual design, §9 UI shell → `frontend/CLAUDE.md`
 - §10 Importers → `importers/CLAUDE.md`
+
+---
+
+## 6a. JIRA integration
+
+See `docs/JIRA_ISSUES_FEATURE_SPEC.md` for the importer and the Issues dynamic view, and
+**`docs/adr/0014` for the nine places the implementation departs from it** — read that before
+"fixing" something that looks inconsistent with the spec.
+
+Non-negotiables: JIRA data is stored verbatim; app-derived data hangs off `__`-prefixed
+relationships; `/rest/api/2/` is a constant in `JiraApi.kt`; **the frontend never sees the JIRA
+token**, and no endpoint returns it in any form.
+
+Two things about this source are different from every other, and both are deliberate:
+
+- **Its importer runs inside the backend** (ADR 0013). `JiraGraphWriter` is the only class that
+  writes imported JIRA data, and that structural confinement is what stands in for R1's "the
+  application never writes imported data" — a guarantee every other importer gets for free by
+  being a separate process.
+- **The import pipeline in `importer/` is source-agnostic and nothing in it may name a source.**
+  DOORS and Windchill are meant to reuse it unchanged; `importerId` is a string.
+
+**Cloud and Data Center are not the same product.** `jira.auth` selects `bearer` (Data Center, the
+default) or `basic` (Cloud — which answers a Bearer PAT with 403). Cloud has also removed
+`/rest/api/2/search`; phase 3 will need a second search implementation behind the existing
+`searchAll` contract. Details and evidence in ADR 0014.
 
 ---
 
