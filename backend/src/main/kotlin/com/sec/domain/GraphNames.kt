@@ -131,6 +131,18 @@ public object NodeLabel {
     public const val DELETED: String = "__DELETED"
 
     /**
+     * One execution of one importer — start, phases, counters, outcome.
+     *
+     * Application-owned and **deliberately not `:__Meta`**. Meta is knowledge a user contributed
+     * that no import can reproduce; this is the opposite — a machine's record of a machine's
+     * action, of interest only until the next few runs replace it, and pruned to a fixed history
+     * length rather than kept. Filing it under `:__Meta` would put a growing pile of operational
+     * records inside the one thing `MATCH (m:__Meta) DETACH DELETE m` is meant to mean: "delete
+     * everything the users wrote". See ADR 0014 for what that costs and why it is still right.
+     */
+    public const val IMPORT_RUN: String = "__ImportRun"
+
+    /**
      * The label that decides Tier 1 from Tier 2 — not the `__` prefix, which both tiers carry.
      * Owns the uniqueness constraint on [Prop.META_ID].
      */
@@ -149,6 +161,60 @@ public object NodeLabel {
     public val meta: Set<String> = setOf(
         META, NOTE, TAG, REVIEW, FLAG, CLASSIFICATION, POLICY, ATTRIBUTE_SETTING, LINK,
     )
+}
+
+/**
+ * Values of [Prop.VERSION], which every source writes and every view reads.
+ *
+ * Source-agnostic and here rather than in a source's names file, because DOORS and JIRA both write
+ * [CURRENT] and [Aliases.renderVersionValue] compares against it — three places for one string is
+ * how two of them come to disagree.
+ */
+public object ItemVersion {
+    /**
+     * The item as the source holds it now, which is everything imported so far.
+     *
+     * Deliberately **not** called a baseline: a DOORS baseline is a frozen, numbered release of a
+     * module, which this is not, and which will need the word when it arrives (R5).
+     */
+    public const val CURRENT: String = "current"
+}
+
+/**
+ * Properties of a [NodeLabel.IMPORT_RUN] node.
+ *
+ * Un-prefixed inside a `__`-labelled node, the same way a `:__Meta` payload is: the label already
+ * says whose the node is, and prefixing the payload as well would say it twice.
+ *
+ * Source-agnostic, and that is the whole point of the framework these belong to — nothing here may
+ * ever learn what a DOORS module or a JIRA project is. [IMPORTER_ID] is the only place a run says
+ * which source it was, and it says it as a string.
+ */
+public object ImportRunProp {
+    public const val IMPORTER_ID: String = "importerId"
+    public const val STATUS: String = "status"
+    public const val STARTED_AT: String = "startedAt"
+    public const val FINISHED_AT: String = "finishedAt"
+
+    /** The phase the run is in, or the one it stopped in. */
+    public const val PHASE: String = "phase"
+
+    /**
+     * What the run was asked to do, as JSON text — for JIRA, the exact JQL and page size used.
+     *
+     * JSON text rather than a property per key because the keys are the importer's business and
+     * this file must not learn them. It is read by people reconstructing what a past run did, not
+     * by a query, so nothing is lost by it being opaque to Cypher.
+     */
+    public const val PARAMS: String = "params"
+
+    /** What the run did, as JSON text, for the same reason [PARAMS] is. */
+    public const val COUNTERS: String = "counters"
+
+    public const val WARNINGS: String = "warnings"
+
+    /** Message and exception class. **Never a stack trace** — that goes to the log, not the graph. */
+    public const val ERROR: String = "error"
 }
 
 /**

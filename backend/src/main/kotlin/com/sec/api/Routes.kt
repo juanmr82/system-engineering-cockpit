@@ -2,12 +2,17 @@ package com.sec.api
 
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
+import com.sec.api.routes.importRoutes
+import com.sec.api.routes.jiraRoutes
 import com.sec.api.routes.moduleRoutes
 import com.sec.api.routes.reviewRoutes
 import com.sec.api.routes.statisticsRoutes
 import com.sec.api.routes.tableRoutes
+import com.sec.config.JiraSettings
 import com.sec.graph.GraphDriver
+import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
+import com.sec.source.jira.JiraHttpClient
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -37,9 +42,18 @@ public fun Application.configureRouting(
     metaWriter: MetaWriter,
     statisticsProjection: StatisticsProjection,
     tableProjection: DoorsTableProjection,
+    jiraSettings: JiraSettings,
+    // Null when JIRA is not configured on this deployment, which is a normal state: the routes
+    // answer 503 and /jira/health reports why. See api/routes/JiraRoutes.kt.
+    jiraClient: JiraHttpClient?,
+    // Source-agnostic: it holds whichever importers were registered, and answers the same five
+    // endpoints for each of them.
+    importRunService: ImportRunService,
 ) {
     routing {
         healthRoutes(graphDriver)
+        jiraRoutes(jiraSettings, jiraClient)
+        importRoutes(importRunService)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(
             doorsProjection,

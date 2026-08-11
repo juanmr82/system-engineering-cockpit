@@ -54,6 +54,21 @@
       <groupId>io.ktor</groupId>
       <artifactId>ktor-server-config-yaml-jvm</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-sse-jvm</artifactId>
+    </dependency>
+
+    <!-- JIRA is the one source whose importer runs in this process (ADR 0013), so the backend
+         is an HTTP client too. -->
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-okhttp-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-logging-jvm</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.neo4j.driver</groupId>
@@ -80,6 +95,10 @@
     <dependency>
       <groupId>io.ktor</groupId>
       <artifactId>ktor-server-test-host-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-client-mock-jvm</artifactId>
     </dependency>
     <dependency>
       <groupId>org.jetbrains.kotlin</groupId>

@@ -2,7 +2,9 @@ package com.sec.domain
 
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
+import com.sec.graph.cypher.ImportRunCypher
 import com.sec.graph.cypher.ItemCypher
+import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.cypher.ModuleCypher
 import com.sec.graph.cypher.RequirementCardCypher
 import com.sec.graph.cypher.ReviewCypher
@@ -13,6 +15,9 @@ import com.sec.meta.MetaSchema
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsProp
 import com.sec.source.doors.DoorsRel
+import com.sec.source.jira.JiraLabel
+import com.sec.source.jira.JiraProp
+import com.sec.source.jira.JiraRel
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
@@ -45,21 +50,25 @@ class GraphNamesTest {
 
     // -- what the Cypher is allowed to say -------------------------------------------------
 
+    // Each source contributes its own names file and nothing edits another's (R3), so adding a
+    // source is one term in each of these three sets.
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED) + NodeLabel.meta + DoorsLabel.all
+        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN) +
+            NodeLabel.meta + DoorsLabel.all + JiraLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
         Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.LINK_FROM, Rel.LINK_TO,
         DoorsRel.REFERS_TO,
-    )
+    ) + JiraRel.all
 
     private val declaredNamespaceNames: Set<String> = setOf(
         Prop.ID, Prop.NAME, Prop.VERSION, Prop.SORT_KEY, Prop.MODULE_URL, Prop.OBJECT_URL,
         Prop.TYPE_RAW, Prop.META_ID, Prop.META_KIND, Prop.SCHEMA_VERSION,
         Prop.CREATED_BY, Prop.CREATED_AT, Prop.UPDATED_BY, Prop.UPDATED_AT,
         DoorsProp.TABLE_ROW_INDEX, DoorsProp.TABLE_COLUMN_INDEX, DoorsProp.TABLE_URL,
-    ) + declaredLabels.filter { it.startsWith(Prop.NAMESPACE) } +
+    ) + JiraProp.namespaced +
+        declaredLabels.filter { it.startsWith(Prop.NAMESPACE) } +
         declaredRelationships.filter { it.startsWith(Prop.NAMESPACE) }
 
     // -- the statements ---------------------------------------------------------------------
@@ -107,6 +116,19 @@ class GraphNamesTest {
         )
         add("SystemCypher", SystemCypher.PING)
         add("TableCypher", TableCypher.MODULE_TABLES, TableCypher.RESOLVE_TABLE)
+        add(
+            "JiraCypher",
+            JiraCypher.UPSERT_ISSUE_TYPES, JiraCypher.DELETE_UNUSED_ISSUE_TYPES,
+            JiraCypher.UPSERT_FIELDS, JiraCypher.DELETE_STALE_FIELDS,
+            JiraCypher.COUNT_CATALOGUE,
+            *JiraCypher.SCHEMA.toTypedArray(),
+        )
+        add(
+            "ImportRunCypher",
+            ImportRunCypher.UPSERT, ImportRunCypher.LOAD, ImportRunCypher.HISTORY,
+            ImportRunCypher.PRUNE,
+            *ImportRunCypher.SCHEMA.toTypedArray(),
+        )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
     }
 

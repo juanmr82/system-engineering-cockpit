@@ -3,8 +3,12 @@ package com.sec
 import com.sec.api.configureProblemDetails
 import com.sec.api.configureRouting
 import com.sec.config.ConfigArgs
+import com.sec.config.ImporterSettings
+import com.sec.config.JiraSettings
 import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
+import com.sec.importer.GraphImportRunStore
+import com.sec.importer.ImportRunService
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.source.doors.BreakdownProjection
@@ -14,6 +18,9 @@ import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.RequirementCardProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
+import com.sec.source.jira.JiraGraphWriter
+import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraImporter
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -24,6 +31,7 @@ import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.sse.SSE
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.UUID
@@ -49,14 +57,36 @@ public fun Application.module() {
     graphDriver.verifyConnectivity()
     logger.info { "Connected to ${appConfig.neo4j.uri}, database '${appConfig.neo4j.database}'" }
 
-    runBlocking { MetaSchema.apply(graphDriver) }
+    val importRunStore = GraphImportRunStore(graphDriver)
+    runBlocking {
+        MetaSchema.apply(graphDriver)
+        // The framework's own storage, so it is applied at startup like MetaSchema and unlike the
+        // JIRA schema — that one belongs to a run, this one is present in every deployment.
+        importRunStore.applySchema()
+    }
 
-    configureApp(graphDriver)
+    configureApp(graphDriver, appConfig.jira, importerSettings = appConfig.importer, importRunStore = importRunStore)
 }
 
 // Everything that does not need a live database, so the HTTP surface — plugins, error mapping,
 // routing — can be exercised in a test without Docker. module() adds the startup steps that do.
-internal fun Application.configureApp(graphDriver: GraphDriver) {
+//
+// jiraSettings defaults to unconfigured so a test that only cares about the HTTP surface says
+// nothing about JIRA and gets the same behaviour a deployment without a token gets.
+internal fun Application.configureApp(
+    graphDriver: GraphDriver,
+    jiraSettings: JiraSettings = JiraSettings(host = "", token = ""),
+    // Built from the settings unless a caller supplies one — which is how a test serves the
+    // sample exports over a MockEngine without this file ever naming an engine type. One client
+    // for the process lifetime, for the same reason there is one Driver: the OkHttp engine's
+    // value is its connection pool, and a client per request discards it.
+    jiraClient: JiraHttpClient? =
+        if (jiraSettings.isConfigured) JiraHttpClient(jiraSettings) else null,
+    importerSettings: ImporterSettings = ImporterSettings(),
+    // Defaulted so a test of the HTTP surface gets a store that talks to the same driver every
+    // other collaborator here does, and a test with no database can pass its own.
+    importRunStore: com.sec.importer.ImportRunStore = GraphImportRunStore(graphDriver),
+) {
     install(ContentNegotiation) {
         // encodeDefaults: a field whose value equals its declared default is still part of the
         // contract, and kotlinx omits it unless told otherwise. That silently dropped
@@ -73,6 +103,9 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     install(CallLogging) {
         callIdMdc("callId")
     }
+    // An import's live progress feed. The plugin itself is configuration-free; everything about
+    // the stream — the heartbeat, the throttle, the terminal event — is in ImportRoutes.
+    install(SSE)
     configureProblemDetails()
 
     // Collaborators are constructed once here, not inside routing, so routing owns no object
@@ -88,6 +121,22 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
 
+    // One service for every source. DOORS and Windchill register here too when their importers
+    // move in-process; today JIRA is the only one, because it is the only one that can run inside
+    // this JVM at all (ADR 0013).
+    val importRunService = ImportRunService(importRunStore, importerSettings.runHistoryLimit)
+    monitor.subscribe(ApplicationStopping) { importRunService.close() }
+
+    if (jiraClient != null) {
+        logger.info { "JIRA integration enabled for ${jiraSettings.host}" }
+        monitor.subscribe(ApplicationStopping) { jiraClient.close() }
+        importRunService.register(
+            JiraImporter(jiraSettings, jiraClient, JiraGraphWriter(graphDriver, jiraSettings.host)),
+        )
+    } else {
+        logger.info { "JIRA integration is not configured; /api/v1/jira routes will report so" }
+    }
+
     configureRouting(
         graphDriver,
         doorsProjection,
@@ -97,5 +146,8 @@ internal fun Application.configureApp(graphDriver: GraphDriver) {
         metaWriter,
         statisticsProjection,
         tableProjection,
+        jiraSettings,
+        jiraClient,
+        importRunService,
     )
 }

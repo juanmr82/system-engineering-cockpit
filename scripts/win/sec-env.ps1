@@ -317,6 +317,28 @@ if ($env:SEC_NEO4J_USER -and $env:SEC_NEO4J_PASSWORD) {
 }
 
 # ---------------------------------------------------------------------------------------
+# JIRA. Unlike Neo4j, all four are OPTIONAL: application.yaml defaults them to empty, an
+# empty host means "not configured on this deployment", and the backend starts anyway with
+# /api/v1/jira/** answering 503 and saying so. A cockpit has four other sources.
+#
+# SEC_JIRA_AUTH picks how the credential is sent, and the two products disagree:
+#   bearer  Data Center / Server - a personal access token. The default.
+#   basic   Cloud (*.atlassian.net) - an API token as base64(email:token). Needs SEC_JIRA_EMAIL.
+# Cloud answers a Bearer PAT with 403, so this is configuration, never a retry after a refusal.
+# ---------------------------------------------------------------------------------------
+if ($SecJiraHost)  { $env:SEC_JIRA_HOST  = $SecJiraHost }
+if ($SecJiraToken) { $env:SEC_JIRA_TOKEN = $SecJiraToken }
+if ($SecJiraAuth)  { $env:SEC_JIRA_AUTH  = $SecJiraAuth }
+if ($SecJiraEmail) { $env:SEC_JIRA_EMAIL = $SecJiraEmail }
+
+if ($env:SEC_JIRA_HOST -and $env:SEC_JIRA_TOKEN) {
+    $scheme = if ($env:SEC_JIRA_AUTH) { $env:SEC_JIRA_AUTH } else { 'bearer' }
+    Write-SecLine 'JIRA' "$env:SEC_JIRA_HOST ($scheme, token set)" 'Green'
+} else {
+    Write-SecLine 'JIRA' 'not configured - /api/v1/jira/** will report so' 'Yellow'
+}
+
+# ---------------------------------------------------------------------------------------
 # Proxy. Three toolchains, three ways of being told the same thing.
 #
 #   Maven   - settings.xml <proxies>, which is the ONLY mechanism its resolver reads reliably.
