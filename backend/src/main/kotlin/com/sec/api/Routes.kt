@@ -13,6 +13,7 @@ import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
 import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -46,13 +47,17 @@ public fun Application.configureRouting(
     // Null when JIRA is not configured on this deployment, which is a normal state: the routes
     // answer 503 and /jira/health reports why. See api/routes/JiraRoutes.kt.
     jiraClient: JiraHttpClient?,
+    // Never null, unlike the client: the configured project list lives in the graph and is readable
+    // and editable whether or not this deployment has a JIRA host, which is what lets an operator
+    // set the two up in either order.
+    jiraSettingsStore: JiraSettingsStore,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
 ) {
     routing {
         healthRoutes(graphDriver)
-        jiraRoutes(jiraSettings, jiraClient)
+        jiraRoutes(jiraSettings, jiraClient, jiraSettingsStore)
         importRoutes(importRunService)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(

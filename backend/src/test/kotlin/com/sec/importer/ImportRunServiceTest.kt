@@ -546,6 +546,59 @@ class ImportRunServiceTest {
         }
     }
 
+    /**
+     * Parameters accumulate across phases rather than replacing each other.
+     *
+     * A job learns what it was asked to do in pieces — JIRA settles the host and the server's time
+     * zone in preflight and can only build its JQL once the project list has been read — so a
+     * replacing `params` leaves the run resource describing whichever phase spoke last. That is
+     * exactly what happened on the first live run of phase 3: the JQL arrived and the host, the
+     * time zone and the deployment vanished, and a run resource that cannot say what it queried is
+     * one nobody can reproduce (spec §11.2).
+     */
+    @Test
+    fun `parameters recorded in different phases accumulate`() = runBlocking {
+        val service = ImportRunService(RecordingStore())
+        service.register(
+            TestJob(phases = threePhases) { context ->
+                context.phase("one")
+                context.params(mapOf("host" to "https://jira.example.com", "pageSize" to "100"))
+                context.phase("two")
+                context.params(mapOf("jql" to "project in (\"SCRUM\")"))
+            },
+        )
+
+        val run = service.awaitFinish(service.startOrFail())
+
+        assertEquals(
+            mapOf(
+                "host" to "https://jira.example.com",
+                "pageSize" to "100",
+                "jql" to "project in (\"SCRUM\")",
+            ),
+            run.params,
+        )
+        service.close()
+    }
+
+    /** Same key twice is the later value — a phase correcting itself, not two facts. */
+    @Test
+    fun `a parameter recorded twice keeps the later value`() = runBlocking {
+        val service = ImportRunService(RecordingStore())
+        service.register(
+            TestJob(phases = onePhase) { context ->
+                context.phase("one")
+                context.params(mapOf("pageSize" to "100"))
+                context.params(mapOf("pageSize" to "50"))
+            },
+        )
+
+        val run = service.awaitFinish(service.startOrFail())
+
+        assertEquals(mapOf("pageSize" to "50"), run.params)
+        service.close()
+    }
+
     // -- doubles ---------------------------------------------------------------------------------
 
     private class TestJob(

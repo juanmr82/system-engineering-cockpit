@@ -121,6 +121,10 @@ class GraphNamesTest {
             JiraCypher.UPSERT_ISSUE_TYPES, JiraCypher.DELETE_UNUSED_ISSUE_TYPES,
             JiraCypher.UPSERT_FIELDS, JiraCypher.DELETE_STALE_FIELDS,
             JiraCypher.COUNT_CATALOGUE,
+            JiraCypher.UPSERT_ENTITIES, JiraCypher.UPSERT_ISSUES,
+            JiraCypher.UPSERT_PROJECTIONS, JiraCypher.MERGE_PROMOTED,
+            JiraCypher.PRUNE_PROMOTED, JiraCypher.COUNT_ISSUES,
+            JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
             *JiraCypher.SCHEMA.toTypedArray(),
         )
         add(

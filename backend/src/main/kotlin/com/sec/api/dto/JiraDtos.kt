@@ -28,3 +28,31 @@ public data class JiraHealthDto(
     /** The configured host, so the page can show *which* JIRA. Never a secret; blank when unset. */
     public val host: String,
 )
+
+/**
+ * The configured project keys, and the query they produce.
+ *
+ * [jql] is a **preview** with the snapshot bound left as a placeholder, not the query any run
+ * executed — inventing a timestamp here would read as a promise about *when*. Spec §13.5 calls the
+ * preview the best debugging aid in the feature, because when an import returns something
+ * unexpected the first question is always what was actually asked for.
+ *
+ * Null when no projects are configured: there is no query to preview, and an empty string would
+ * render as one.
+ */
+@Serializable
+public data class JiraProjectSettingsDto(
+    public val projectKeys: List<String>,
+    public val jql: String? = null,
+)
+
+/**
+ * A replacement project list.
+ *
+ * Whole-list replacement rather than add/remove, because the order is part of the value and a merge
+ * would need a rule for where a new key lands. **This is the injection boundary** (spec §8): the
+ * keys are user-editable text on their way into a query language, so they are validated against a
+ * closed pattern and rejected — never escaped, never quoted into safety.
+ */
+@Serializable
+public data class JiraProjectSettingsRequest(public val projectKeys: List<String> = emptyList())

@@ -52,11 +52,14 @@ public object JiraJql {
      *   would silently move the snapshot boundary by hours and either miss recent issues or admit
      *   ones created after the run began.
      */
-    public fun build(
-        projectKeys: List<String>,
-        snapshotAt: Instant,
-        zone: ZoneId,
-    ): Result<String> {
+    /**
+     * The injection boundary, in one place so every caller crosses it the same way.
+     *
+     * Public because the settings write path has to reject a bad key *before* it is stored, not
+     * only before it is interpolated — otherwise a key that fails validation lives in the graph and
+     * breaks every future import instead of the one request that introduced it.
+     */
+    public fun validate(projectKeys: List<String>): Result<List<String>> {
         // Never fall back to an unbounded query over the whole instance. On a real instance that
         // is hundreds of thousands of issues, and the sweep in phase 5 would then treat every
         // project as configured.
@@ -64,6 +67,16 @@ public object JiraJql {
 
         val invalid = projectKeys.filterNot { PROJECT_KEY.matches(it) }
         if (invalid.isNotEmpty()) return Result.failure(JiraFailure.InvalidProjectKey(invalid))
+
+        return Result.success(projectKeys)
+    }
+
+    public fun build(
+        projectKeys: List<String>,
+        snapshotAt: Instant,
+        zone: ZoneId,
+    ): Result<String> {
+        validate(projectKeys).getOrElse { return Result.failure(it) }
 
         val keys = projectKeys.joinToString(",") { "\"$it\"" }
         val bound = JQL_INSTANT.format(snapshotAt.atZone(zone))
@@ -80,10 +93,7 @@ public object JiraJql {
      * unexpected, the first question is always what was actually asked for.
      */
     public fun preview(projectKeys: List<String>): Result<String> {
-        if (projectKeys.isEmpty()) return Result.failure(JiraFailure.NoProjectsConfigured())
-
-        val invalid = projectKeys.filterNot { PROJECT_KEY.matches(it) }
-        if (invalid.isNotEmpty()) return Result.failure(JiraFailure.InvalidProjectKey(invalid))
+        validate(projectKeys).getOrElse { return Result.failure(it) }
 
         val keys = projectKeys.joinToString(",") { "\"$it\"" }
         return Result.success(

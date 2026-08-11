@@ -377,7 +377,11 @@ public class ImportRunService(
             }
 
             override suspend fun params(params: Map<String, String>) {
-                state.update { it.copy(params = params) }
+                // Merged, not replaced. A job learns what it was asked to do across several phases —
+                // JIRA settles the host and the server's time zone in preflight and the JQL only
+                // once the project list is read — so replacing would leave the run resource
+                // describing whichever phase spoke last. Same key twice is the later value.
+                state.update { it.copy(params = it.params + params) }
             }
 
             override suspend fun ensureActive() {

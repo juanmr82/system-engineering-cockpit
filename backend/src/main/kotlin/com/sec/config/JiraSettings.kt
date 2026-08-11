@@ -29,6 +29,34 @@ public enum class JiraAuthScheme {
 }
 
 /**
+ * Which JIRA product the host runs, because the two have removed each other's issue search.
+ *
+ * Data Center keeps the offset-paginated `/search`. Cloud answers it **410 Gone** and offers
+ * `/search/jql`, which pages by opaque cursor and reports no total at all. That is not a difference
+ * a parameter can paper over — it is a different pagination protocol — so it selects one of two
+ * search implementations behind a single contract (ADR 0014).
+ *
+ * ## Why this is not derived from [JiraAuthScheme]
+ *
+ * ADR 0014 originally said the auth scheme would choose the search path, on the reasoning that
+ * Cloud is the only thing wanting `basic`. That is wrong in the direction that matters: **Data
+ * Center accepts Basic auth too**, so `auth: basic` on a Data Center host would silently select
+ * Cloud's search and fail on every import with a 404 that names nothing. Two independent facts get
+ * two settings; the ADR is corrected rather than followed.
+ *
+ * The two *do* covary in practice, so a mismatch is the likeliest misconfiguration here — which is
+ * why preflight looks at what `/myself` returned and says so, instead of leaving it to a 410 in the
+ * middle of the longest phase.
+ */
+public enum class JiraDeployment {
+    /** Server / Data Center: `/search`, `startAt` + `total`. The default and the spec's target. */
+    DATA_CENTER,
+
+    /** Cloud: `/search/jql`, `nextPageToken` + `isLast`, no total. */
+    CLOUD,
+}
+
+/**
  * Everything the backend needs to talk to one JIRA instance.
  *
  * JIRA is the only source whose importer runs inside this process (ADR 0013), so unlike DOORS —
@@ -60,6 +88,14 @@ public data class JiraSettings(
     public val authScheme: JiraAuthScheme = JiraAuthScheme.BEARER,
     /** The Atlassian account the API token belongs to. Used by [JiraAuthScheme.BASIC] only. */
     public val email: String = "",
+    /**
+     * Which product this host runs — it decides how issues are paged, and nothing else.
+     *
+     * Defaulted to [JiraDeployment.DATA_CENTER] for the same reason the auth scheme defaults to
+     * Bearer: it is the spec's target and the reference instance. Deliberately independent of
+     * [authScheme]; see [JiraDeployment].
+     */
+    public val deployment: JiraDeployment = JiraDeployment.DATA_CENTER,
     /**
      * What `/search` is *asked* for. What it *gives* is the stride, and the two differ: the server
      * silently clamps this to `jira.search.views.default.max`. Re-read `maxResults` from every
@@ -100,7 +136,7 @@ public data class JiraSettings(
 
     // A data class prints every property, and a config object reaches a log line eventually.
     override fun toString(): String =
-        "JiraSettings(host=$host, auth=$authScheme, email=$email, " +
+        "JiraSettings(host=$host, deployment=$deployment, auth=$authScheme, email=$email, " +
             "token=${if (token.isBlank()) "<unset>" else "<redacted>"}, " +
             "pageSize=$pageSize, maxRetries=$maxRetries)"
 
@@ -148,6 +184,13 @@ public fun loadJiraSettings(config: ApplicationConfig): JiraSettings {
             else -> JiraAuthScheme.BEARER
         },
         email = jira.stringOrEmpty("email").trim(),
+        // Same forgiving parse as `auth`, and the same reason: a typo should cost a legible failure
+        // on the first search, not a service that refuses to boot. `server` is accepted beside
+        // `datacenter` because Atlassian renamed the product and deployment files outlive renames.
+        deployment = when (jira.stringOrEmpty("deployment").trim().lowercase()) {
+            "cloud" -> JiraDeployment.CLOUD
+            else -> JiraDeployment.DATA_CENTER
+        },
         pageSize = jira.intOr("pageSize", JiraSettings.DEFAULT_PAGE_SIZE),
         requestTimeout = jira.millisOr("requestTimeoutMs", JiraSettings.DEFAULT_REQUEST_TIMEOUT),
         socketTimeout = jira.millisOr("socketTimeoutMs", JiraSettings.DEFAULT_SOCKET_TIMEOUT),

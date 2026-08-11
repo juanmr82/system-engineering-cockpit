@@ -60,4 +60,12 @@ public object ProblemType {
 
     /** JIRA is configured and unreachable, or answered 5xx after every retry. */
     public const val JIRA_UNREACHABLE: String = "${PREFIX}jira-unreachable"
+
+    /**
+     * The request's own content was rejected — a project key that is not one, an empty list.
+     *
+     * Distinct from the JIRA types above because nothing was sent anywhere: the caller can fix this
+     * without knowing anything about the state of a remote system.
+     */
+    public const val VALIDATION: String = "${PREFIX}validation"
 }

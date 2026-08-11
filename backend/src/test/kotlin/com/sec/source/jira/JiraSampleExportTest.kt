@@ -212,7 +212,7 @@ class JiraSampleExportTest {
     fun `the client reads the real export end to end`() {
         val client = clientServing("JIRA.json")
 
-        val pages = mutableListOf<JiraSearchPage>()
+        val pages = mutableListOf<JiraIssuePage>()
         // One page in the fixture, and `startAt` advances past `total` only after 16 of them, so
         // the loop is capped here rather than fed 15 more copies of the same page.
         val summary = runBlocking { client.searchAll(JQL, maxPages = 1) { pages += it } }

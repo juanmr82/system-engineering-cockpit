@@ -1,9 +1,15 @@
 package com.sec.source.jira
 
+import com.sec.config.JiraDeployment
 import com.sec.config.JiraSettings
 import com.sec.importer.ImportContext
 import com.sec.importer.ImportJob
 import com.sec.importer.ImportPhase
+import com.sec.source.jira.mapping.IssueMapper
+import com.sec.source.jira.mapping.JiraFieldCatalogue
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * The JIRA import, as a job the generic framework runs (spec §12).
@@ -31,6 +37,7 @@ public class JiraImporter(
     private val settings: JiraSettings,
     private val client: JiraHttpClient,
     private val writer: JiraGraphWriter,
+    private val settingsStore: JiraSettingsStore,
 ) : ImportJob {
 
     override val importerId: String = ID
@@ -41,12 +48,33 @@ public class JiraImporter(
         ImportPhase(PREFLIGHT, "Checking configuration and connectivity", weight = 2),
         ImportPhase(ISSUE_TYPES, "Importing issue types", weight = 3),
         ImportPhase(FIELDS, "Importing field definitions", weight = 5),
+        ImportPhase(ISSUES, "Importing issues", weight = 70),
     )
 
     override suspend fun run(context: ImportContext) {
-        preflight(context)
+        val state = RunState()
+
+        preflight(context, state)
         importIssueTypes(context)
-        importFieldDefinitions(context)
+        importFieldDefinitions(context, state)
+        importIssues(context, state)
+    }
+
+    /**
+     * What one run learns in an early phase and needs in a later one.
+     *
+     * A local in [run] rather than a field on this class, and that is not fussiness: the importer is
+     * registered once and lives for the process, so a field would be shared by every run of it. The
+     * service's per-importer mutex means two JIRA runs cannot overlap *today*, which makes a field
+     * work by coincidence — and coincidences are what break when the mutex is later scoped per
+     * project, or when a second instance is registered.
+     */
+    private class RunState {
+        /** The **JIRA server's** zone, from `/myself`. The JQL's snapshot bound is read in it. */
+        var zone: ZoneId = ZoneOffset.UTC
+
+        /** Phase 2's catalogue, kept for phase 3 — see [JiraFieldCatalogue] on why it is advisory. */
+        var catalogue: JiraFieldCatalogue = JiraFieldCatalogue.EMPTY
     }
 
     /**
@@ -57,11 +85,11 @@ public class JiraImporter(
      * shift the snapshot boundary by hours whenever the server and the service sit in different
      * zones (spec §8).
      *
-     * The project-key check spec §12 puts here is **not** here yet, and that is correct rather than
-     * an omission: nothing in these three phases queries issues, so nothing needs a project list.
-     * It joins this phase with the phase that needs it.
+     * Project keys are checked here now that phase 3 exists, and **before** anything is written:
+     * spec §8 refuses an unbounded import outright, so finding out after the schema and two
+     * catalogues have been written would be finding out late.
      */
-    private suspend fun preflight(context: ImportContext) {
+    private suspend fun preflight(context: ImportContext, state: RunState) {
         context.phase(PREFLIGHT)
 
         if (!settings.isConfigured) throw JiraFailure.NotConfigured()
@@ -69,12 +97,27 @@ public class JiraImporter(
         val me = client.myself().getOrElse { throw it }
         context.log("Connected to ${settings.host} as ${me.displayName.ifBlank { me.name }}")
 
+        warnOnDeploymentMismatch(context, me)
+
+        // Not the JVM's zone. The JQL bound is compared against JIRA's own clock, so a service in
+        // another zone would move the snapshot boundary by hours and silently admit or miss issues.
+        // An unparseable zone is JIRA's problem to have, not a reason to fail: UTC and a warning.
+        state.zone = runCatching { ZoneId.of(me.timeZone) }.getOrElse {
+            context.warn("JIRA reported a time zone this server does not recognise (${me.timeZone}); using UTC.")
+            ZoneOffset.UTC
+        }
+
+        val projectKeys = settingsStore.projectKeys()
+        JiraJql.validate(projectKeys).getOrElse { throw it }
+        context.log("Configured projects: ${projectKeys.joinToString(", ")}")
+
         context.params(
             mapOf(
                 "host" to settings.host,
                 // The server's zone, recorded because a run that cannot say which midnight it
                 // meant is a run nobody can reproduce. Never the token, in any form.
                 "timeZone" to me.timeZone,
+                "deployment" to settings.deployment.name,
                 "pageSize" to settings.pageSize.toString(),
             ),
         )
@@ -108,11 +151,14 @@ public class JiraImporter(
      * are excluded from the column picker (spec §13.3) and that exclusion is a *read-path* decision;
      * the catalogue stores what JIRA returned.
      */
-    private suspend fun importFieldDefinitions(context: ImportContext) {
+    private suspend fun importFieldDefinitions(context: ImportContext, state: RunState) {
         context.phase(FIELDS)
         context.ensureActive()
 
         val fields = client.fieldDefinitions().getOrElse { throw it }
+        // Kept in memory for phase 3. The alternative — a lookup per field per issue — is ~900 000
+        // round trips to answer a question whose answer did not change during the run.
+        state.catalogue = JiraFieldCatalogue(fields)
         val written = writer.upsertFieldDefinitions(fields)
         context.setCount(Counter.FIELDS_SEEN, written.toLong())
         context.progress(written, written)
@@ -131,10 +177,117 @@ public class JiraImporter(
         }
     }
 
+    /**
+     * Phase 3 — the issues. Seventy of the hundred units of work, and every hard case in the design.
+     *
+     * ## What it does per page
+     *
+     * Map, then write, then forget. A page is ~7 MB on a real instance, so nothing accumulates
+     * except counters and a set of warnings — the issues themselves are never all in memory at once,
+     * which is what lets this scale past the reference instance's 784.
+     *
+     * ## Progress, and why the denominator may be absent
+     *
+     * Data Center reports `total` on every page. Cloud reports nothing at all and its approximate
+     * count is fetched once, up front, best-effort. So the denominator here is *whatever the product
+     * would say*, and when it says nothing the phase still reports a rising count against a total
+     * that equals it — a bar that advances honestly rather than one that pretends to know how far
+     * it has to go.
+     *
+     * ## Unknown fields are collapsed
+     *
+     * The mapper reports a field the catalogue has never heard of once per *issue*; a field added
+     * between the `/field` call and the search would otherwise produce 784 identical warnings. They
+     * are collected into a set and reported once per field id at the end, which is the difference
+     * between a finding and a wall.
+     */
+    private suspend fun importIssues(context: ImportContext, state: RunState) {
+        context.phase(ISSUES)
+        context.ensureActive()
+
+        val projectKeys = settingsStore.projectKeys()
+        val jql = JiraJql.build(projectKeys, Instant.now(), state.zone).getOrElse { throw it }
+
+        // On the run record, because when an import returns something unexpected the first question
+        // is always what was actually asked for (spec §8).
+        context.params(mapOf("jql" to jql))
+        context.log("Searching: $jql")
+
+        val mapper = IssueMapper(state.catalogue)
+        val unknownFields = sortedSetOf<String>()
+        var issuesSeen = 0
+
+        val summary = client.searchAll(jql) { page ->
+            // Between pages, not inside one: a page that has been mapped and written is the
+            // smallest unit that leaves the graph in a state the next run can complete.
+            context.ensureActive()
+
+            val mapped = page.issues.map(mapper::map)
+            writer.writeIssues(mapped)
+
+            mapped.forEach { unknownFields += it.warnings }
+            issuesSeen += mapped.size
+
+            context.setCount(Counter.ISSUES_SEEN, issuesSeen.toLong())
+            context.progress(issuesSeen, page.estimatedTotal ?: issuesSeen)
+        }.getOrElse { throw it }
+
+        // JIRA's own warnings about the query — a clause that matched nothing, most often. Passed
+        // through in JIRA's words because it knows which clause it disliked and this does not.
+        summary.warnings.forEach { context.warn(it) }
+
+        if (unknownFields.isNotEmpty()) {
+            context.warn(
+                "${unknownFields.size} field(s) were not in the catalogue and were imported anyway: " +
+                    unknownFields.joinToString(", ", limit = UNKNOWN_FIELDS_LISTED),
+            )
+        }
+
+        val counts = writer.issueCounts()
+        if (counts.issues != counts.projections) {
+            context.warn(
+                "${counts.issues} issues but ${counts.projections} display projections — " +
+                    "some issues have no projection, and their sortable columns will be empty.",
+            )
+        }
+
+        context.log("$issuesSeen issues over ${summary.pages} page(s)")
+    }
+
+    /**
+     * Say so when the configured product disagrees with the one that answered.
+     *
+     * A warning rather than a failure, and it runs in preflight rather than at the first search,
+     * because the failure it prevents is otherwise a 410 or a 404 arriving after the schema and two
+     * catalogues have been written — at the start of the phase that takes all the time.
+     *
+     * The signal is exact rather than heuristic: Cloud identifies a user by `accountId` and sends no
+     * `name`, Data Center does precisely the reverse. Verified against one of each.
+     */
+    private suspend fun warnOnDeploymentMismatch(context: ImportContext, me: JiraMyself) {
+        val looksLikeCloud = me.accountId.isNotBlank()
+        val looksLikeDataCenter = me.name.isNotBlank() || me.key.isNotBlank()
+
+        when {
+            settings.deployment == JiraDeployment.DATA_CENTER && looksLikeCloud && !looksLikeDataCenter ->
+                context.warn(
+                    "This host answers like JIRA Cloud, but jira.deployment is datacenter. " +
+                        "Importing issues will fail — set jira.deployment: cloud.",
+                )
+
+            settings.deployment == JiraDeployment.CLOUD && looksLikeDataCenter && !looksLikeCloud ->
+                context.warn(
+                    "This host answers like JIRA Data Center, but jira.deployment is cloud. " +
+                        "Importing issues will fail — set jira.deployment: datacenter.",
+                )
+        }
+    }
+
     /** Counter names for this importer. Not graph names — they are keys inside a JSON text blob. */
     public object Counter {
         public const val ISSUE_TYPES_SEEN: String = "issueTypesSeen"
         public const val FIELDS_SEEN: String = "fieldsSeen"
+        public const val ISSUES_SEEN: String = "issuesSeen"
     }
 
     public companion object {
@@ -144,5 +297,9 @@ public class JiraImporter(
         public const val PREFLIGHT: String = "preflight"
         public const val ISSUE_TYPES: String = "issuetypes"
         public const val FIELDS: String = "fields"
+        public const val ISSUES: String = "issues"
+
+        /** How many unknown field ids a warning names before it says "and n more". */
+        private const val UNKNOWN_FIELDS_LISTED = 10
     }
 }

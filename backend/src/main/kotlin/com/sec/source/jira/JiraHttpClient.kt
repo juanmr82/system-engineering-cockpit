@@ -1,5 +1,6 @@
 package com.sec.source.jira
 
+import com.sec.config.JiraDeployment
 import com.sec.config.JiraSettings
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
@@ -15,10 +16,14 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.decodeFromString
@@ -111,7 +116,12 @@ public class JiraHttpClient private constructor(
     /** The whole field catalogue — 1 171 definitions on the reference instance, in one response. */
     public suspend fun fieldDefinitions(): Result<List<JiraFieldDefinition>> = fetch(JiraApi.FIELD)
 
-    /** One page of `/search`. Public for tests and for callers that want to drive paging themselves. */
+    /**
+     * One page of Data Center's `/search`.
+     *
+     * Public for tests and for callers that want to drive paging themselves. **Cloud answers this
+     * `410 Gone`** — see [searchPageCloud].
+     */
     public suspend fun searchPage(jql: String, startAt: Int, maxResults: Int): Result<JiraSearchPage> =
         fetch(
             JiraApi.SEARCH,
@@ -127,11 +137,61 @@ public class JiraHttpClient private constructor(
         )
 
     /**
+     * One page of Cloud's `/search/jql`.
+     *
+     * [pageToken] is null for the first page and the previous response's `nextPageToken` after
+     * that. `maxResults` is still advisory here, but unlike Data Center it does not have to be
+     * re-read: the cursor, not an offset, is what advances the loop, so a clamped page size costs
+     * an extra round trip and cannot skip anything.
+     */
+    public suspend fun searchPageCloud(
+        jql: String,
+        pageToken: String?,
+        maxResults: Int,
+    ): Result<JiraCloudSearchPage> =
+        fetch(
+            JiraApi.SEARCH_JQL,
+            buildList {
+                add("jql" to jql)
+                add("maxResults" to maxResults.toString())
+                add("fields" to ALL_FIELDS)
+                pageToken?.let { add("nextPageToken" to it) }
+            },
+        )
+
+    /**
+     * Roughly how many issues a query matches. **Cloud only**, and the one request with a body.
+     *
+     * Exists because Cloud's search pages carry no total, so this is the only denominator a
+     * progress bar can have. Its result is advisory in the strongest sense — the loop never reads
+     * it — and a failure here is swallowed by the caller rather than failing an import.
+     */
+    public suspend fun approximateCount(jql: String): Result<JiraApproximateCount> =
+        post(JiraApi.APPROXIMATE_COUNT, JiraApproximateCountRequest(jql))
+
+    /**
      * Every page of a search, in order, handed to [onPage] as it arrives.
      *
      * A callback rather than a returned list: a full import is ~7 MB per page and holding all of
      * them would be the largest allocation in the process for no reason. The caller writes each
      * page and forgets it, which is also what lets it emit progress and stay cancellable.
+     *
+     * **Two implementations, one contract** (ADR 0014). Data Center pages by offset and Cloud by
+     * cursor, and [com.sec.config.JiraDeployment] decides which — the single place in the codebase
+     * that branches on the product. Everything on the far side of [onPage] sees a [JiraIssuePage]
+     * and stays unaware there was a choice.
+     */
+    public suspend fun searchAll(
+        jql: String,
+        maxPages: Int = MAX_PAGES,
+        onPage: suspend (JiraIssuePage) -> Unit,
+    ): Result<JiraSearchSummary> = when (settings.deployment) {
+        JiraDeployment.DATA_CENTER -> searchByOffset(jql, maxPages, onPage)
+        JiraDeployment.CLOUD -> searchByCursor(jql, maxPages, onPage)
+    }
+
+    /**
+     * Data Center: `startAt` walks the result set, `total` says how big it is.
      *
      * ## The stride is the response's, never the request's
      *
@@ -148,10 +208,10 @@ public class JiraHttpClient private constructor(
      * modification. [maxPages] is the backstop against a server that ignores `startAt` — without
      * it, one misbehaving instance is an infinite loop holding a run open.
      */
-    public suspend fun searchAll(
+    private suspend fun searchByOffset(
         jql: String,
-        maxPages: Int = MAX_PAGES,
-        onPage: suspend (JiraSearchPage) -> Unit,
+        maxPages: Int,
+        onPage: suspend (JiraIssuePage) -> Unit,
     ): Result<JiraSearchSummary> {
         var startAt = 0
         var pages = 0
@@ -167,7 +227,7 @@ public class JiraHttpClient private constructor(
             // Trusted over `total`: an empty page is a fact, and `total` is an estimate.
             if (page.issues.isEmpty()) break
 
-            onPage(page)
+            onPage(JiraIssuePage(page.issues, startAt = page.startAt, estimatedTotal = page.total))
 
             pages++
             issuesSeen += page.issues.size
@@ -180,6 +240,65 @@ public class JiraHttpClient private constructor(
             startAt += stride
 
             if (startAt >= page.total) break
+        }
+
+        return Result.success(JiraSearchSummary(issuesSeen = issuesSeen, pages = pages, warnings = warnings))
+    }
+
+    /**
+     * Cloud: an opaque cursor walks the result set, and nothing says how big it is.
+     *
+     * ## Termination, which is genuinely better here
+     *
+     * `isLast` is authoritative in a way `total` never was. A cursor names a position in a snapshot
+     * the server is holding, so there is no equivalent of Data Center's "the estimate moved under
+     * us". The loop stops on `isLast`, or on a missing `nextPageToken`, and treats either alone as
+     * enough — a page that says "not last" but offers no way forward is a malformed page, not an
+     * instruction to guess.
+     *
+     * ## The two ways a cursor loop can hang, both closed
+     *
+     * A server repeating the *same* cursor would re-read one page forever, so an unchanged token
+     * ends the run as [JiraFailure.TooManyPages] rather than spinning. A server issuing endlessly
+     * *fresh* cursors is caught by [maxPages], which is why the page counter increments on every
+     * response including empty ones.
+     *
+     * The total comes from `approximate-count` before the first page and is deliberately
+     * best-effort: a failure there leaves progress without a denominator, which is a worse progress
+     * bar and a perfectly good import.
+     */
+    private suspend fun searchByCursor(
+        jql: String,
+        maxPages: Int,
+        onPage: suspend (JiraIssuePage) -> Unit,
+    ): Result<JiraSearchSummary> {
+        val estimatedTotal = approximateCount(jql).getOrNull()?.count
+
+        var token: String? = null
+        var pages = 0
+        var issuesSeen = 0
+        val warnings = mutableListOf<String>()
+
+        while (true) {
+            if (pages >= maxPages) return Result.failure(JiraFailure.TooManyPages(pages))
+
+            val page = searchPageCloud(jql, token, settings.pageSize)
+                .getOrElse { return Result.failure(it) }
+
+            // Counted before the emptiness check, so an instance answering with empty pages and
+            // fresh cursors forever still meets the page cap.
+            pages++
+            page.warningMessages?.let { warnings += it }
+
+            if (page.issues.isNotEmpty()) {
+                onPage(JiraIssuePage(page.issues, startAt = issuesSeen, estimatedTotal = estimatedTotal))
+                issuesSeen += page.issues.size
+            }
+
+            val next = page.nextPageToken?.takeIf { it.isNotBlank() }
+            if (page.isLast || next == null) break
+            if (next == token) return Result.failure(JiraFailure.TooManyPages(pages))
+            token = next
         }
 
         return Result.success(JiraSearchSummary(issuesSeen = issuesSeen, pages = pages, warnings = warnings))
@@ -199,12 +318,34 @@ public class JiraHttpClient private constructor(
     private suspend inline fun <reified T> fetch(
         path: String,
         params: List<Pair<String, String>> = emptyList(),
+    ): Result<T> = request(path) {
+        client.get(settings.url(path)) { params.forEach { (name, value) -> parameter(name, value) } }
+    }
+
+    /**
+     * One POST with a JSON body — used by `approximate-count` and nothing else.
+     *
+     * The body is serialised here rather than by content negotiation, for the same reason the
+     * responses are decoded by hand: this integration states its own wire format at both ends, so
+     * a host that is not JIRA produces a named failure rather than a plugin's transformation error.
+     */
+    private suspend inline fun <reified T, reified B : Any> post(path: String, body: B): Result<T> =
+        request(path) {
+            client.post(settings.url(path)) {
+                contentType(ContentType.Application.Json)
+                setBody(jiraJson.encodeToString(body))
+            }
+        }
+
+    /** The half of a call that is identical for every verb: guard, transport errors, status, decode. */
+    private suspend inline fun <reified T> request(
+        path: String,
+        send: suspend () -> HttpResponse,
     ): Result<T> {
         if (!settings.isConfigured) return Result.failure(JiraFailure.NotConfigured())
 
-        val url = settings.url(path)
         val response = try {
-            client.get(url) { params.forEach { (name, value) -> parameter(name, value) } }
+            send()
         } catch (cause: IOException) {
             // Connection refused, reset, DNS, or a timeout that outlived every retry.
             logger.warn(cause) { "JIRA request failed: $path" }

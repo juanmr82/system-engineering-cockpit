@@ -523,10 +523,14 @@ Two things about this source are different from every other, and both are delibe
 - **The import pipeline in `importer/` is source-agnostic and nothing in it may name a source.**
   DOORS and Windchill are meant to reuse it unchanged; `importerId` is a string.
 
-**Cloud and Data Center are not the same product.** `jira.auth` selects `bearer` (Data Center, the
-default) or `basic` (Cloud — which answers a Bearer PAT with 403). Cloud has also removed
-`/rest/api/2/search`; phase 3 will need a second search implementation behind the existing
-`searchAll` contract. Details and evidence in ADR 0014.
+**Cloud and Data Center are not the same product, and they differ in two independent ways.**
+`jira.auth` selects how the credential is sent — `bearer` (Data Center, the default) or `basic`
+(Cloud, which answers a Bearer PAT with 403). `jira.deployment` selects how issues are paged —
+`datacenter` (`/search`, offsets, a total) or `cloud` (`/search/jql`, an opaque cursor, no total at
+all, because Cloud answers `/search` with 410 Gone). **Set both for a Cloud host.** They are not
+derived from each other because Data Center accepts Basic auth too, and deriving one would silently
+point a Server host at an endpoint it does not have; preflight warns when the configuration
+disagrees with what `/myself` looked like. Details and evidence in ADR 0014.
 
 ---
 

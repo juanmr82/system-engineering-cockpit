@@ -3,16 +3,23 @@ package com.sec.api.routes
 import com.sec.api.ApiPaths
 import com.sec.api.ProblemType
 import com.sec.api.dto.JiraHealthDto
+import com.sec.api.dto.JiraProjectSettingsDto
+import com.sec.api.dto.JiraProjectSettingsRequest
 import com.sec.api.respondProblem
 import com.sec.config.JiraSettings
 import com.sec.source.jira.JiraFailure
 import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraJql
+import com.sec.source.jira.JiraSettingsStore
+import com.sec.security.CurrentUser
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.put
 
 private val logger = KotlinLogging.logger {}
 
@@ -25,7 +32,52 @@ private val logger = KotlinLogging.logger {}
  * route under `/api/v1/jira` goes through [requireConfigured] and answers 503 with a problem type
  * the frontend can branch on.
  */
-public fun Route.jiraRoutes(settings: JiraSettings, client: JiraHttpClient?) {
+public fun Route.jiraRoutes(
+    settings: JiraSettings,
+    client: JiraHttpClient?,
+    settingsStore: JiraSettingsStore,
+) {
+    /**
+     * The configured projects, with the query they produce.
+     *
+     * Not guarded by [requireConfigured]: the project list lives in the graph and is readable and
+     * editable whether or not this deployment has a JIRA host, which is what lets an operator set
+     * it up in either order. What needs a host is *running* an import, and that is where the 503 is.
+     */
+    get(ApiPaths.JIRA_SETTINGS) {
+        val keys = settingsStore.projectKeys()
+        call.respond(
+            JiraProjectSettingsDto(projectKeys = keys, jql = JiraJql.preview(keys).getOrNull()),
+        )
+    }
+
+    put(ApiPaths.JIRA_SETTINGS) {
+        val request = call.receive<JiraProjectSettingsRequest>()
+
+        // The same placeholder every other write path uses until the §14.1 authorization seam
+        // exists (ADR 0014). One placeholder, in one place, so there is one thing to replace.
+        settingsStore.saveProjectKeys(request.projectKeys, updatedBy = CurrentUser.PLACEHOLDER).fold(
+            onSuccess = { saved ->
+                call.respond(
+                    JiraProjectSettingsDto(
+                        projectKeys = saved,
+                        jql = JiraJql.preview(saved).getOrNull(),
+                    ),
+                )
+            },
+            onFailure = { cause ->
+                // A 400 and not a 500: every failure this can produce is the caller's, and both
+                // carry a sentence naming what was wrong with which key.
+                call.respondProblem(
+                    HttpStatusCode.BadRequest,
+                    "Those project keys cannot be used",
+                    humanReason(cause),
+                    ProblemType.VALIDATION,
+                )
+            },
+        )
+    }
+
     get(ApiPaths.JIRA_HEALTH) {
         if (client == null || !settings.isConfigured) {
             call.respond(
@@ -112,6 +164,13 @@ private fun humanReason(cause: Throwable): String = when (cause) {
         ?: "JIRA rejected the request."
     is JiraFailure.NotConfigured ->
         "JIRA is not configured on this server."
+    is JiraFailure.NoProjectsConfigured ->
+        "Choose at least one project. An import is never run across a whole JIRA instance."
+    // JIRA's own rule is stricter than this one; the job here is to exclude quotes, spaces and JQL
+    // operators, so the message names the keys rather than restating a rule we do not enforce.
+    is JiraFailure.InvalidProjectKey ->
+        "These are not usable project keys: ${cause.keys.joinToString(", ")}. A key starts with a " +
+            "letter and contains only letters, digits and underscores."
     else ->
         "JIRA did not answer. Check that the host is reachable from this server."
 }

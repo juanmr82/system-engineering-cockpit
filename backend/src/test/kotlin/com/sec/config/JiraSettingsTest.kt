@@ -214,6 +214,42 @@ class JiraSettingsTest {
         assertEquals(JiraAuthScheme.BEARER, load().authScheme)
     }
 
+    // -- deployment: a second, independent fact about the same host --------------------------------
+
+    @Test
+    fun `the deployment is read from configuration, case-insensitively`() {
+        assertEquals(JiraDeployment.CLOUD, load("deployment" to "CLOUD").deployment)
+        assertEquals(JiraDeployment.DATA_CENTER, load("deployment" to "datacenter").deployment)
+    }
+
+    /** Same forgiving parse as `auth`, and for the same reason: a typo is not worth a dead service. */
+    @Test
+    fun `an unknown deployment falls back to data center`() {
+        assertEquals(JiraDeployment.DATA_CENTER, load("deployment" to "onprem").deployment)
+        assertEquals(JiraDeployment.DATA_CENTER, load().deployment)
+    }
+
+    /**
+     * The correction recorded as ADR 0014 point 5, pinned as a test.
+     *
+     * The two settings usually covary, and it is tempting to derive the search protocol from the
+     * auth scheme because Cloud is the only product that wants `basic`. **Data Center accepts Basic
+     * auth too**, so that derivation would point a Server host at `/search/jql`, which it does not
+     * have, and fail every import with a 404 naming nothing. They are independent, and this is the
+     * assertion that keeps them so.
+     */
+    @Test
+    fun `the auth scheme does not decide the deployment`() {
+        assertEquals(JiraDeployment.DATA_CENTER, load("auth" to "basic", "email" to "a@b.c").deployment)
+        assertEquals(JiraAuthScheme.BEARER, load("deployment" to "cloud").authScheme)
+    }
+
+    /** The product this host runs is not a secret, and naming it in a log is how a mismatch is spotted. */
+    @Test
+    fun `toString names the deployment`() {
+        assertTrue(settings().copy(deployment = JiraDeployment.CLOUD).toString().contains("CLOUD"))
+    }
+
     /** The credential is the one thing that must never be printed, whichever scheme built it. */
     @Test
     fun `toString redacts the token under both schemes`() {

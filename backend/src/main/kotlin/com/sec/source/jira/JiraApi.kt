@@ -7,11 +7,15 @@ package com.sec.source.jira
  * the host, which is a deployment fact; the API version is a fact about the code that parses the
  * responses, and letting an operator change it would let them point a v2 parser at a v3 payload.
  *
- * `/rest/api/2/` is shared by Data Center and Cloud, but the two have diverged on search: Cloud is
- * removing the offset-paginated `/search` in favour of a cursor-paginated `/search/jql` with no
- * `total`. **This client targets Data Center**, which keeps classic `/search` (spec §3.3). If a
- * Cloud instance ever has to be supported, that is a second client behind the same interface, not
- * a flag threaded through this one.
+ * `/rest/api/2/` is shared by Data Center and Cloud, but the two have diverged on search: Cloud has
+ * **removed** the offset-paginated `/search` — it answers `410 Gone` — in favour of a
+ * cursor-paginated `/search/jql` with no `total` at all. Both are declared below and
+ * [com.sec.config.JiraDeployment] picks one.
+ *
+ * That is a second *search implementation*, not a flag threaded through the transport: everything
+ * about authentication, retry, timeouts and error mapping is identical on the two products, and
+ * `/myself`, `/project`, `/issuetype` and `/field` are identical responses. Duplicating a whole
+ * client to change a paging loop would mean two retry policies to keep in step (ADR 0014).
  *
  * Everything here is a path fragment beginning with `/`, so
  * [com.sec.config.JiraSettings.url] is a plain concatenation onto the normalised host.
@@ -39,8 +43,30 @@ public object JiraApi {
      */
     public const val FIELD: String = "${BASE}field"
 
-    /** Offset-paginated issue search. Data Center semantics; see the class note. */
+    /** Offset-paginated issue search. **Data Center only** — Cloud answers this `410 Gone`. */
     public const val SEARCH: String = "${BASE}search"
+
+    /**
+     * Cursor-paginated issue search. **Cloud only** — Data Center has no such path.
+     *
+     * Verified against a live Cloud instance: the response carries `issues`, `isLast`, and a
+     * `nextPageToken` that is **absent on the final page**. There is no `total`, no `maxResults`
+     * and no `startAt`, which is why progress for a Cloud run needs [APPROXIMATE_COUNT].
+     *
+     * It also **refuses unbounded JQL** with a 400. Harmless here — spec §8 has always required
+     * project keys — but worth knowing before testing a query by hand.
+     */
+    public const val SEARCH_JQL: String = "${BASE}search/jql"
+
+    /**
+     * How many issues a JQL query matches, roughly. **Cloud only**, and a `POST`.
+     *
+     * Its whole purpose is the progress bar. Cloud's search pages report no total, so without this
+     * the longest phase of the import could only ever count upwards with no denominator. "Roughly"
+     * is fine for that and would not be fine for anything else: it is never used as a termination
+     * condition, which stays `isLast`.
+     */
+    public const val APPROXIMATE_COUNT: String = "${BASE}search/approximate-count"
 
     /**
      * Where a human reads an issue.

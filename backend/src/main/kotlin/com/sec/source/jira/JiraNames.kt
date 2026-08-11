@@ -132,6 +132,24 @@ public object JiraRel {
         ASSIGNED_TO, REPORTED_BY, CREATED_BY, HAS_COMPONENT, AFFECTS_VERSION, FIX_VERSION,
         LINKED_TO, SUB_TASK_OF, PROJECTION,
     )
+
+    /**
+     * The edges phase 3 owns completely: it writes them, and it deletes the ones it no longer sees.
+     *
+     * The set exists because re-assigning an issue is otherwise a silent corruption. `MERGE` adds
+     * the new `assignedTo` and leaves the old one, so the issue ends up assigned to two people and
+     * every "issues assigned to X" query keeps answering with the wrong one — the same failure as a
+     * stale property, one level up. Phase 3 prunes an issue's promoted edges against exactly this
+     * list, which is why membership is a decision and not an enumeration of everything nearby.
+     *
+     * [LINKED_TO] and [SUB_TASK_OF] are deliberately absent. They are phase 4's, they are diffed
+     * against the whole import rather than one issue, and a phase 3 that pruned them would delete
+     * every link on the first page and rebuild it on the last.
+     */
+    public val promoted: Set<String> = setOf(
+        IN_PROJECT, HAS_ISSUE_TYPE, HAS_STATUS, HAS_PRIORITY, HAS_RESOLUTION,
+        ASSIGNED_TO, REPORTED_BY, CREATED_BY, HAS_COMPONENT, AFFECTS_VERSION, FIX_VERSION,
+    )
 }
 
 /**

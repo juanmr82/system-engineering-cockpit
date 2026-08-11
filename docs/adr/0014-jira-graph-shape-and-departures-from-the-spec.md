@@ -6,13 +6,13 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–5 of its own build order turned up nine points where following it literally
+built. Building steps 1–6 of its own build order turned up eleven points where following it literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all nine in one place, because the alternative is nine comments
+then contradicted. This ADR records all eleven in one place, because the alternative is eleven comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -83,21 +83,32 @@ the first request, is the opposite of a fallback.
 rather than configured-and-broken, because an API token with no account to pair it with is not a
 credential Cloud will accept.
 
-### 5. Cloud has removed `/search`, and phase 3 will need a second search path
+### 5. Cloud has removed `/search`, and the second search path is chosen by its own setting
 
 Also verified live. `GET /rest/api/2/search` answers **410 Gone** on Cloud, pointing at
-`/rest/api/2/search/jql`, which differs in two ways that reach the design:
+`/rest/api/2/search/jql`, which differs in ways that reach the design:
 
 - it **refuses unbounded JQL** with a 400 — harmless, since spec §8 already requires project keys;
-- it paginates by **cursor** (`nextPageToken`, `isLast`), not by `startAt`/`total`.
+- it paginates by **cursor** (`nextPageToken`, `isLast`), not by `startAt`/`total`;
+- it reports **no total at all**, so a progress bar needs `POST /search/approximate-count` — fetched
+  once, best-effort, and never used as a termination condition.
 
-The offset paging loop built in step 2 — including its hard-won "the stride is the *response's*
-`maxResults`" rule — is Data Center's and stays. **Phase 3 will need a second implementation behind
-the same `searchAll` contract**, chosen by the same `jira.auth` signal that already distinguishes
-the products. Nothing else differs: `/myself`, `/project`, `/issuetype` and `/field` are identical
-on both, which is why phases 0–2 run unmodified against either.
+Both loops now exist behind one `searchAll`, and everything downstream of them sees a
+`JiraIssuePage` that has had the product-specific paging stripped off.
 
-This is recorded rather than solved because phase 3 is step 6.
+**This is the one point in this ADR that has been corrected rather than merely recorded.** It
+originally said the choice would be made by the existing `jira.auth` signal, on the reasoning that
+Cloud is the only product wanting `basic`. That is wrong in the direction that matters: **Data
+Center accepts Basic auth too**, so `auth: basic` against a Server host would have silently selected
+Cloud's search and failed every import with a 404 naming nothing. Two independent facts get two
+settings — `jira.auth` for how the credential is sent, `jira.deployment` for how issues are paged.
+
+They do covary in practice, which makes a mismatch the likeliest misconfiguration here. So preflight
+reads the one field that distinguishes the products with certainty — Cloud's `/myself` returns an
+`accountId` and no `name`, Data Center exactly the reverse — and warns when the configuration
+disagrees with what answered. Detection informs; configuration decides. Auto-detection was rejected
+for the same reason it was rejected for auth: it means discovering what a host is by failing against
+it.
 
 ### 6. `""` is stored, not skipped
 
@@ -156,15 +167,48 @@ module and review write endpoints beside them stayed open.
 The seam is one change across the whole route tree, in its own ADR, and it should happen before
 this reaches a shared deployment. Recorded here so it is a decision rather than an omission.
 
+### 10. Phase 3 prunes promoted edges, which the spec does not mention
+
+Spec §12 phase 3 lists four writes and no deletion of relationships. Re-assigning an issue then
+leaves it with two `assignedTo` edges — `MERGE` adds the new one and nothing removes the old — and
+every "issues assigned to X" query keeps answering with the stale one. It is the stale-property bug
+the spec spends a page on, one level up, and it is harder to notice because nothing about the node
+looks damaged.
+
+Phase 3 therefore deletes the promoted edges it no longer asserts, scoped to a closed list of the
+eleven types it owns. `linkedTo` and `subTaskOf` are excluded by name: they belong to phase 4, which
+diffs them against the whole run, and pruning them per page would delete every link seen on page one.
+
+### 11. Two Cypher 25 features carry phase 3, and one of them has a subtlety
+
+Two implementation notes that would otherwise read as risky choices:
+
+- **Dynamic labels and relationship types** (`SET n:$(row.label)`, `MERGE (a)-[:$(row.type)]->(b)`)
+  collapse what would be nine and eleven near-identical statements into one each. The values come
+  from `JiraLabel` and `JiraRel` — compile-time constants — and travel as *parameters*, so no
+  attacker-influenced text is ever parsed as Cypher and R10 holds in the way that matters.
+- **`REMOVE i[staleKey]`** is the property removal, and it is simpler than the
+  `CALL (i, staleKey) { SET i[staleKey] = null }` the spec proposes.
+
+Both were verified against the pinned 2026.06 Community image before being written, and both are
+covered by container tests, because whether a server supports them is a property of the server.
+
+One subtlety is load-bearing and easy to lose in a later edit: `UNWIND` of an empty list produces no
+rows, so an issue with nothing stale drops out of the statement at that point. Its `MERGE` and `SET`
+have already committed, which is why this is correct — but it means nothing may ever be appended
+after the `REMOVE`.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
   about data lifecycle reads point 2 first.
-- A deployment file must state `jira.auth: basic` and `jira.email` for a Cloud instance. The
-  packaged default is Data Center's, which is what the reference instance runs.
-- Phase 3 carries a known fork. It is one function behind an existing contract, not a redesign.
+- A deployment file must state `jira.auth: basic`, `jira.email` **and `jira.deployment: cloud`**
+  for a Cloud instance. The packaged defaults are Data Center's, which is what the reference
+  instance runs. Setting one and not the other is the failure preflight warns about.
+- The fork phase 3 was expected to carry is built: two paging loops, one contract, and one setting
+  choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Nine departures is a lot for five build steps, and most were found by writing a test rather than
+- Eleven departures is a lot for six build steps, and most were found by writing a test rather than
   by reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.

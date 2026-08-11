@@ -3,6 +3,68 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (sessions 16–17) — JIRA, build-order steps 1–6
+
+One continuous piece of work over two sessions, on branch **`feature/jira-issues-dynamic-view`**,
+two commits so far and everything after them uncommitted. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18
+numbers the steps; **1–6 are done, and step 4's second half is not** (see below).
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **A source-agnostic import pipeline with SSE progress** — run lifecycle, `:__ImportRun` history, live event stream | `importer/`, `api/routes/ImportRoutes.kt` |
+| 2 | **The JIRA importer runs inside the backend** — the only source that does, and why | ADR 0013, `source/jira/` |
+| 3 | **Phases 0–3**: preflight, issue types, field catalogue, and issues with property removal | `JiraImporter.kt`, `JiraCypher.kt` |
+| 4 | **Two search protocols behind one contract** — Data Center pages by offset, Cloud by cursor | `JiraHttpClient.searchAll` |
+| 5 | **Eleven documented departures from the spec** | ADR 0014 — read it before "fixing" an inconsistency |
+
+### What is not done, and would be easy to assume is
+
+- **The import console (§13.6) does not exist.** Step 4 has two halves and only the backend half is
+  built, so the SSE endpoint has no consumer outside tests. Nothing later depends on it.
+- **Phases 4 and 5 — links, unresolved placeholders, the sweep — are not written**, and the importer
+  declares only the four phases it has. Deliberate: declaring six would draw a stepper with two
+  steps that flash past. `MappedIssue` already carries `links` and `parentId` for them.
+- **Nothing deletes an issue.** An issue that leaves JIRA stays in the graph until phase 5 exists.
+  There is a test asserting that, so the absence is pinned rather than pending.
+- **There is no authorization anywhere** (ADR 0014 point 9). Not a JIRA gap — a whole-backend one.
+
+### The traps this work hit, in the order they cost time
+
+1. **JIRA Cloud and Data Center need two independent settings, not one.** `jira.auth` picks how the
+   credential is sent; `jira.deployment` picks how issues are paged. ADR 0014 originally said one
+   would imply the other — **that was wrong and is corrected in place**: Data Center accepts Basic
+   auth too, so deriving the search path from the auth scheme points a Server host at an endpoint it
+   does not have. Preflight warns when the configuration disagrees with what `/myself` returned
+   (Cloud sends `accountId` and no `name`; Data Center the reverse).
+2. **`ImportContext.params` replaced instead of merging.** Phase 3 recorded the JQL and silently
+   erased the host, time zone and deployment preflight had recorded. Every unit test passed —the
+   test double merged. **A live run is what caught it.** Now merges, with two tests.
+3. **A finished run reported `phases: []` and `percent: null`.** Also caught by a live run, also
+   invisible to the suite. Phases are not persisted, so a completed run repopulates them from the
+   registered importer.
+4. **`toString()` in Cypher takes a scalar** — not a list and not a map. A snapshot helper comparing
+   `toString(labels(n))` fails at runtime with a type error rather than at parse time.
+5. **`UNWIND` of an empty list drops the row**, which is exactly what the property-removal statement
+   needs and is a trap for whoever appends to it: the `MERGE` and `SET` have already committed, but
+   **nothing may ever be added after the `REMOVE`**.
+6. **Cloud refuses unbounded JQL with a 400**, so a hand-run query needs a project clause. Its error
+   messages come back **in the instance's own locale** — the test instance answers in Spanish.
+
+### Verified this session
+
+- `mvn verify` — **BUILD SUCCESS, 299 tests, 0 failures**.
+- `mvn -Pdocker test` — **90 tests, 0 failures**, including the eight new JIRA container tests.
+- **A real import against a live JIRA Cloud instance**: 14 issue types, 59 fields, 9 issues,
+  9 projections, correct SSE framing, `SUCCEEDED` at 100%.
+
+### Resume here
+
+Step 7 — phases 4 and 5 (links, unresolved, sweep) with §16.2 integration tests 4–8. The sweep is
+the highest-consequence code in the feature: it must refuse to run if phase 3 failed or was
+cancelled, because a partial `seenIds` set would delete the whole database.
+
+---
+
 ## State as of 2026-08-10 (session 15) — deleted in DOORS, the expandable card, JIRA in the nav
 
 **Written retrospectively.** The work landed on 2026-08-09 as **PR #2** and **PR #3** and neither

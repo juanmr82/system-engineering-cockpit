@@ -40,6 +40,15 @@ public object ApiPaths {
     public const val JIRA_HEALTH: String = "$JIRA/health"
 
     /**
+     * The configured project keys (spec §10.1, §14.3).
+     *
+     * Application configuration held in the graph rather than in a file, because a user changes it
+     * during normal work — the middle row of CLAUDE.md's state table. Read and replaced whole; there
+     * is no partial update, because the user's order is part of the value.
+     */
+    public const val JIRA_SETTINGS: String = "$JIRA/settings"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *

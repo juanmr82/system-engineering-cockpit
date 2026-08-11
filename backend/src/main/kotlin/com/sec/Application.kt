@@ -21,6 +21,7 @@ import com.sec.source.doors.StatisticsProjection
 import com.sec.source.jira.JiraGraphWriter
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
+import com.sec.source.jira.JiraSettingsStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -120,6 +121,10 @@ internal fun Application.configureApp(
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
+    // Built whether or not JIRA is configured: the project list lives in the graph, so it is
+    // readable and editable before a host exists, which lets an operator set the two up in either
+    // order.
+    val jiraSettingsStore = JiraSettingsStore(graphDriver)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -131,7 +136,15 @@ internal fun Application.configureApp(
         logger.info { "JIRA integration enabled for ${jiraSettings.host}" }
         monitor.subscribe(ApplicationStopping) { jiraClient.close() }
         importRunService.register(
-            JiraImporter(jiraSettings, jiraClient, JiraGraphWriter(graphDriver, jiraSettings.host)),
+            JiraImporter(
+                jiraSettings,
+                jiraClient,
+                JiraGraphWriter(graphDriver, jiraSettings.host),
+                // Its own collaborator rather than part of the writer: the writer is *only* allowed
+                // to write imported JIRA data, and the configured project list is the one thing here
+                // that no import could ever reproduce (ADR 0013, ADR 0014).
+                jiraSettingsStore,
+            ),
         )
     } else {
         logger.info { "JIRA integration is not configured; /api/v1/jira routes will report so" }
@@ -148,6 +161,7 @@ internal fun Application.configureApp(
         tableProjection,
         jiraSettings,
         jiraClient,
+        jiraSettingsStore,
         importRunService,
     )
 }

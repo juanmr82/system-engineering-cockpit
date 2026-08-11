@@ -36,6 +36,14 @@ jira:
   # `email` is required by basic and ignored by bearer.
   auth: "$SEC_JIRA_AUTH:bearer"
   email: "$SEC_JIRA_EMAIL:"
+  # Which product this host *is*, which decides how issues are paged and nothing else:
+  #   datacenter  /search, paged by startAt, reports a total. The default and the spec's target.
+  #   cloud       /search/jql, paged by an opaque cursor, reports no total at all. Cloud answers
+  #               /search with 410 Gone, so this is not a preference — it is which endpoint exists.
+  # Deliberately separate from `auth` even though the two usually covary: Data Center accepts basic
+  # auth too, and deriving one from the other would silently pick Cloud's search for a Server host.
+  # Preflight warns when this disagrees with what /myself looked like.
+  deployment: "$SEC_JIRA_DEPLOYMENT:datacenter"
   # Tuning knobs, none of them user-facing. pageSize is what /search is *asked* for; the server
   # clamps it and the importer strides by whatever the response reports (spec §3.3).
   pageSize: 100

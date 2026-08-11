@@ -43,6 +43,14 @@ public val jiraJson: Json = Json {
  */
 @Serializable
 public data class JiraMyself(
+    /**
+     * **Cloud only, and the reason it is here**: Cloud identifies a user by `accountId` and sends
+     * no `name` or `key` at all, while Data Center does the exact opposite. That makes this the one
+     * field in any response that says which product answered — which preflight uses to warn when
+     * `jira.deployment` disagrees with reality, instead of leaving it to a 410 in the middle of the
+     * longest phase.
+     */
+    public val accountId: String = "",
     public val name: String = "",
     public val key: String = "",
     public val displayName: String = "",
@@ -136,6 +144,67 @@ public data class JiraSearchPage(
     public val total: Int = 0,
     public val issues: List<JiraIssueEnvelope> = emptyList(),
     public val warningMessages: List<String>? = null,
+)
+
+/**
+ * One page of `GET /search/jql`, Cloud's cursor-paginated shape.
+ *
+ * Three differences from [JiraSearchPage], all verified against a live Cloud instance and all
+ * consequential:
+ *
+ *  - **No `total`, no `maxResults`, no `startAt`.** Nothing in the response says how far through
+ *    the result set a page is, which is why a Cloud run gets its progress denominator from
+ *    [JiraApproximateCount] and never from a page.
+ *  - **[nextPageToken] is absent on the last page**, not empty. Absent and blank are treated
+ *    identically here so the loop cannot depend on which one a future version sends.
+ *  - **[isLast] is the termination condition.** It is authoritative in a way `total` never was:
+ *    Data Center's loop has to distrust `total` because it is an estimate under concurrent
+ *    modification, while a cursor is a position in a snapshot the server is holding.
+ *
+ * The issue envelope itself is byte-identical on the two products, which is what lets everything
+ * downstream of the paging loop — the mapper, the writer, all of it — stay unaware of any of this.
+ */
+@Serializable
+public data class JiraCloudSearchPage(
+    public val issues: List<JiraIssueEnvelope> = emptyList(),
+    public val nextPageToken: String? = null,
+    /** Defaults to `true`: a malformed page must end the loop, never spin it. */
+    public val isLast: Boolean = true,
+    public val warningMessages: List<String>? = null,
+)
+
+/**
+ * `POST /search/approximate-count` — Cloud's answer to "how many, roughly".
+ *
+ * Used for the progress denominator and nothing else. If it fails, the import proceeds with an
+ * unknown total rather than failing: a progress bar is not worth a run.
+ */
+@Serializable
+public data class JiraApproximateCount(public val count: Int = 0)
+
+/** The body of that POST. The only request body this integration sends. */
+@Serializable
+internal data class JiraApproximateCountRequest(val jql: String)
+
+/**
+ * One page of issues, with the product-specific paging stripped off.
+ *
+ * This is what a caller of [JiraHttpClient.searchAll] sees, and the reason nothing downstream of
+ * the paging loop — the mapper, the writer, phase 3 — knows which JIRA product it is importing
+ * from.
+ *
+ * @param startAt how many issues came before this page. Data Center takes it from the request it
+ *   made; Cloud, which has no offsets at all, knows it by counting. Both mean the same thing, which
+ *   is what makes it safe to expose.
+ * @param estimatedTotal the size of the whole result set when the product will say — Data Center's
+ *   `total`, or Cloud's approximate count — and `null` when it will not. **Never a termination
+ *   condition**: it is an estimate on both products and is used only to give progress a
+ *   denominator.
+ */
+public data class JiraIssuePage(
+    public val issues: List<JiraIssueEnvelope>,
+    public val startAt: Int,
+    public val estimatedTotal: Int?,
 )
 
 /**
