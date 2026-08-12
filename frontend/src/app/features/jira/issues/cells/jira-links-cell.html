@@ -1,0 +1,12 @@
+@if (linkCount() > 0) {
+  <button
+    mat-icon-button
+    type="button"
+    class="sec-jira-links"
+    [attr.aria-label]="label()"
+    [matTooltip]="label()"
+    (click)="open()"
+  >
+    <mat-icon svgIcon="graph" />
+  </button>
+}

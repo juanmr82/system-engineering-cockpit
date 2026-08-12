@@ -15,6 +15,7 @@ import { JiraIssuesApiService } from './jira-issues-api.service';
 import { JiraColumnsDialog } from '../columns/jira-columns-dialog';
 import { JiraKeyCell } from './cells/jira-key-cell';
 import { JiraLinkCell } from './cells/jira-link-cell';
+import { JiraLinksCell } from './cells/jira-links-cell';
 import { JiraValueCell } from './cells/jira-value-cell';
 import type {
   JiraColumn,
@@ -31,7 +32,8 @@ const PAGE_SIZES = [25, 50, 100, 200];
  *
  * ## Server-side everything
  *
- * Paging, sorting and searching all round-trip. This is the one table in the application that
+ * Paging, sorting and searching all round-trip. The search reads **every field** of every issue,
+ * not the page in hand and not only the key and the summary (ADR 0014 point 22). This is the one table in the application that
  * cannot load its rows and filter them in the browser: 784 issues on the reference instance is
  * already more than a page, and a real instance is tens of thousands. Everything below follows from
  * that — the query is a signal, the resource re-runs when it changes, and the grid holds one page.
@@ -199,6 +201,18 @@ export class JiraIssues {
         ? 'sec-grid__header-cell sec-jira-issues__stale-header'
         : 'sec-grid__header-cell',
     })),
+    {
+      colId: 'relatedIssues',
+      headerName: 'Related',
+      // Fixed, and always immediately before the link out: the two are controls rather than values,
+      // and a configured column appearing between them would put a value after the end of the data.
+      valueGetter: (params) => params.data?.linkCount ?? 0,
+      cellRenderer: JiraLinksCell,
+      width: 92,
+      sortable: false,
+      resizable: false,
+      cellClass: 'sec-grid__cell sec-jira-issues__link-cell',
+    },
     {
       colId: 'openInJira',
       // Header-less by design (spec §13.2, point 14.6): the column holds one control, the icon says

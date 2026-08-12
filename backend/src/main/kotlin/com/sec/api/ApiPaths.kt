@@ -57,6 +57,7 @@ public object ApiPaths {
      */
     public const val JIRA_ISSUES: String = "$JIRA/issues"
 
+
     /**
      * The offerable field catalogue, for the column picker (spec §13.3).
      *
@@ -105,4 +106,12 @@ public object ApiPaths {
      * decoded in exactly one place by the route parameter converter.
      */
     public const val REF: String = "{ref}"
+
+    /**
+     * One issue's related-issues graph — the links it has, and the links those have.
+     *
+     * `{ref}` is the base64url handle over `__id`, like every other item route (R5). The depth is a
+     * query parameter and is clamped server-side, because it is a *cost* rather than a preference.
+     */
+    public const val JIRA_ISSUE_GRAPH: String = "$JIRA_ISSUES/$REF/graph"
 }

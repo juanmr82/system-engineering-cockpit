@@ -1,6 +1,8 @@
 package com.sec.api.routes
 
 import com.sec.api.ApiPaths
+import com.sec.api.decodeRef
+import com.sec.api.respondInvalidRef
 import com.sec.api.ProblemType
 import com.sec.api.dto.JiraColumnsRequest
 import com.sec.api.dto.JiraHealthDto
@@ -14,6 +16,7 @@ import com.sec.source.jira.JiraFailure
 import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
+import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraJql
 import com.sec.source.jira.JiraSettingsStore
 import com.sec.security.CurrentUser
@@ -42,6 +45,7 @@ public fun Route.jiraRoutes(
     client: JiraHttpClient?,
     settingsStore: JiraSettingsStore,
     issuesProjection: JiraIssuesProjection,
+    linkGraphProjection: JiraLinkGraphProjection,
     columnStore: JiraColumnStore,
     fieldsProjection: JiraFieldsProjection,
 ) {
@@ -109,6 +113,35 @@ public fun Route.jiraRoutes(
                 columns = columns,
             ),
         )
+    }
+
+    /**
+     * One issue's related issues, as a graph.
+     *
+     * Read-only, and read entirely from our own graph — so, like the table, it answers on a
+     * deployment whose JIRA token has expired. An issue that does not exist is a 404 rather than an
+     * empty picture, because an empty picture is a claim about an issue rather than about a typo.
+     */
+    get(ApiPaths.JIRA_ISSUE_GRAPH) {
+        val issueId = call.decodeRef() ?: return@get call.respondInvalidRef()
+        val depth = call.intParam("depth", default = JiraLinkGraphProjection.DEFAULT_DEPTH, min = 1)
+            ?.coerceAtMost(JiraLinkGraphProjection.MAX_DEPTH)
+            ?: return@get call.respondProblem(
+                HttpStatusCode.BadRequest,
+                "Invalid depth",
+                "Depth must be a whole number of at least one.",
+                ProblemType.VALIDATION,
+            )
+
+        val graph = linkGraphProjection.graphOf(issueId, depth)
+            ?: return@get call.respondProblem(
+                HttpStatusCode.NotFound,
+                "No such issue",
+                "This server has no JIRA issue with that identifier.",
+                ProblemType.NONE,
+            )
+
+        call.respond(graph)
     }
 
     /**

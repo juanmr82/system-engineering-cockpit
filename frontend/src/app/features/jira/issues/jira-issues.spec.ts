@@ -27,6 +27,7 @@ const PAGE: JiraIssuesPage = {
       issueTypeName: 'Bug',
       browseUrl: 'https://jira.example.com/browse/OTS-3',
       unresolved: false,
+      linkCount: 0,
       values: {},
     },
     {
@@ -36,6 +37,7 @@ const PAGE: JiraIssuesPage = {
       issueTypeName: 'Task',
       browseUrl: 'https://jira.example.com/browse/SCRUM-1',
       unresolved: false,
+      linkCount: 0,
       values: {},
     },
     {
@@ -45,6 +47,7 @@ const PAGE: JiraIssuesPage = {
       issueTypeName: 'Task',
       browseUrl: 'https://jira.example.com/browse/SCRUM-2',
       unresolved: false,
+      linkCount: 0,
       values: {},
     },
     {
@@ -54,6 +57,7 @@ const PAGE: JiraIssuesPage = {
       issueTypeName: 'Task',
       browseUrl: 'https://jira.example.com/browse/SCRUM-10',
       unresolved: false,
+      linkCount: 0,
       values: {},
     },
     // A link target outside the configured projects: no type, and it says what it is.
@@ -64,6 +68,7 @@ const PAGE: JiraIssuesPage = {
       issueTypeName: null,
       browseUrl: 'https://jira.example.com/browse/SCRUM-100',
       unresolved: true,
+      linkCount: 1,
       values: {},
     },
   ],
@@ -309,7 +314,7 @@ describe('JiraIssues', () => {
       fixture.nativeElement.querySelectorAll('.ag-header-cell-text'),
     ).map((cell) => (cell as HTMLElement).textContent?.trim());
 
-    expect(headers).toEqual(['Type', 'Key', 'Summary', 'Labels', 'customfield_999', '']);
+    expect(headers).toEqual(['Type', 'Key', 'Summary', 'Labels', 'customfield_999', 'Related', '']);
   });
 
   /**
@@ -330,6 +335,24 @@ describe('JiraIssues', () => {
     expect(text).toContain('+1');
     expect(text).not.toContain('null');
     expect(fixture.nativeElement.querySelector('.sec-jira-value--empty')).toBeTruthy();
+  });
+
+  /**
+   * The related-issues control is offered only where there is something to show.
+   *
+   * A disabled button in every row is a control a reader checks one row at a time; an empty cell is
+   * read at a glance down the column. So the presence of the icon *is* the answer to "does this
+   * issue relate to anything", and only the row with links carries one.
+   */
+  it('offers the related-issues control only on rows that have links', async () => {
+    await answerWith(PAGE);
+
+    const controls = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.sec-jira-links'),
+    );
+
+    expect(controls.length).toBe(1);
+    expect(controls[0].getAttribute('aria-label')).toBe('Show the issue linked to SCRUM-100');
   });
 
   it('offers a retry when the request fails, and does not pretend the table is empty', async () => {

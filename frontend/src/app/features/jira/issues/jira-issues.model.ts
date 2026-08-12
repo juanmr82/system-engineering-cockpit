@@ -43,6 +43,13 @@ export interface JiraIssueRow {
    * A state channel, not display text: this view renders the words (R5), the server never does.
    */
   readonly unresolved: boolean;
+  /**
+   * How many issues this one is linked to, in either direction, sub-tasks included.
+   *
+   * A count rather than a flag, because the control names it — *Show the 3 issues linked to
+   * SCRUM-1* — and because a column that renders nothing at zero needs the number anyway.
+   */
+  readonly linkCount: number;
   /** The configured columns' values, keyed by field id. Empty until step 9 gives it entries. */
   readonly values: Readonly<Record<string, unknown>>;
 }

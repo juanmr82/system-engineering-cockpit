@@ -1,0 +1,96 @@
+<div class="sec-jira-graph">
+  <div class="sec-jira-graph__controls">
+    <button type="button" (click)="zoomOut()" aria-label="Zoom out">−</button>
+    <button type="button" (click)="resetZoom()" aria-label="Reset zoom">Fit</button>
+    <button type="button" (click)="zoomIn()" aria-label="Zoom in">+</button>
+  </div>
+
+  @if (isLoading()) {
+    <p class="sec-jira-graph__status">Arranging the diagram…</p>
+  } @else if (failed()) {
+    <p class="sec-jira-graph__status" role="alert">
+      Couldn't arrange this diagram. Try a smaller depth.
+    </p>
+  }
+
+  <div class="sec-jira-graph__viewport">
+    <div
+      class="sec-jira-graph__canvas"
+      [style.transform]="transform()"
+      [style.width.px]="extent().width"
+      [style.height.px]="extent().height"
+    >
+      <!-- Edges under the nodes, in one SVG sized to the whole drawing: an edge that crossed a box
+           would otherwise be drawn over its text. -->
+      <svg
+        class="sec-jira-graph__edges"
+        [attr.width]="extent().width"
+        [attr.height]="extent().height"
+        aria-hidden="true"
+      >
+        <defs>
+          <marker
+            id="sec-jira-arrow"
+            markerWidth="8"
+            markerHeight="8"
+            refX="7"
+            refY="4"
+            orient="auto"
+          >
+            <path d="M0,0 L8,4 L0,8 z" />
+          </marker>
+        </defs>
+        @for (edge of drawn(); track edge.id) {
+          <path
+            class="sec-jira-graph__edge"
+            [class.sec-jira-graph__edge--subtask]="edge.subTask"
+            [attr.d]="edge.path"
+            marker-end="url(#sec-jira-arrow)"
+          >
+            <title>{{ edge.label }}</title>
+          </path>
+        }
+      </svg>
+
+      @for (item of placed(); track item.ref) {
+        <div
+          class="sec-jira-graph__node"
+          [class.sec-jira-graph__node--seed]="item.node.seed"
+          [class.sec-jira-graph__node--unresolved]="item.node.unresolved"
+          [style.left.px]="item.x"
+          [style.top.px]="item.y"
+          [style.width.px]="nodeWidth"
+          [style.height.px]="nodeHeight"
+        >
+          <p class="sec-jira-graph__type">{{ item.node.typeName ?? 'No type' }}</p>
+          <p class="sec-jira-graph__key">
+            {{ item.node.key }}
+            @if (item.node.seed) {
+              <span class="sec-jira-graph__seed-note">the issue you opened</span>
+            }
+          </p>
+          <p class="sec-jira-graph__status-line">
+            @if (item.node.unresolved) {
+              <!-- The same words the DOORS placeholder carries, because it is the same fact about
+                   a different source (R5, Aliases.kt). -->
+              <span class="sec-jira-graph__absent">Not yet imported</span>
+            } @else {
+              {{ item.node.statusName ?? '—' }}
+            }
+          </p>
+          <p class="sec-jira-graph__summary" [matTooltip]="item.node.summary ?? ''">
+            {{ item.node.summary ?? '' }}
+          </p>
+
+          @if (item.node.truncatedNeighbours > 0) {
+            <span
+              class="sec-jira-graph__more"
+              matTooltip="This issue has links to issues that are not in this diagram"
+              >+{{ item.node.truncatedNeighbours }}</span
+            >
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

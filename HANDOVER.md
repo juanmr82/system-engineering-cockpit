@@ -3,6 +3,68 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (session 21) — search every field, and a diagram of related issues
+
+Branch **`feature/jira-issues-table`**. Two changes asked for after seeing steps 9–11 working, both
+widening something the spec deliberately narrowed. Both are ADR 0014, points 22 and 23.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The Issues search reads every field**, the issue's and its projection's | `JiraCypher.MATCHES_ANY_FIELD` |
+| 2 | **A Related column**, before the link-out, with the graph icon only where there are links | `issues/cells/jira-links-cell.ts` |
+| 3 | **The related-issues diagram** — ELK layout reused, drawing not | `features/jira/links/` |
+| 4 | **`GET /api/v1/jira/issues/{ref}/graph`** — BFS walk, depth 1–5, 300-node cap | `JiraLinkGraphProjection.kt` |
+
+### What is not done, and would be easy to assume is
+
+- **No full-text index.** The widened search is a scan: per issue, over every property it carries,
+  with no index and no query governor. Comfortable at 784 issues; at the spec's 50 000 target it is
+  millions of comparisons per search, and the answer then is a full-text index built from the field
+  catalogue at import time. That is a design, not a tweak.
+- **The diagram has no edge labels on screen** — the link type is JIRA's own word and is carried in
+  the data and shown on hover, but drawing it beside the line needs a label position ELK can be
+  asked for and currently is not.
+- **Everything still missing from session 20 is still missing**: the detail drawer, the issue-type
+  icon, the empty state's deep link, the console's log filter.
+
+### The traps this session hit
+
+1. **`toString()` errors on a list**, and `labels` is the field a person is most likely to search —
+   so the naive widening would have failed the *whole request* at runtime rather than narrowing
+   badly. The predicate branches on `v IS :: LIST<ANY>` and searches element by element. Neo4j
+   2026.06 accepts the type predicate; that was the one unknown worth testing first.
+2. **A widened search reads the projection, so the projection has to be matched before the filter**
+   — in the page query *and* the count query. Both now `OPTIONAL MATCH` it above the `WHERE`.
+3. **Two old search tests failed and were right to.** `thermal` now matches an issue that carries it
+   as a *label* as well as the one with it in its summary. The fixture also had no `summary`
+   property at all — the name lived only in `__name`, which the search deliberately does not read —
+   so it was made realistic. Third time this feature's fixtures have been simpler than reality.
+4. **Neo4j will not take a parameter as a variable-length bound**, which is why both graph walks in
+   this repository are breadth-first loops in Kotlin rather than one closure pattern. Read
+   `DependencyGraphCypher`'s note before writing a third.
+5. **A walk seeded with an unknown id produces a non-empty *set* and an empty *graph*.** Reading the
+   nodes is what tells a typo from an issue with no links, and the test caught it.
+6. **Kotlin `const val` initialisers resolve in declaration order**, so a constant interpolated into
+   another has to be declared above it. Twice this session: `MATCHES_ANY_FIELD` and
+   `JIRA_ISSUE_GRAPH`.
+
+### Verified this session
+
+- `mvn test` — **319**; `mvn -Pdocker test` — **138**, both 0 failures. Lint clean, **240** frontend
+  specs, build green.
+- **Live**: searching `idea` matches on a status that exists only on the projection, `juan` matches
+  on a reporter; the Related column shows the icon on exactly the two linked issues; the diagram
+  draws OTS-1 → OTS-2 with type, key, status and summary on each node and the seed named in words.
+- Incidentally proved by the new search: the two `Subtarea` issues in the test instance genuinely
+  have no parent stored, so the absent `subTaskOf` edges are the data rather than the importer.
+
+### Resume here
+
+Unchanged from session 20 — the detail drawer, the icon proxy, the empty state's link — plus the
+date formatting question, which is now the most visible unfinished thing on the Issues table.
+
+---
+
 ## State as of 2026-08-12 (session 20) — JIRA steps 9, 10 and 11: settings, console, columns
 
 Branch **`feature/jira-issues-table`**. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18 numbers the steps;

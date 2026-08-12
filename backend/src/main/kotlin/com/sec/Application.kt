@@ -21,6 +21,7 @@ import com.sec.source.doors.StatisticsProjection
 import com.sec.source.jira.JiraColumnStore
 import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraGraphWriter
+import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
@@ -135,6 +136,7 @@ internal fun Application.configureApp(
     // so they are built once here rather than per call.
     val jiraColumnStore = JiraColumnStore(graphDriver)
     val jiraFieldsProjection = JiraFieldsProjection(graphDriver)
+    val jiraLinkGraphProjection = JiraLinkGraphProjection(graphDriver)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -173,6 +175,7 @@ internal fun Application.configureApp(
         jiraClient,
         jiraSettingsStore,
         jiraIssuesProjection,
+        jiraLinkGraphProjection,
         jiraColumnStore,
         jiraFieldsProjection,
         importRunService,

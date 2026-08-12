@@ -116,6 +116,7 @@ public class JiraIssuesProjection(
             issueTypeName = get("issueTypeName").asStringOrNull(),
             browseUrl = browseUrl(key),
             unresolved = get("unresolved").asBoolean(false),
+            linkCount = get("linkCount").asInt(0),
             // Zipped rather than read as a map, because a Cypher list comprehension preserves the
             // order of `$fieldIds` and nothing else about it: the value at index n belongs to
             // the field the caller asked for at index n.

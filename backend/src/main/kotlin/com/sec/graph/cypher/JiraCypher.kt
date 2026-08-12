@@ -16,7 +16,9 @@ import com.sec.source.jira.JiraLabel.ISSUE_TYPE as JIRA_ISSUE_TYPE
 import com.sec.source.jira.JiraLabel.PROJECT as JIRA_PROJECT
 import com.sec.source.jira.JiraLabel.PROJECTION as JIRA_PROJECTION
 import com.sec.source.jira.JiraLabel.SETTINGS as JIRA_SETTINGS
+import com.sec.source.jira.JiraLabel.STATUS as JIRA_STATUS
 import com.sec.source.jira.JiraLinkProp.LINK_ID
+import com.sec.source.jira.JiraLinkProp.TYPE_NAME
 import com.sec.source.jira.JiraProp.CUSTOM
 import com.sec.source.jira.JiraProp.ID as JIRA_ID
 import com.sec.source.jira.JiraProp.KEY
@@ -24,7 +26,9 @@ import com.sec.source.jira.JiraProp.NAME
 import com.sec.source.jira.JiraProp.PROJECT_KEY
 import com.sec.source.jira.JiraProp.SCHEMA_ITEMS
 import com.sec.source.jira.JiraProp.SCHEMA_TYPE
+import com.sec.source.jira.JiraFieldId.SUMMARY
 import com.sec.source.jira.JiraRel.HAS_ISSUE_TYPE
+import com.sec.source.jira.JiraRel.HAS_STATUS
 import com.sec.source.jira.JiraRel.LINKED_TO
 import com.sec.source.jira.JiraRel.PROJECTION
 import com.sec.source.jira.JiraRel.SUB_TASK_OF
@@ -552,6 +556,24 @@ public object JiraCypher {
     // -- the read path (spec §14.4) --------------------------------------------------------------
 
     /**
+     * True when any field of the issue, or any display string its projection derived, contains `q`.
+     *
+     * Both sides are gathered into one list and tested once, rather than by two `any(…)` calls
+     * sharing a predicate by copy — the list-versus-scalar branch is the part that must not drift
+     * between them. `p` is optional, so its half is a `CASE`: `keys(null)` is null and
+     * `list + null` is null, which would make every search match nothing at all for every issue
+     * that has no projection.
+     */
+    private const val MATCHES_ANY_FIELD: String =
+        """any(v IN
+                [k IN keys(i) WHERE NOT k STARTS WITH '__' | i[k]] +
+                CASE WHEN p IS NULL THEN []
+                     ELSE [k IN keys(p) WHERE NOT k STARTS WITH '__' | p[k]] END
+              WHERE CASE WHEN v IS :: LIST<ANY>
+                         THEN any(e IN v WHERE toLower(toString(e)) CONTAINS ${'$'}q)
+                         ELSE toLower(toString(v)) CONTAINS ${'$'}q END)"""
+
+    /**
      * The `WHERE` every issues query shares, so the page and its total can never disagree.
      *
      * Written once and interpolated into both statements rather than repeated, because a filter
@@ -563,15 +585,38 @@ public object JiraCypher {
      * statement serves the unfiltered table, the search box, and the project filter, without any
      * of them being assembled from fragments (R10).
      *
-     * The search is deliberately narrow — the key and the name, which is `<key>: <summary>`. Spec
-     * §13.2 puts the escape hatch in the Cypher console rather than offering JQL here, and a
-     * `CONTAINS` across 145 arbitrary properties per issue is a table scan a user can trigger by
-     * typing.
+     * ## The search reads every field, and that is a decision with a price
+     *
+     * Spec §13.2 restricts it to the key and the summary and sends power users to the Cypher
+     * console. **That was overruled deliberately** (ADR 0014 point 22): a reviewer looking for an
+     * issue knows a component, a label or an assignee far more often than they know its key, and a
+     * box that silently ignores what was typed into it is worse than a slow one.
+     *
+     * The price, stated where somebody will meet it: this predicate runs per issue over every
+     * property that issue carries, with no index behind it and no query governor on Community
+     * (CLAUDE.md §7), so the only bound is the transaction timeout. At the reference instance's 784
+     * issues × ~145 fields it is comfortable; at the 50 000 the spec projects it is millions of
+     * comparisons per search, and the answer then is a full-text index built from the field
+     * catalogue rather than a wider `CONTAINS`.
+     *
+     * Three details that are not obvious:
+     *
+     *  - **`__`-prefixed keys are skipped**, the same filter attribute discovery uses (R5). They are
+     *    ours rather than JIRA's, and matching `SCRUM-000000001` for a search of `000` would be a
+     *    hit on a name the user is never shown.
+     *  - **The projection is searched as well as the issue**, and that is what makes searching for a
+     *    status work at all: the issue stores `{"self":"…","name":"Idea"}` and the projection stores
+     *    `Idea`. Searching the stored JSON alone would also match every URL fragment inside it.
+     *  - **A list is searched element by element.** `toString()` takes a scalar and *errors* on a
+     *    list, so `labels` — the field a person is most likely to search — is exactly the value that
+     *    would fail the whole statement at runtime rather than at parse time.
      */
     private const val ISSUE_FILTER: String = """
-        WHERE (${'$'}q IS NULL OR toLower(i.$KEY) CONTAINS ${'$'}q OR toLower(i.$ITEM_NAME) CONTAINS ${'$'}q)
+        WHERE (${'$'}q IS NULL OR $MATCHES_ANY_FIELD)
           AND (${'$'}projectKeys IS NULL OR i.$PROJECT_KEY IN ${'$'}projectKeys)
     """
+
+
 
     /**
      * The columns of the issues table, for one page (spec §14.4).
@@ -617,8 +662,9 @@ public object JiraCypher {
     public const val LIST_ISSUES_ASC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
-        $ISSUE_FILTER
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
+        WITH i, p
+        $ISSUE_FILTER
         WITH i, p
         ORDER BY coalesce(p[${'$'}sortField], i[${'$'}sortField], '') ASC, i.$SORT_KEY ASC
         SKIP ${'$'}skip LIMIT ${'$'}limit
@@ -628,6 +674,7 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
@@ -635,8 +682,9 @@ public object JiraCypher {
     public const val LIST_ISSUES_DESC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
-        $ISSUE_FILTER
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
+        WITH i, p
+        $ISSUE_FILTER
         WITH i, p
         ORDER BY coalesce(p[${'$'}sortField], i[${'$'}sortField], '') DESC, i.$SORT_KEY DESC
         SKIP ${'$'}skip LIMIT ${'$'}limit
@@ -646,6 +694,7 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
@@ -658,6 +707,8 @@ public object JiraCypher {
     public const val COUNT_ISSUES_MATCHING: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
+        OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
+        WITH i, p
         $ISSUE_FILTER
         RETURN count(i) AS total
     """
@@ -758,5 +809,69 @@ public object JiraCypher {
         SET c.$FIELD_IDS = ${'$'}fieldIds,
             c.$UPDATED_AT = ${'$'}updatedAt,
             c.$UPDATED_BY = ${'$'}updatedBy
+    """
+
+    // -- the related-issues graph -----------------------------------------------------------------
+
+    /**
+     * Every link touching these issues, in one hop, with the edge stated in JIRA's own direction.
+     *
+     * ## Why the walk is driven from Kotlin
+     *
+     * The same three reasons `DependencyGraphCypher` gives, and they hold identically here:
+     * **Neo4j will not take a parameter as a variable-length bound**, so a depth-`n` pattern has to
+     * be interpolated into the statement; the node cap is breadth-first from the seed, which a
+     * closure match cannot express; and running this same statement over the *admitted* set answers
+     * two questions at once — which edges are inside the picture, and how many links each node has
+     * that the picture does not contain.
+     *
+     * The pattern is undirected because a link is a relationship between two issues whichever end
+     * you start from, but `startNode`/`endNode` are returned so the arrow can still be drawn the way
+     * JIRA asserts it. `subTaskOf` is walked alongside `linkedTo`: a parent and its sub-task are
+     * related in every sense a reader means by the word, and JIRA shows them in the same panel.
+     *
+     * Ordered by `__sortKey` before the `LIMIT`, so the same issue always produces the same picture
+     * — an unordered cap makes the diagram a property of the planner rather than of the data.
+     */
+    public const val LINK_NEIGHBOURS: String = """
+        CYPHER 25
+        UNWIND ${'$'}ids AS id
+        MATCH (a:$JIRA_ISSUE {$ID: id})-[r:$LINKED_TO|$SUB_TASK_OF]-(b:$JIRA_ISSUE)
+        RETURN id                    AS fromId,
+               b.$ID                 AS otherId,
+               b.$SORT_KEY           AS sortKey,
+               startNode(r).$ID      AS sourceId,
+               endNode(r).$ID        AS targetId,
+               type(r)               AS relType,
+               r.$TYPE_NAME          AS typeName
+        ORDER BY sortKey, otherId
+        LIMIT ${'$'}limit
+    """
+
+    /**
+     * The four things a node in that picture shows: type, key, status and summary (§13.2).
+     *
+     * The type and the status come from their own nodes rather than from the issue's stored JSON,
+     * which is the whole reason those entities are promoted to nodes (§7.3) — `t.__name` is a word,
+     * `i.issuetype` is a blob. The summary is the issue's own property, verbatim.
+     *
+     * A placeholder answers here like any other issue, with whatever the link payload carried and
+     * `unresolved` true. It is drawn, because a link pointing at an issue outside the configured
+     * projects is a fact about this issue, and hiding it would make the picture claim there is
+     * nothing there.
+     */
+    public const val GRAPH_NODES: String = """
+        CYPHER 25
+        UNWIND ${'$'}ids AS id
+        MATCH (i:$JIRA_ISSUE {$ID: id})
+        OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
+        OPTIONAL MATCH (i)-[:$HAS_STATUS]->(s:$JIRA_STATUS)
+        RETURN i.$ID          AS id,
+               i.$KEY         AS key,
+               i.$SUMMARY     AS summary,
+               t.$ITEM_NAME   AS typeName,
+               s.$ITEM_NAME   AS statusName,
+               (i:$UNDEFINED) AS unresolved
+        ORDER BY i.$SORT_KEY, i.$ID
     """
 }

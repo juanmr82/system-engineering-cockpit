@@ -135,6 +135,7 @@ class GraphNamesTest {
             JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
             JiraCypher.LIST_FIELDS, JiraCypher.FIND_FIELDS,
             JiraCypher.LOAD_COLUMNS, JiraCypher.SAVE_COLUMNS,
+            JiraCypher.LINK_NEIGHBOURS, JiraCypher.GRAPH_NODES,
             *JiraCypher.SCHEMA.toTypedArray(),
         )
         add(

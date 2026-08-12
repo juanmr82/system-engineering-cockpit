@@ -6,13 +6,14 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–11 of its own build order turned up twenty-one points where following it literally
+built. Building steps 1–11 of its own build order, and two changes asked for after them, turned up
+twenty-three points where following the spec literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all of them in one place, because the alternative is twenty-one comments
+then contradicted. This ADR records all of them in one place, because the alternative is twenty-three comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -352,6 +353,67 @@ finished, and the picker rendered at Material's default 560px with its content c
 visible to a test — the first needs a run that ends while being watched, the second needs layout,
 and jsdom has none.
 
+### 22. The Issues search reads every field, against §13.2
+
+§13.2 restricts the search box to `key`, `summary` and `__name`, and sends anyone wanting more to
+the Cypher console. **Overruled on request, with the cost understood.** A reviewer looking for an
+issue knows a component, a label, an assignee or a fix version far more often than they know a key,
+and a box that silently ignores what was typed into it is worse than a slow one.
+
+What is searched: every property of the issue whose key does not start with `__`, and every property
+of its `:__JiraProjection`. The projection half is what makes searching a *status* work — the issue
+stores `{"self":"…","name":"Idea"}` and the projection stores `Idea` — and the `__` filter is the
+same one attribute discovery uses (R5), so a search for `000` cannot match a `__sortKey` nobody has
+been shown.
+
+Two things this cost:
+
+- **The list branch.** `toString()` takes a scalar and errors on a list, so `labels` — the field a
+  person is most likely to search — would have failed the whole request at runtime rather than at
+  parse time. The predicate branches on `v IS :: LIST<ANY>` and searches element by element.
+- **The projection has to be matched before the filter**, in the page query *and* the count query,
+  which is why both now `OPTIONAL MATCH` it above the `WHERE` rather than below it.
+
+**The scaling answer is not a wider `CONTAINS`.** This predicate is per issue over every property
+it carries, with no index and no query governor (CLAUDE.md §7). At 784 issues × ~145 fields it is
+comfortable; at the 50 000 the spec projects it is millions of comparisons per search. When that
+bites, the fix is a full-text index built from the field catalogue at import time — which is a
+design, not a tweak, and is not built.
+
+### 23. Related issues are a column and a diagram, which §13.2 does not have at all
+
+The spec gives the Issues table three fixed columns and no way to see what an issue is linked to;
+`issuelinks` is imported (§9.4) and then never surfaced. A **Related** column now sits immediately
+before the link-out column, carrying the same graph icon the requirement dependency graph uses,
+and **only on rows that have links** — a disabled control in every row is something a reader checks
+one row at a time, where an empty cell is read at a glance down the column.
+
+Clicking it opens the same kind of picture ADR 0011 built for DOORS, and the split is deliberate:
+
+- **The layout is shared, exactly.** `GraphLayoutService` runs ELK in the same worker and the edge
+  geometry comes from the same `edge-path` helpers. That is the expensive, subtle half, and ADR
+  0011's "one graph-layout implementation" still holds.
+- **The drawing is not shared.** The DOORS canvas measures requirement cards and places them in
+  system-level bands with sub-lane compression and lane labels. A JIRA link is not a decomposition,
+  an issue has no system level, and its box is a fixed size holding four short things. Generalising
+  that component would produce one whose every feature is conditional on which source it draws.
+
+Three decisions inside it worth stating:
+
+- **Vertical rank is distance from the seed**, not a level: the issue you opened is the top row and
+  each hop is the next. There is no direction control, because "what is this related to" has no
+  upstream — the walk follows links both ways, always.
+- **Sub-task edges are drawn alongside `linkedTo`**, dashed and labelled *Sub-task of*. JIRA shows
+  them in the same panel and a reader means them when they say "related".
+- **Edges are labelled with JIRA's own link type** — *Relates*, *Blocks* — which the DOORS graph
+  cannot do, because the DXL exporter discards the link module name (§8 of that spec). Where a
+  source states what a relationship is, the picture says it.
+
+Depth is 1–5, default 2, clamped server-side, with the same 300-node cap the DOORS graph uses. A
+link the cap or the depth left out is counted on its node as a `+n` badge and announced above the
+diagram, because a picture that stops with nothing to say it stopped is read as a picture that
+ended.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -363,9 +425,12 @@ and jsdom has none.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Twenty-one departures over eleven build steps, and most were found by writing a test rather than by
+- Twenty-three departures over eleven build steps, and most were found by writing a test rather than by
   reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
+- Points 22 and 23 are the only two that are not *discoveries*: they are changes the product owner
+  asked for after seeing the thing work, and both widen what the spec deliberately narrowed. Each
+  states its cost where the cost lands.
 - Points 15 to 20 are the frontend's, and they share a shape: the spec drew a screen, and building
   it found that one of its parts was answering two questions at once. Splitting them — choosing
   from ordering, a control from a report — is the change in every one of them.

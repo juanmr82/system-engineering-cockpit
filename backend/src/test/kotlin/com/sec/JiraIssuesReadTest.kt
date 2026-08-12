@@ -8,6 +8,7 @@ import com.sec.graph.executeWrite
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraIssuesProjection.SortDirection
 import com.sec.source.jira.JiraIssuesProjection.SortField
+import com.sec.source.jira.JiraLinkGraphProjection
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.TestInstance
 import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -47,6 +49,7 @@ class JiraIssuesReadTest {
 
     private lateinit var graphDriver: GraphDriver
     private lateinit var issues: JiraIssuesProjection
+    private lateinit var graphs: JiraLinkGraphProjection
 
     @BeforeAll
     fun setUp() {
@@ -54,6 +57,7 @@ class JiraIssuesReadTest {
         graphDriver = GraphDriver(Neo4jSettings(neo4j.boltUrl, "neo4j", "neo4j", "ignored"))
         graphDriver.verifyConnectivity()
         issues = JiraIssuesProjection(graphDriver, HOST)
+        graphs = JiraLinkGraphProjection(graphDriver)
     }
 
     @AfterAll
@@ -129,21 +133,76 @@ class JiraIssuesReadTest {
      * The search box, and the half of it that is easy to get wrong: the total.
      *
      * A filter applied to the rows and not to the count produces a paginator promising pages that
-     * are empty. The two statements share one `WHERE` fragment for exactly this reason.
+     * are empty. The two statements share one `WHERE` fragment for exactly this reason — and since
+     * the search widened to every field, they also share the fragment that walks those fields.
      */
     @Test
     fun `a text search filters the rows and the total together`() = runBlocking {
-        val page = list(query = "thermal")
+        val page = list(query = "margins")
 
         assertEquals(listOf("SCRUM-2"), page.rows.map { it.key })
         assertEquals(1, page.total)
     }
 
-    /** Case-insensitive, and matching the key as well as the name — spec §13.2's two fields. */
+    /**
+     * Two issues match `thermal`, and they match it in different fields.
+     *
+     * SCRUM-2 has it in its summary and SCRUM-1 carries it as a *label* — which is the whole point
+     * of the widened search, and the assertion that would have failed under the old one.
+     */
+    @Test
+    fun `a term is found wherever it lives`() = runBlocking {
+        assertEquals(listOf("SCRUM-1", "SCRUM-2"), list(query = "thermal").rows.map { it.key })
+    }
+
+    /** Case-insensitive, over every field rather than §13.2's two. */
+    /**
+     * The search reads every field, not the key and the summary (ADR 0014 point 22).
+     *
+     * `safety` is a **label** here, and labels are the case that decides the shape of the whole
+     * predicate: they are stored as a Neo4j list, and `toString()` errors on a list rather than
+     * returning something useless — so a statement that did not branch on the type would not
+     * narrow the results, it would fail the request.
+     */
+    @Test
+    fun `a search matches a value in any field, including a list`() = runBlocking {
+        assertEquals(listOf("SCRUM-1"), list(query = "safety").rows.map { it.key })
+        assertEquals(1, list(query = "safety").total)
+    }
+
+    /** A date, a number and a plain string are all searchable, and none of them is text on the node. */
+    @Test
+    fun `a search matches a non-string field`() = runBlocking {
+        assertEquals(listOf("SCRUM-1"), list(query = "2026-09-01").rows.map { it.key })
+    }
+
+    /**
+     * The projection is searched too, and this is the case that makes it worth doing.
+     *
+     * The issue stores a status as `{"self":"…","name":"Idea"}`; the projection stores `Idea`. A
+     * user searches for the word they can see.
+     */
+    @Test
+    fun `a search matches the display string a projection derived`() = runBlocking {
+        assertEquals(listOf("SCRUM-1"), list(query = "WSS").rows.map { it.key })
+    }
+
+    /**
+     * `__`-prefixed properties are ours, and are never searched (R5).
+     *
+     * `__sortKey` is the one that would bite: every issue carries a zero-padded key, so a search
+     * for `000` would match the entire table on a name no user has ever been shown.
+     */
+    @Test
+    fun `a search never matches an internal property`() = runBlocking {
+        assertEquals(emptyList(), list(query = "000000").rows.map { it.key })
+        assertEquals(emptyList(), list(query = "unresolved").rows.map { it.key })
+    }
+
     @Test
     fun `a search matches the key and the summary, whatever the case`() = runBlocking {
         assertEquals(listOf("OTS-3"), list(query = "ots").rows.map { it.key })
-        assertEquals(listOf("SCRUM-2"), list(query = "THERMAL").rows.map { it.key })
+        assertEquals(listOf("SCRUM-2"), list(query = "MARGINS").rows.map { it.key })
         assertEquals(emptyList(), list(query = "nothing matches this").rows.map { it.key })
     }
 
@@ -270,6 +329,102 @@ class JiraIssuesReadTest {
         assertEquals(listOf("status", "labels"), page.columns.map { it.fieldId })
     }
 
+    // -- the related-issues graph ----------------------------------------------------------------
+
+    /**
+     * One hop: the seed and what it is directly linked to.
+     *
+     * The stub is in the picture. A link to an issue outside the configured projects is a fact
+     * about the issue that was asked for, and leaving it out would make the diagram claim there is
+     * nothing there — the same argument the References column makes for DOORS.
+     */
+    @Test
+    fun `depth one draws the seed and its immediate links`() = runBlocking {
+        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+
+        assertEquals(setOf("SCRUM-1", "SCRUM-2", "SCRUM-100"), graph.nodes.map { it.key }.toSet())
+        assertTrue(graph.nodes.single { it.key == "SCRUM-1" }.seed)
+        assertTrue(graph.nodes.single { it.key == "SCRUM-100" }.unresolved)
+    }
+
+    /** A second hop reaches what the neighbours are linked to, and no further. */
+    @Test
+    fun `depth two reaches the neighbours of the neighbours`() = runBlocking {
+        val keys = graphs.graphOf(issueId(1), depth = 2)!!.nodes.map { it.key }.toSet()
+
+        assertEquals(setOf("SCRUM-1", "SCRUM-2", "SCRUM-10", "SCRUM-100"), keys)
+    }
+
+    /** The four things a node shows (§13.2), each from the place that holds a word rather than a blob. */
+    @Test
+    fun `a node carries its type, status, key and summary`() = runBlocking {
+        val seed = graphs.graphOf(issueId(1), depth = 1)!!.nodes.single { it.key == "SCRUM-1" }
+
+        assertEquals("Task", seed.typeName)
+        assertEquals("In Progress", seed.statusName)
+        assertEquals("A first issue", seed.summary)
+    }
+
+    /**
+     * An edge keeps JIRA's own direction and its own name for the relationship.
+     *
+     * Unlike DOORS's `refersTo`, this source says what the link *is*, so the picture can label it.
+     * A sub-task edge has no type name and says so with its own flag instead.
+     */
+    @Test
+    fun `edges keep their direction and their type name`() = runBlocking {
+        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+        val seed = Ref.encode(issueId(1))
+
+        val relates = graph.edges.single { it.typeName == "Relates" }
+        assertEquals(seed, relates.source)
+        assertFalse(relates.subTask)
+
+        val subTask = graph.edges.single { it.subTask }
+        assertEquals(seed, subTask.source)
+        assertNull(subTask.typeName)
+    }
+
+    /**
+     * A link the depth cut off is counted, not silently dropped.
+     *
+     * A diagram that stops with nothing to say it stopped is read as a diagram that ended, which is
+     * the failure the badge exists to prevent (`REQ_BREAKDOWN_GRAPH_VIEW` §1.1).
+     */
+    @Test
+    fun `a link outside the picture is counted on the node it belongs to`() = runBlocking {
+        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+
+        assertEquals(1, graph.nodes.single { it.key == "SCRUM-2" }.truncatedNeighbours)
+        assertTrue(graph.truncated)
+    }
+
+    /** An issue with no links is one node and no edges — not an error, and not an empty answer. */
+    @Test
+    fun `an issue with no links is still a graph`() = runBlocking {
+        val graph = graphs.graphOf(issueId(3), depth = 2)!!
+
+        assertEquals(listOf("OTS-3"), graph.nodes.map { it.key })
+        assertEquals(emptyList(), graph.edges)
+        assertFalse(graph.truncated)
+    }
+
+    /** A hand-edited handle is a 404, never an empty picture presented as an answer. */
+    @Test
+    fun `an unknown issue has no graph at all`() = runBlocking {
+        assertNull(graphs.graphOf("https://jira.example.com/rest/api/2/issue/9999", depth = 1))
+    }
+
+    /** The table's control is offered from this count, so it has to be the count of both directions. */
+    @Test
+    fun `a row carries how many issues it is linked to`() = runBlocking {
+        val rows = list().rows.associateBy { it.key }
+
+        assertEquals(2, rows.getValue("SCRUM-1").linkCount)
+        assertEquals(2, rows.getValue("SCRUM-2").linkCount)
+        assertEquals(0, rows.getValue("OTS-3").linkCount)
+    }
+
     // -- harness -----------------------------------------------------------------------------------
 
     private suspend fun list(
@@ -292,6 +447,9 @@ class JiraIssuesReadTest {
         columns = fieldIds.map { JiraColumnDto(fieldId = it, name = it) },
     )
 
+    /** The fixture's issues are `<host>/rest/api/2/issue/<n>`, which is what a `self` looks like. */
+    private fun issueId(number: Int): String = "$HOST/rest/api/2/issue/$number"
+
     private companion object {
         const val HOST = "https://jira.example.com"
 
@@ -312,27 +470,37 @@ class JiraIssuesReadTest {
             CREATE (i1:SEItem:JiraIssue {
               __id: 'https://jira.example.com/rest/api/2/issue/1', __name: 'SCRUM-1: A first issue',
               __version: '2026-08-01', __sortKey: 'SCRUM-000000001', __projectKey: 'SCRUM',
-              key: 'SCRUM-1', id: '1', status: 'In Progress', duedate: '2026-09-01',
+              key: 'SCRUM-1', id: '1', summary: 'A first issue',
+              status: 'In Progress', duedate: '2026-09-01',
               labels: ['thermal', 'safety'],
               customfield_1: '{"self":"https://jira.example.com/rest/api/2/customFieldOption/38303","value":"WSS","id":"38303"}' })
             CREATE (i2:SEItem:JiraIssue {
               __id: 'https://jira.example.com/rest/api/2/issue/2', __name: 'SCRUM-2: Thermal margins',
               __version: '2026-08-02', __sortKey: 'SCRUM-000000002', __projectKey: 'SCRUM',
-              key: 'SCRUM-2', id: '2', status: 'Done' })
+              key: 'SCRUM-2', id: '2', summary: 'Thermal margins', status: 'Done' })
             CREATE (i10:SEItem:JiraIssue {
               __id: 'https://jira.example.com/rest/api/2/issue/10', __name: 'SCRUM-10: Ten',
               __version: '2026-08-03', __sortKey: 'SCRUM-000000010', __projectKey: 'SCRUM',
-              key: 'SCRUM-10', id: '10' })
+              key: 'SCRUM-10', id: '10', summary: 'Ten' })
             CREATE (o3:SEItem:JiraIssue {
               __id: 'https://jira.example.com/rest/api/2/issue/3', __name: 'OTS-3: Another project',
               __version: '2026-08-04', __sortKey: 'OTS-000000003', __projectKey: 'OTS',
-              key: 'OTS-3', id: '3' })
+              key: 'OTS-3', id: '3', summary: 'Another project' })
             CREATE (stub:SEItem:JiraIssue:`__UNDEFINED` {
               __id: 'https://jira.example.com/rest/api/2/issue/100', __name: '<unresolved SCRUM-100>',
               __version: 'unresolved', __sortKey: 'SCRUM-000000100',
               key: 'SCRUM-100', id: '100', summary: 'Outside the configured projects' })
             CREATE (i1)-[:hasIssueType]->(t)
             CREATE (i2)-[:hasIssueType]->(t)
+            CREATE (st:SEItem:JiraStatus {__id: 'https://jira.example.com/rest/api/2/status/1',
+                                          __name: 'In Progress', __version: 'current',
+                                          id: '1', name: 'In Progress'})
+            CREATE (i1)-[:hasStatus]->(st)
+            // SCRUM-1 -> SCRUM-2 -> SCRUM-10, so depth is observable, plus a link to the stub so
+            // the walk has to draw an issue that was never imported.
+            CREATE (i1)-[:linkedTo {linkId: 'l1', typeName: 'Relates'}]->(i2)
+            CREATE (i2)-[:linkedTo {linkId: 'l2', typeName: 'Blocks'}]->(i10)
+            CREATE (i1)-[:subTaskOf]->(stub)
             CREATE (i1)-[:__projection]->(:`__JiraProjection` {
               __id: 'https://jira.example.com/rest/api/2/issue/1#projection', customfield_1: 'WSS' })
             CREATE (i2)-[:__projection]->(:`__JiraProjection` {

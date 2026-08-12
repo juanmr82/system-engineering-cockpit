@@ -168,6 +168,13 @@ public data class JiraIssueRowDto(
      */
     public val unresolved: Boolean = false,
     /**
+     * How many issues this one is linked to, in either direction, sub-tasks included.
+     *
+     * A count rather than a boolean because the number is worth showing on the control, and because
+     * "has links" is a question the client can answer from it while the reverse is not.
+     */
+    public val linkCount: Int = 0,
+    /**
      * The configured columns' values, keyed by field id — **only** the configured ones.
      *
      * `Map<String, JsonElement>` for the same reason a DOORS attribute bag is: the set differs per
@@ -175,4 +182,61 @@ public data class JiraIssueRowDto(
      * stays a list, because the table renders those as chips.
      */
     public val values: Map<String, JsonElement> = emptyMap(),
+)
+
+/**
+ * The related-issues graph of one issue: the links it has, and the links those have.
+ *
+ * The same shape as the DOORS dependency graph's response and deliberately not the same type: the
+ * two share a *picture*, not a payload. A requirement card carries a module, an outline level and a
+ * system level; a JIRA node carries a type, a status and a summary. Merging them would produce a
+ * DTO where half the fields are null for either source.
+ */
+@Serializable
+public data class JiraLinkGraphDto(
+    public val seedRef: String,
+    public val depth: Int,
+    public val nodes: List<JiraGraphNodeDto>,
+    public val edges: List<JiraGraphEdgeDto>,
+    /** True when the cap or the depth cut the picture short, so the view can say so. */
+    public val truncated: Boolean = false,
+)
+
+/**
+ * One issue in that picture: the four things §13.2 asks a node to show, plus where it sits.
+ *
+ * [statusName] and [typeName] come from the promoted `:JiraStatus` and `:JiraIssueType` nodes rather
+ * than from the issue's stored JSON — that promotion is what makes them words instead of blobs.
+ * Both are nullable, because an issue can point at neither, and a **placeholder points at both of
+ * nothing**: it is drawn anyway, with `unresolved` true, because a link to an issue outside the
+ * configured projects is a fact about the issue that was asked for.
+ */
+@Serializable
+public data class JiraGraphNodeDto(
+    public val ref: String,
+    public val key: String,
+    public val typeName: String? = null,
+    public val statusName: String? = null,
+    public val summary: String? = null,
+    public val unresolved: Boolean = false,
+    /** The issue the graph was opened for. Exactly one node carries it. */
+    public val seed: Boolean = false,
+    /** Links this node has that the picture does not contain — cut by the cap or the depth. */
+    public val truncatedNeighbours: Int = 0,
+)
+
+/**
+ * One link, in the direction JIRA asserts it.
+ *
+ * [typeName] is JIRA's own name for the link type — *Relates*, *Blocks*, *Duplicates* — and it is
+ * shown, because unlike DOORS's `refersTo` this source really does say what the relationship is
+ * (§9.4). A sub-task edge carries no type name and says so with [subTask] instead: the relationship
+ * is the label.
+ */
+@Serializable
+public data class JiraGraphEdgeDto(
+    public val source: String,
+    public val target: String,
+    public val typeName: String? = null,
+    public val subTask: Boolean = false,
 )

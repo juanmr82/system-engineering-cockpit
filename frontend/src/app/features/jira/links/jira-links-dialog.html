@@ -1,0 +1,48 @@
+<h2 mat-dialog-title>Issues related to {{ seedKey }}</h2>
+
+<mat-dialog-content class="sec-jira-links-dialog">
+  <div class="sec-jira-links-dialog__bar">
+    <span class="sec-jira-links-dialog__label">Follow links</span>
+    @for (option of depths; track option) {
+      <button
+        type="button"
+        class="sec-jira-links-dialog__depth"
+        [class.sec-jira-links-dialog__depth--on]="depth() === option"
+        (click)="setDepth(option)"
+      >
+        {{ option }}
+      </button>
+    }
+    <span class="sec-jira-links-dialog__label">{{ depth() === 1 ? 'step away' : 'steps away' }}</span>
+
+    <span class="sec-jira-links-dialog__spacer"></span>
+
+    <p class="sec-jira-links-dialog__stats">
+      <span><b>{{ issueCount() }}</b> issues</span>
+      <span><b>{{ linkCount() }}</b> links</span>
+    </p>
+  </div>
+
+  @if (graph.isLoading() && current() === null) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (graph.error()) {
+    <p class="sec-jira-links-dialog__error" role="alert">
+      Couldn't load the related issues.
+    </p>
+  } @else if (current(); as loaded) {
+    @if (loaded.truncated) {
+      <!-- A diagram that stops with nothing to say it stopped is read as a diagram that ended
+           (REQ_BREAKDOWN_GRAPH_VIEW §1.1). The per-node badge says where; this says that. -->
+      <p class="sec-jira-links-dialog__note" role="status">
+        Some links are not drawn. Follow more steps to see further.
+      </p>
+    }
+
+    <sec-jira-links-canvas [graph]="loaded" />
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <span class="sec-jira-links-dialog__spacer"></span>
+  <button mat-button type="button" (click)="close()">Close</button>
+</mat-dialog-actions>
