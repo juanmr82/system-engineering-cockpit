@@ -25,11 +25,26 @@ export interface ReviewSettingsDialogData {
 // are listed rather than merely described because a reviewer looking for "why can't I hide ID"
 // should find ID where they went looking for it.
 const FIXED_COLUMNS: readonly FixedColumnRow[] = [
-  { label: 'ID', checked: { mandatory: true, visible: true, verification: false } },
-  { label: 'Type', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'Name', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'References', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'Comment', checked: { mandatory: false, visible: true, verification: false } },
+  {
+    label: 'ID',
+    checked: { mandatory: true, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Type',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Name',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'References',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Comment',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
 ];
 
 function extractErrorDetail(error: unknown): string {
@@ -62,7 +77,9 @@ export class ReviewSettingsDialog {
   static open(dialog: MatDialog, data: ReviewSettingsDialogData) {
     return dialog.open<ReviewSettingsDialog, ReviewSettingsDialogData, boolean>(ReviewSettingsDialog, {
       ...SEC_MODAL_DIALOG,
-      width: '880px',
+      // Wide enough for four flag columns and still leave the attribute name room to be read: the
+      // flag columns are a fixed width each, so every one added comes straight out of the name.
+      width: '1040px',
       maxWidth: '94vw',
       // Tall on purpose: this dialog's content is a list of up to ~80 rows, and the height is the
       // only thing that decides how much of it a reviewer can see at once.
@@ -110,6 +127,7 @@ export class ReviewSettingsDialog {
           mandatory: attribute.mandatory,
           visible: attribute.visible,
           verification: attribute.verification,
+          excludedFromOpenPoints: attribute.excludedFromOpenPoints,
         })),
       });
     });
@@ -133,6 +151,7 @@ export class ReviewSettingsDialog {
           mandatory: row.mandatory,
           visible: row.visible,
           verification: row.verification,
+          excludedFromOpenPoints: row.excludedFromOpenPoints,
         })),
       });
       this.dialogRef.close(true);

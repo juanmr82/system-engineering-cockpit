@@ -21,6 +21,7 @@ import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.executeRead
 import org.neo4j.driver.Query
 import org.neo4j.driver.Record
+import org.neo4j.driver.Value
 
 /**
  * Read projections for the Statistics view (`docs/features/requirements-statistics.md`).
@@ -137,7 +138,11 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
 
     private suspend fun ModuleInScope.statistics(): ModuleResult {
         val policies = mandatoryPolicies(id)
-        val verificationAttributes = verificationAttributes(id)
+        // One read, two answers: both roles live on the same :__AttributeSetting nodes, so asking
+        // separately would be two round trips for one row set.
+        val settings = attributeSettings(id)
+        val verificationAttributes = settings.named { it.get("verification") }
+        val excludedFromOpenPoints = settings.named { it.get("excludedFromOpenPoints") }
         val total = objectCount(id)
 
         // "Above L0" is read from the module, because a requirement carries no level of its own.
@@ -152,7 +157,9 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 mapOf("moduleUrl" to id, "limit" to MAX_OBJECTS_PER_MODULE),
             ),
         ) { records ->
-            records.forEach { tally.add(it, policies, verificationAttributes, parentageApplies) }
+            records.forEach {
+                tally.add(it, policies, verificationAttributes, excludedFromOpenPoints, parentageApplies)
+            }
         }
 
         val dangling = danglingTargets(id)
@@ -218,6 +225,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
             record: Record,
             policies: List<DoorsChecks.MandatoryPolicy>,
             verificationAttributes: Set<String>,
+            excludedFromOpenPoints: Set<String>,
             parentageApplies: Boolean,
         ) {
             val labels = record.get("labels").asList { it.asString() }
@@ -241,7 +249,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
                 requirements++
             }
 
-            val openPoints = DoorsChecks.openPointAttributes(labels, props)
+            val openPoints = DoorsChecks.openPointAttributes(labels, props, excludedFromOpenPoints)
             val missingMandatory = DoorsChecks.missingMandatory(policies, labels, props)
             val missingVerification =
                 DoorsChecks.missingVerification(verificationAttributes, labels, props)
@@ -305,13 +313,21 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
             }
         }
 
-    private suspend fun verificationAttributes(moduleId: String): Set<String> =
+    /**
+     * This module's `:__AttributeSetting` rows, read once.
+     *
+     * Returned raw rather than as one set, because two roles are read off them — which attribute
+     * proves verification, and which the TBD / TBC scan must skip — and a method per role would be
+     * a round trip per role over one row set.
+     */
+    private suspend fun attributeSettings(moduleId: String): List<Record> =
         graphDriver.executeRead(
             Query(ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS, mapOf("moduleId" to moduleId)),
-        ) { records ->
-            records.filter { it.get("verification").asBoolean(false) }
-                .mapTo(linkedSetOf()) { it.get("name").asString("") }
-        }
+        ) { records -> records.toList() }
+
+    /** The attribute names whose row has [flag] set. */
+    private fun List<Record>.named(flag: (Record) -> Value): Set<String> =
+        filter { flag(it).asBoolean(false) }.mapTo(linkedSetOf()) { it.get("name").asString("") }
 
     private suspend fun objectCount(moduleId: String): Int =
         graphDriver.executeRead(

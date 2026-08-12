@@ -52,6 +52,7 @@ public object Aliases {
         MetaValue.MANDATORY_RULE to "Mandatory",
         MetaProp.VISIBLE to "Shown in table",
         MetaProp.VERIFICATION to "Verification attribute",
+        MetaProp.EXCLUDED_FROM_OPEN_POINTS to "Exclude from TBD/TBC statistics",
     )
 
     // Type labels the importer derives, rendered as language rather than as label strings. The

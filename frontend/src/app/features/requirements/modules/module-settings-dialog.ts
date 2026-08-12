@@ -37,7 +37,11 @@ interface SettingsFormModel {
 // this dialog belongs to the Modules view, which has no such table — offering it here would be
 // offering a setting whose effect is nowhere on screen. The flag is still *carried* in the model
 // and posted back unchanged, so opening this dialog cannot clear what the review dialog set.
-const MODULE_FLAGS: readonly AttributeFlagName[] = ['mandatory', 'verification'];
+const MODULE_FLAGS: readonly AttributeFlagName[] = [
+  'mandatory',
+  'verification',
+  'excludedFromOpenPoints',
+];
 
 function extractErrorDetail(error: unknown): string {
   if (error instanceof HttpErrorResponse && error.error) {
@@ -74,7 +78,9 @@ export class ModuleSettingsDialog {
   static open(dialog: MatDialog, data: ModuleSettingsDialogData) {
     return dialog.open<ModuleSettingsDialog, ModuleSettingsDialogData, boolean>(ModuleSettingsDialog, {
       ...SEC_MODAL_DIALOG,
-      width: '880px',
+      // Matched to the review settings dialog, which needs the width for a fourth flag column. The
+      // two are the same table of the same attributes and sizing them apart reads as a fault.
+      width: '1040px',
       maxWidth: '94vw',
       // Tall for the same reason the review settings dialog is: tab 2 is a list of up to ~80
       // attributes, and the height is the only thing deciding how many are visible at once.
@@ -126,6 +132,7 @@ export class ModuleSettingsDialog {
           mandatory: attribute.mandatory,
           visible: attribute.visible,
           verification: attribute.verification,
+          excludedFromOpenPoints: attribute.excludedFromOpenPoints,
         })),
       });
     });
@@ -156,6 +163,7 @@ export class ModuleSettingsDialog {
           mandatory: row.mandatory,
           visible: row.visible,
           verification: row.verification,
+          excludedFromOpenPoints: row.excludedFromOpenPoints,
         })),
       });
       this.dialogRef.close(true);

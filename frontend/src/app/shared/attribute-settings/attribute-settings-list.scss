@@ -26,8 +26,8 @@
   @include sec.stat-readout;
 }
 
-// The well holds the header and the scrolling list, so the header stays put without sticky
-// positioning and the columns cannot drift apart.
+// The well bounds the scroll, which is what the sticky header inside it needs (§6): a concrete
+// height, not `flex: 1` alone — hence `min-height: 0` beside it.
 .sec-attr-settings__table {
   @include sec.table-well;
 
@@ -38,14 +38,26 @@
   min-height: 0;
 }
 
+// Every flag column is the same width, so the checkboxes sit in columns whatever the words above
+// them are. Set once here rather than per flag: sizing each column to its own header is what broke
+// the moment a fourth flag arrived without a width of its own, and a header is a phrase — the
+// phrases have no common length and no reason to acquire one.
+$flag-column: 132px;
+
 .sec-attr-settings__head {
   @include sec.field-label;
 
   display: flex;
-  align-items: flex-start;
+  // Stretch, so every header cell is as tall as the tallest. That is what lets a label that wrapped
+  // to three lines and one that fits on one still put their bulk actions on the same line.
+  align-items: stretch;
   gap: 10px;
   padding: 8px 14px;
   border-bottom: var(--sec-hairline) solid var(--sec-line);
+  // Opaque and raised, because the rows now pass underneath it rather than starting below it.
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--sec-paper);
 }
 
@@ -84,29 +96,22 @@
   overflow-wrap: anywhere;
 }
 
-// Each flag column is as wide as its own header needs and no wider — the widths differ because
-// the words do. `flex: none` is what keeps a header and its column the same width when the name
-// column absorbs the slack.
+// `flex: none` is what keeps a header and its column the same width when the name column absorbs
+// the slack; centring is what makes a checkbox read as belonging to the words above it, rather than
+// to whichever word of them happens to start at the same edge.
 .sec-attr-settings__flag {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
   flex: none;
+  width: $flag-column;
+  text-align: center;
 }
 
-.sec-attr-settings__flag--mandatory {
-  width: 118px;
-}
-
-.sec-attr-settings__flag--visible {
-  width: 140px;
-}
-
-.sec-attr-settings__flag--verification {
-  width: 172px;
-}
-
+// Takes the slack in a stretched header cell, which pushes the bulk actions to the bottom of it.
 .sec-attr-settings__flag-label {
+  flex: 1;
   line-height: 1.3;
 }
 

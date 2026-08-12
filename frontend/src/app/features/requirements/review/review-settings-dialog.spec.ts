@@ -8,8 +8,21 @@ import { ReviewSettingsDialog } from './review-settings-dialog';
 
 const MODULE_REF = 'bW9kdWxlLTE';
 
-function attribute(name: string, overrides: Partial<{ mandatory: boolean; visible: boolean; verification: boolean }> = {}) {
-  return { name, mandatory: false, visible: false, verification: false, fixed: false, ...overrides };
+function attribute(name: string, overrides: Partial<{
+    mandatory: boolean;
+    visible: boolean;
+    verification: boolean;
+    excludedFromOpenPoints: boolean;
+  }> = {}) {
+  return {
+    name,
+    mandatory: false,
+    visible: false,
+    verification: false,
+    excludedFromOpenPoints: false,
+    fixed: false,
+    ...overrides,
+  };
 }
 
 // Names shaped like the reference module: dots, umlauts, and a group sharing a common word — the
@@ -102,6 +115,24 @@ describe('ReviewSettingsDialog', () => {
 
     // One header for the whole list — the two-table shape produced a second one mid-list.
     expect(element().querySelectorAll('.sec-attr-settings__head').length).toBe(1);
+  });
+
+  /**
+   * The header and the rows must be laid out by the same box, which is the only way their columns
+   * are the same width.
+   *
+   * Asserted structurally because it cannot be asserted visually: jsdom has no layout, so the
+   * symptom — every checkbox sitting one scrollbar's width to the left of the words above it, the
+   * header having been measured against the well and the rows against the well minus its scrollbar
+   * — is invisible to this suite and was found by measuring the real page. What a spec *can* hold
+   * is the arrangement that makes the bug impossible.
+   */
+  it('lays the header out inside the scrolling panel, not above it', () => {
+    const scroll = element().querySelector('.sec-attr-settings__scroll');
+    const head = element().querySelector('.sec-attr-settings__head');
+
+    expect(scroll).not.toBeNull();
+    expect(scroll?.contains(head ?? null)).toBe(true);
   });
 
   it('searches attribute names case- and accent-insensitively', async () => {

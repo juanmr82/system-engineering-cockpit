@@ -64,6 +64,7 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
                 it.get("name").asString() to AttributeFlags(
                     visible = it.get("visible").asBoolean(false),
                     verification = it.get("verification").asBoolean(false),
+                    excludedFromOpenPoints = it.get("excludedFromOpenPoints").asBoolean(false),
                 )
             }
         }
@@ -87,6 +88,7 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
                 mandatory = name in mandatory,
                 visible = flags?.visible ?: false,
                 verification = flags?.verification ?: false,
+                excludedFromOpenPoints = flags?.excludedFromOpenPoints ?: false,
                 // Two discovered attributes *are* fixed columns, because the review table's
                 // Description column is built out of them: a heading shows `objectNumber` plus
                 // `Object Heading`, everything else shows `Object Text` (REQ_REVIEW.md §5).
@@ -100,6 +102,7 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
     public data class AttributeFlags(
         public val visible: Boolean,
         public val verification: Boolean,
+        public val excludedFromOpenPoints: Boolean,
     )
 
     private fun Record.toModuleRowDto(): ModuleRowDto {

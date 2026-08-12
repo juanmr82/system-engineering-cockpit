@@ -25,26 +25,29 @@
   </p>
 </div>
 
-<!-- The well holds the header and the scrolling list, so the header stays put without sticky
-     positioning and the columns cannot drift apart. -->
 <div class="sec-attr-settings__table">
-  <div class="sec-attr-settings__head" role="row">
-    <span role="columnheader" class="sec-attr-settings__cell-name">Attribute</span>
-    @for (flag of flags(); track flag) {
-      <span role="columnheader" class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
-        <span class="sec-attr-settings__flag-label">{{ label(flag) }}</span>
-        <!-- Bulk actions apply to the rows currently listed, which is what makes them useful
-             next to the search box: filter to "Verification", then tick all of them. -->
-        <span class="sec-attr-settings__bulk">
-          <button type="button" (click)="setAll(flag, true)">All</button>
-          <span aria-hidden="true">·</span>
-          <button type="button" (click)="setAll(flag, false)">None</button>
-        </span>
-      </span>
-    }
-  </div>
-
+  <!-- The header scrolls *with* the list and sticks to its top, rather than sitting above it in
+       the well. Outside the scroller it was the width of the well and the rows were the width of
+       the well minus the scrollbar, so every checkbox sat a scrollbar to the left of the words it
+       belonged to. Inside, the two are the same width by construction and no gutter has to be
+       guessed at. -->
   <div class="sec-attr-settings__scroll">
+    <div class="sec-attr-settings__head" role="row">
+      <span role="columnheader" class="sec-attr-settings__cell-name">Attribute</span>
+      @for (flag of flags(); track flag) {
+        <span role="columnheader" class="sec-attr-settings__flag">
+          <span class="sec-attr-settings__flag-label">{{ label(flag) }}</span>
+          <!-- Bulk actions apply to the rows currently listed, which is what makes them useful
+               next to the search box: filter to "Verification", then tick all of them. -->
+          <span class="sec-attr-settings__bulk">
+            <button type="button" (click)="setAll(flag, true)">All</button>
+            <span aria-hidden="true">·</span>
+            <button type="button" (click)="setAll(flag, false)">None</button>
+          </span>
+        </span>
+      }
+    </div>
+
     <!-- The view's own columns are hidden while searching: they are not attributes, and a
          search that still shows five unrelated rows reads as a broken filter. -->
     @if (!filtering()) {
@@ -55,7 +58,7 @@
             <span class="sec-attr-settings__always">always shown</span>
           </span>
           @for (flag of flags(); track flag) {
-            <span class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
+            <span class="sec-attr-settings__flag">
               <mat-checkbox [checked]="column.checked[flag]" [disabled]="true" />
             </span>
           }
@@ -67,7 +70,7 @@
       <div class="sec-attr-settings__row" role="row">
         <span class="sec-attr-settings__cell-name">{{ attribute().value().name }}</span>
         @for (flag of flags(); track flag) {
-          <span class="sec-attr-settings__flag sec-attr-settings__flag--{{ flag }}">
+          <span class="sec-attr-settings__flag">
             <mat-checkbox [formField]="flagField(attribute, flag)" />
           </span>
         }

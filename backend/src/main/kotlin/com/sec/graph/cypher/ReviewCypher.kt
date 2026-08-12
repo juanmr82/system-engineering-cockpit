@@ -6,6 +6,7 @@ import com.sec.domain.MetaProp.APPLIES_TO_LABELS
 import com.sec.domain.MetaProp.ATTRIBUTE_NAME
 import com.sec.domain.MetaProp.RULE
 import com.sec.domain.MetaProp.TEXT
+import com.sec.domain.MetaProp.EXCLUDED_FROM_OPEN_POINTS
 import com.sec.domain.MetaProp.VERIFICATION
 import com.sec.domain.MetaProp.VISIBLE
 import com.sec.domain.MetaValue.CURRENT_SCHEMA_VERSION
@@ -230,7 +231,10 @@ public object ReviewCypher {
         MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
         RETURN s.$ATTRIBUTE_NAME AS name,
                coalesce(s.$VISIBLE, false)      AS visible,
-               coalesce(s.$VERIFICATION, false) AS verification
+               coalesce(s.$VERIFICATION, false) AS verification,
+               // coalesce, because every setting node written before this flag existed carries no
+               // such property — and an attribute nobody excluded is not excluded.
+               coalesce(s.$EXCLUDED_FROM_OPEN_POINTS, false) AS excludedFromOpenPoints
     """
 
     // One node per (module, attributeName) — MERGE on attributeName is what enforces it, since
@@ -247,6 +251,7 @@ public object ReviewCypher {
             s.$SCHEMA_VERSION = $CURRENT_SCHEMA_VERSION,
             s.$VISIBLE        = row.visible,
             s.$VERIFICATION   = row.verification,
+            s.$EXCLUDED_FROM_OPEN_POINTS = row.excludedFromOpenPoints,
             s.$UPDATED_BY     = ${'$'}user,
             s.$UPDATED_AT     = ${'$'}now
     """

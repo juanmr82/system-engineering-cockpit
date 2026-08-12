@@ -180,6 +180,7 @@ class BreakdownFeatureTest {
                     mandatory = false,
                     visible = false,
                     verification = true,
+                    excludedFromOpenPoints = false,
                 ),
             ),
         )

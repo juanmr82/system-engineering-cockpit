@@ -7,13 +7,17 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { matches } from '../text/normalize';
 
-/** The three per-module attribute flags. A dialog shows the subset it can actually write. */
-export type AttributeFlagName = 'mandatory' | 'visible' | 'verification';
+/** The per-module attribute flags. A dialog shows the subset it can actually write. */
+export type AttributeFlagName =
+  | 'mandatory'
+  | 'visible'
+  | 'verification'
+  | 'excludedFromOpenPoints';
 
 /**
  * One editable row.
  *
- * All three flags are carried even by a dialog that shows two, because both dialogs post the
+ * Every flag is carried even by a dialog that shows a subset, because both dialogs post the
  * *absolute* state of every attribute — a hidden flag has to travel back unchanged rather than
  * being sent as false, which would silently clear what the other dialog set.
  */
@@ -22,6 +26,7 @@ export interface AttributeSettingsRow {
   mandatory: boolean;
   visible: boolean;
   verification: boolean;
+  excludedFromOpenPoints: boolean;
 }
 
 export type AttributeSettingsField = FieldTree<AttributeSettingsRow, number>;
@@ -37,13 +42,14 @@ export interface FixedColumnRow {
   readonly checked: Readonly<Record<AttributeFlagName, boolean>>;
 }
 
-// The wording of the three flags, from the server's alias map (R5, `domain/Aliases.kt`
+// The wording of the flags, from the server's alias map (R5, `domain/Aliases.kt`
 // `attributeSettingLabels`). Stated once here rather than in each dialog's template — which is
 // how the two dialogs came to describe the same stored flag with the same words.
 const FLAG_LABELS: Readonly<Record<AttributeFlagName, string>> = {
   mandatory: 'Mandatory',
   visible: 'Shown in table',
   verification: 'Verification attribute',
+  excludedFromOpenPoints: 'Exclude from TBD/TBC statistics',
 };
 
 /**
@@ -76,7 +82,12 @@ export class AttributeSettingsList {
   readonly fields = input.required<readonly AttributeSettingsField[]>();
 
   /** Which flags this dialog can write, left to right. */
-  readonly flags = input<readonly AttributeFlagName[]>(['mandatory', 'visible', 'verification']);
+  readonly flags = input<readonly AttributeFlagName[]>([
+    'mandatory',
+    'visible',
+    'verification',
+    'excludedFromOpenPoints',
+  ]);
 
   readonly fixedColumns = input<readonly FixedColumnRow[]>([]);
 
