@@ -6,14 +6,14 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–11 of its own build order, and two changes asked for after them, turned up
-twenty-three points where following the spec literally
+built. Building steps 1–11 of its own build order, and the changes asked for after them, turned up
+twenty-four points where following the spec literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all of them in one place, because the alternative is twenty-three comments
+then contradicted. This ADR records all of them in one place, because the alternative is twenty-four comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -414,6 +414,27 @@ link the cap or the depth left out is counted on its node as a `+n` badge and an
 diagram, because a picture that stops with nothing to say it stopped is read as a picture that
 ended.
 
+### 24. A cell wraps; it is not truncated at 120 characters
+
+§13.2 cuts a long value at 120 characters and puts the whole of it in a tooltip. Every other table
+in this application wraps — the review table's Description is a paragraph and grows its row — and a
+description is simultaneously the field most worth reading and the least likely to fit. A tooltip is
+not a place to read one.
+
+So the JIRA table's value cells wrap and the row grows, which they get from `wrapText` and
+`autoHeight` in `SEC_GRID_DEFAULT_COL_DEF` — the same defaults every other grid starts from. The
+renderer's host is `display: block; inline-size: 100%` so a wrapped value uses the whole column, and
+text wraps with `overflow-wrap: anywhere` because a JIRA custom field routinely holds a URL with no
+spaces in it. Lists still cap at three chips and a `+n`: that is a *count* of values, not a
+truncation of one.
+
+**One thing this cost, and it is worth knowing before the next grid.** ag-grid builds its cells at
+runtime, outside any component template, so Angular's emulated encapsulation never stamps them —
+a `.sec-grid__cell` rule written in a *component's* stylesheet silently matches nothing. The JIRA
+table shipped with its icons 18px left of centre for exactly that reason, and the fix was to move
+the rule to `styles/_grid.scss`, where §6 says all grid styling belongs. There is now a
+`.sec-grid__cell--control` class there for a cell whose whole content is one icon.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -425,10 +446,10 @@ ended.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Twenty-three departures over eleven build steps, and most were found by writing a test rather than by
+- Twenty-four departures over eleven build steps, and most were found by writing a test rather than by
   reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
-- Points 22 and 23 are the only two that are not *discoveries*: they are changes the product owner
+- Points 22, 23 and 24 are the ones that are not *discoveries*: they are changes the product owner
   asked for after seeing the thing work, and both widen what the spec deliberately narrowed. Each
   states its cost where the cost lands.
 - Points 15 to 20 are the frontend's, and they share a shape: the spec drew a screen, and building

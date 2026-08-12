@@ -12,6 +12,9 @@
   display: block;
   inline-size: 100%;
   min-inline-size: 0;
+  // Fills the cell's height, which the cell's own column-flex rule makes definite. Without this the
+  // box stopped at its text and the rest of the cell was dead space a click did nothing in.
+  block-size: 100%;
 }
 
 // A spreadsheet cell, not a form field. It fills the cell edge to edge with a small inset, has no
@@ -37,9 +40,15 @@
   // scrolling. A scrollbar here would also mean the row was the wrong height, so it is a bug
   // rather than a fallback.
   overflow-y: hidden;
-  // Belt and braces with the measured height: two rows' worth, so an empty comment box is still a
-  // visible target and a one-line comment does not make its row shorter than its neighbours.
-  min-height: 46px;
+  // Two floors, and the larger wins. `100%` is the cell, so the box fills a row made tall by the
+  // Description beside it; `46px` is two lines, for a row too short for that to mean anything. The
+  // measured height set inline still governs when the comment is longer than either — that is what
+  // makes the row grow with the text.
+  //
+  // During ag-grid's own measure pass the cell has no definite height yet, so the percentage
+  // resolves to nothing and the measurement is the content's alone. That is what keeps this out of
+  // a feedback loop with the row height it feeds.
+  min-block-size: max(46px, 100%);
 
   &::placeholder {
     color: var(--sec-ink-3);

@@ -344,6 +344,23 @@ describe('JiraIssues', () => {
    * read at a glance down the column. So the presence of the icon *is* the answer to "does this
    * issue relate to anything", and only the row with links carries one.
    */
+  /**
+   * A long value wraps; it is not cut at 120 characters with the rest in a tooltip (§13.2).
+   *
+   * Every other table in this application wraps, a description is the field most worth reading and
+   * the least likely to fit, and a tooltip is not a place to read a paragraph (ADR 0014 point 24).
+   */
+  it('shows a long value in full rather than truncating it', async () => {
+    const long = 'A '.repeat(120).trim();
+    await answerWith({
+      ...WITH_COLUMNS,
+      rows: [{ ...WITH_COLUMNS.rows[0], values: { summary: long, labels: [] } }],
+    });
+
+    expect(renderedText()).toContain(long);
+    expect(renderedText()).not.toContain('…');
+  });
+
   it('offers the related-issues control only on rows that have links', async () => {
     await answerWith(PAGE);
 

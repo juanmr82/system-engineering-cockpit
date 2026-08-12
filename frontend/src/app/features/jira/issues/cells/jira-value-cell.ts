@@ -7,14 +7,11 @@ import type { JiraIssueRow } from '../jira-issues.model';
 /** How many list values are drawn before the rest become a count (spec §13.2). */
 const MAX_CHIPS = 3;
 
-/** Where a long string is cut, with the whole of it in the tooltip. */
-const MAX_CHARS = 120;
-
 /** What the renderer decided to draw. A closed set, so the template has no logic in it. */
 interface ValueView {
   readonly kind: 'empty' | 'text' | 'list';
   readonly text: string;
-  /** The full value, for the tooltip, when [text] is a truncation of it. */
+  /** Every list value, for the tooltip, when more were stored than are drawn. */
   readonly full: string | null;
   readonly chips: readonly string[];
   /** How many list values are not drawn. Zero when they all are. */
@@ -28,10 +25,17 @@ const EMPTY: ValueView = { kind: 'empty', text: '', full: null, chips: [], overf
  *
  * ## Why a renderer and not a formatter
  *
- * Three of the four shapes a JIRA value arrives in are not one string: a list renders as chips, a
- * long string renders truncated with the whole of it on hover, and an absent value renders as an
- * em-dash that must not be confused with the text "null". A `valueFormatter` returns a string and
- * would flatten all four into one.
+ * The shapes a JIRA value arrives in are not one string: a list renders as chips, and an absent
+ * value renders as an em-dash that must not be confused with the text "null". A `valueFormatter`
+ * returns a string and would flatten them into one.
+ *
+ * ## Text wraps; it is not truncated
+ *
+ * Spec §13.2 cuts a long value at 120 characters and puts the rest in a tooltip. **Overruled** (ADR
+ * 0014 point 24): every other table in this application wraps, a description is the field most
+ * worth reading and the least likely to fit, and a tooltip is not a place to read a paragraph. The
+ * column carries `wrapText` and `autoHeight` from `SEC_GRID_DEFAULT_COL_DEF`, so the row grows to
+ * its tallest cell exactly as the review table's does.
  *
  * ## Null is not empty
  *
@@ -95,17 +99,9 @@ function describe(value: unknown): ValueView {
   const text = asText(value);
   if (text.length === 0) return EMPTY;
 
-  const truncated = text.length > MAX_CHARS;
-
-  return {
-    kind: 'text',
-    text: truncated ? `${text.slice(0, MAX_CHARS)}…` : text,
-    // Only when it is actually cut: a tooltip repeating what is already on screen is noise on
-    // every cell of the table.
-    full: truncated ? text : null,
-    chips: [],
-    overflow: 0,
-  };
+  // No tooltip: the whole value is on screen, and a tooltip repeating what is already visible is
+  // noise on every cell of the table.
+  return { kind: 'text', text, full: null, chips: [], overflow: 0 };
 }
 
 /**

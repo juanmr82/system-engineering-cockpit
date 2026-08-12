@@ -6,7 +6,7 @@
       <span class="sec-jira-value sec-jira-value--empty" aria-label="No value">&mdash;</span>
     }
     @case ('list') {
-      <span class="sec-jira-value" [matTooltip]="value.full ?? ''">
+      <span class="sec-jira-value sec-jira-value--list" [matTooltip]="value.full ?? ''">
         @for (chip of value.chips; track chip) {
           <span class="sec-jira-value__chip">{{ chip }}</span>
         }
@@ -16,7 +16,8 @@
       </span>
     }
     @default {
-      <span class="sec-jira-value" [matTooltip]="value.full ?? ''">{{ value.text }}</span>
+      <!-- Wraps rather than truncating: the cell carries `wrapText` and the row grows to fit. -->
+      <span class="sec-jira-value sec-jira-value--text">{{ value.text }}</span>
     }
   }
 }

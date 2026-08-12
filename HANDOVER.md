@@ -58,6 +58,30 @@ widening something the spec deliberately narrowed. Both are ADR 0014, points 22 
 - Incidentally proved by the new search: the two `Subtarea` issues in the test instance genuinely
   have no parent stored, so the absent `subTaskOf` edges are the data rather than the importer.
 
+### Four finishing changes, after the above
+
+1. **The Related and open-in-JIRA icons are centred**, and the rule that centres them lives in
+   `styles/_grid.scss`. It was in the feature's own stylesheet, where it matched nothing:
+   **ag-grid builds cells at runtime, so Angular's emulated encapsulation never stamps them** and a
+   `.sec-grid__cell` rule in a component `.scss` is silently dead. The icons sat 18px left of
+   centre for exactly that reason. There is now a `.sec-grid__cell--control` class for a cell whose
+   whole content is one icon, and `.sec-grid__header-cell--stale` moved for the same reason.
+2. **JIRA cells wrap instead of truncating at 120 characters** (ADR 0014 point 24). Lists still cap
+   at three chips and a `+n` — that is a count of values, not a truncation of one.
+3. **The Req review comment box fills its cell.** It stopped at its own text, leaving up to 20px of
+   dead space below it that looked like a margin and did not take a click. The chain is: the cell is
+   a column flex container, its child is told to fill it, and *that* child is told to stretch —
+   because ag-grid's wrapper is a flex row that **centres** its child, so one level was not enough.
+   Both selectors are `> *` under our own class; neither names an `.ag-*` internal.
+4. **"Links to deleted objects" is now "Links to unresolved objects"** and matches both a target
+   DOORS deleted and one whose module has not been imported. The model keeps those apart because
+   they ask for opposite fixes; a reviewer sweeping a module is not making that distinction yet.
+   Live on SRD it narrows 486 rows to 350, where the old filter found a handful.
+   `docs/REQ_REVIEW.md` §3 is updated.
+
+**One flake seen once**: `dependency-graph-dialog.spec.ts` failed a text assertion in a full run and
+passed alone and on re-run. It mounts ELK; not chased.
+
 ### Resume here
 
 Unchanged from session 20 — the detail drawer, the icon proxy, the empty state's link — plus the

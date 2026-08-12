@@ -187,6 +187,27 @@
 // runtime — after our linked stylesheet — so at equal specificity ag-grid wins and the horizontal
 // padding survived. Two of our own classes outrank it. This is still not a rule targeting an
 // `.ag-*` internal: both selectors here are ours.
+// A cell whose whole content is one icon control — the JIRA table's Related and open-in-JIRA
+// columns. Centred both ways, with no horizontal padding to push it off centre.
+//
+// **This lives here and not in the feature's stylesheet, and that is the whole point.** ag-grid
+// builds its cells at runtime, outside any component template, so Angular's emulated encapsulation
+// never stamps them with a component's content attribute — a `.sec-grid__cell` rule written in a
+// component's `.scss` silently matches nothing. The JIRA table shipped with exactly that bug: its
+// icons sat 18px left of centre because `justify-content: center` was scoped away.
+.sec-grid .sec-grid__cell--control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+// A column whose field JIRA no longer has (spec §13.4). The header names something that is gone and
+// the cells below it are empty; without this nothing would say why.
+.sec-grid .sec-grid__header-cell--stale {
+  color: var(--sec-highlight-error);
+}
+
 .sec-grid .sec-grid__cell--editor {
   // **Block, not flex, and this is the pair to `inline-size: 100%` on the editor's host.**
   //
@@ -200,8 +221,35 @@
   // intrinsic width is its `cols` — 20 characters — so an in-flow editor shrank to a fraction of
   // its cell whatever `width: 100%` said. `display: block` here is what gives the host a definite
   // width to resolve `inline-size: 100%` against, exactly as it does for `--table` below.
-  display: block;
+  // **A column, so the editor can fill the cell's height as well as its width.**
+  //
+  // The row's height is set by whichever cell is tallest — normally the wrapped Description — and
+  // the comment box was left at its own content height inside it, with dead space below that looked
+  // like a margin and did not accept a click. Stretching it is not a matter of `height: 100%`: ag-
+  // grid nests the renderer in two wrappers of its own, and a percentage height resolves against
+  // nothing until every one of them has a definite height.
+  //
+  // So the cell is a column flex container and its child is told to fill it. The `> *` says "this
+  // cell's child", whatever ag-grid happens to call it, which is why this is still not a rule on an
+  // `.ag-*` name. The wrapper inside is itself a flex row, so *its* child stretches vertically on
+  // the cross axis with no further help, and the renderer's host takes it from there.
+  display: flex;
+  flex-direction: column;
   padding: 0;
+
+  > * {
+    flex: 1 1 auto;
+    min-block-size: 0;
+
+    // And one level deeper, because the wrapper is a flex row that **centres** its child: a child
+    // of a centred flex line keeps its content height however tall the line is, so it has to say
+    // it stretches. Two levels of "this cell's child", and still not a rule naming an `.ag-*`
+    // class. If ag-grid ever changes that nesting the box simply stops filling, which is the
+    // failure this started from rather than a new one.
+    > * {
+      align-self: stretch;
+    }
+  }
 
   // **Never set `position` on a cell.** ag-grid lays every cell out with `position: absolute` and
   // an inline `left`/`right` offset, so overriding it to `relative` silently discards that offset:

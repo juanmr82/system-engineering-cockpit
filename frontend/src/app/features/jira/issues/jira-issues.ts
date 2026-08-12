@@ -198,7 +198,7 @@ export class JiraIssues {
       flex: 1,
       minWidth: 140,
       headerClass: column.stale
-        ? 'sec-grid__header-cell sec-jira-issues__stale-header'
+        ? 'sec-grid__header-cell sec-grid__header-cell--stale'
         : 'sec-grid__header-cell',
     })),
     {
@@ -211,7 +211,9 @@ export class JiraIssues {
       width: 92,
       sortable: false,
       resizable: false,
-      cellClass: 'sec-grid__cell sec-jira-issues__link-cell',
+      // The centring lives in styles/_grid.scss, not here and not in this feature's stylesheet:
+      // ag-grid builds cells at runtime, so a component-scoped rule never reaches them (§6).
+      cellClass: 'sec-grid__cell sec-grid__cell--control',
     },
     {
       colId: 'openInJira',
@@ -224,7 +226,7 @@ export class JiraIssues {
       resizable: false,
       // A link is not a value: there is nothing to select, and letting it stretch would give the
       // last column the leftover width of the table.
-      cellClass: 'sec-grid__cell sec-jira-issues__link-cell',
+      cellClass: 'sec-grid__cell sec-grid__cell--control',
     },
   ]);
 

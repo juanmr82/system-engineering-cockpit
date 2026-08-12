@@ -1,12 +1,31 @@
 @use 'mixins' as sec;
 
+// The renderer fills the cell's width, so a wrapped value uses the whole column rather than the
+// width of its own first line. `inline-size: 100%` is a percentage of the cell, never a measured
+// pixel width, so dragging a column re-wraps and the browser does the reflow (CLAUDE.md §6).
+:host {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
 .sec-jira-value {
-  display: inline-flex;
+  // Values are read down a column, so numbers must not jitter between rows (CLAUDE.md §8).
+  font-variant-numeric: tabular-nums;
+}
+
+// Text wraps, including a value with no spaces in it — a URL or an id in a custom field would
+// otherwise push its column wider than the table.
+.sec-jira-value--text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sec-jira-value--list {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  // Values are read down a column, so numbers must not jitter between rows (CLAUDE.md §8).
-  font-variant-numeric: tabular-nums;
 }
 
 // Absence is non-content ink, upright — never italic (§8).

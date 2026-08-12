@@ -507,7 +507,7 @@ Each loads when you work in that directory; numbering is unchanged, so "§6" sti
 ## 6a. JIRA integration
 
 See `docs/JIRA_ISSUES_FEATURE_SPEC.md` for the importer and the Issues dynamic view, and
-**`docs/adr/0014` for the twenty-three places the implementation departs from it** — read that before
+**`docs/adr/0014` for the twenty-four places the implementation departs from it** — read that before
 "fixing" something that looks inconsistent with the spec.
 
 Non-negotiables: JIRA data is stored verbatim; app-derived data hangs off `__`-prefixed
