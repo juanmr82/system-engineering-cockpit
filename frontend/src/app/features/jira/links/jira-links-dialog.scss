@@ -1,0 +1,60 @@
+@use 'mixins' as sec;
+
+.sec-jira-links-dialog {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  // Material caps dialog content at 65vh whatever the dialog's own height is.
+  max-height: none;
+  gap: 10px;
+}
+
+.sec-jira-links-dialog__bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sec-jira-links-dialog__label {
+  @include sec.field-label;
+}
+
+.sec-jira-links-dialog__depth {
+  min-inline-size: 28px;
+  padding: 2px 6px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+  color: var(--sec-ink-2);
+  font-size: var(--sec-text-sm);
+  cursor: pointer;
+}
+
+// The chosen depth is marked by a rule, not a fill (§8 rule 3).
+.sec-jira-links-dialog__depth--on {
+  border-bottom: var(--sec-rail) solid var(--sec-blue-mid);
+  color: var(--sec-blue);
+  font-weight: 600;
+}
+
+.sec-jira-links-dialog__spacer {
+  flex: 1 1 auto;
+}
+
+.sec-jira-links-dialog__stats {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-jira-links-dialog__note {
+  @include sec.note-panel;
+}
+
+.sec-jira-links-dialog__error {
+  @include sec.error-panel;
+}

@@ -6,13 +6,14 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–7 of its own build order turned up fourteen points where following it literally
+built. Building steps 1–11 of its own build order, and the changes asked for after them, turned up
+twenty-four points where following the spec literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all fourteen in one place, because the alternative is fourteen comments
+then contradicted. This ADR records all of them in one place, because the alternative is twenty-four comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -257,6 +258,183 @@ What is built measures the count before, the deletions as they happen, and warns
 ends `SUCCEEDED_WITH_WARNINGS` and says how much went. If the confirmation dialog is ever built, the
 dry-run count arrives with it and this becomes a check rather than a report.
 
+### 15. The column picker is two panes, not one table with drag handles
+
+Spec §13.3 draws one virtual-scrolled table whose rows each carry a checkbox **and** a drag handle.
+That shape does not survive the data. The catalogue is 1 171 rows and the chosen set is a handful,
+so the handles are invisible on almost every row, and the one gesture that matters — putting Status
+before Assignee — means finding two rows hundreds apart in a scrolling list and dragging one past
+the other through a virtual viewport that recycles its DOM as it goes.
+
+Choosing and ordering are two questions, so the dialog asks them in two panes: the catalogue on the
+left with the search box, the two filters and the checkboxes; the chosen columns on the right, in
+order, each draggable and removable. Everything §13.3 asks for is present — search by name *and*
+id, System/Custom/Selected-only filters, the `n of 1 171` counter, Reset to defaults, and the
+stale section at the bottom of the chosen pane. Only the geometry changed.
+
+### 16. `GET /api/v1/jira/columns/defaults` is an endpoint §14.3 does not list
+
+*Reset to defaults* has to reset to the **server's** defaults. The alternative is a copy of that
+list in the browser, and two declarations of one list part company the first time either is edited
+— the same argument ADR 0010 makes about graph names. One route, one line each side, and the
+defaults are resolved against the catalogue exactly like any other column set, so a default naming
+a field this instance never imported renders as stale rather than as a broken column.
+
+### 17. Sortability is decided by the server, from the declared type
+
+§13.2 says columns whose type is not scalar "render with sorting disabled", and that sending an
+unsortable column must be rejected rather than ignored. Both hold, and the decision is made in one
+place: `JiraFieldsProjection.isSortable`. A column is sortable when one row of it is one value — a
+scalar on the issue, or the display string its projection derived (§7.4). An array is not: its
+projection is a *list*, and ordering by one orders by an accident of element order.
+
+Two calls inside that rule are worth naming because they are not derivable from the spec:
+
+- **An unknown type is assumed sortable.** A type nobody has seen is far more likely to be a scalar
+  than not, and the cost of being wrong is a strange order, where the cost of refusing is a column
+  that cannot be sorted for no reason a user can see.
+- **A field with no `schema` is not sortable and not offerable.** It never reaches the picker at
+  all — `issuekey` duplicates the fixed Key column and `thumbnail` is not a data field.
+
+### 18. The project list saves per gesture; there is no Save button on the settings page
+
+R7 says one user gesture, one request, one server-side transaction, and that a view owning an
+editable buffer must guard its own exit. Adding or removing a project key **is** one gesture, so it
+is written immediately and the page owns no buffer, no dirty state and no exit guard. The inline
+warning §13.5 asks for — *Issues from KEY will be deleted from the cockpit on the next import* —
+then describes something that has already been saved and has not yet happened, which is exactly
+what it says.
+
+The column picker is the opposite case and is unchanged: it is a dialog, it owns a buffer, and it
+writes once on Save. Both are R7; the difference is whether the gesture is the decision.
+
+### 19. The import console draws a phase rail, not a `MatStepper`
+
+§13.6 asks for a horizontal, non-linear, **read-only** stepper. A stepper is a control a user clicks
+through, and every one of those three words removes something from it — what is left is a list of
+phases with the current one marked. It is drawn as one, with a rule under each step rather than a
+fill (§8 rule 3), the aggregate progress bar above it and `current / total` on the running phase.
+
+Not built from §13.6, and named here so the gap is not mistaken for an oversight: the log level
+filter, pause-on-scroll-up, and the expandable history rows showing a run's JQL and warnings. The
+log pane itself, the counters row, Cancel and the history table are built.
+
+### 20. Three things §13.2 and §13.5 ask for are still missing
+
+The detail drawer on row click, the issue-type **icon** (which needs the icon proxy of §9.1), and
+the empty state's deep link to `/settings/jira`. The first two are step 11 of the build order. The
+third is now buildable and simply is not built — the empty state says an import is needed and does
+not offer the route that runs one.
+
+### 21. The display projection is read **before** the issue, not after
+
+§7.4 ends by saying the API layer resolves a column with `coalesce(i[$fieldId], p[$fieldId])`.
+That formula contradicts the storage decision three paragraphs above it. §7.2 keeps every value
+verbatim on the issue — a complex one as JSON text — and §7.4 puts the *derived display string* on
+the projection. So for exactly the fields the projection exists to serve, **both** properties are
+present under the same key, and reading the issue first means the blob always wins.
+
+What that renders is not subtle. A live Status column came back as
+`{"self":"https://…/status/10005","description":"","iconUrl":"https://…"}`, in every row, and
+Priority beside it did the same. Sorting was worse: ordering by that column orders by the text of
+a URL.
+
+The statements read `coalesce(p[k], i[k])`, in the values and in the `ORDER BY` alike. The issue is
+the fallback, which is correct for every scalar, because a scalar has no projection entry at all.
+
+**The test that should have caught this asserted the impossible case.** Its fixture put the complex
+value on the projection *alone*, which no import produces, so it passed under either order. It now
+writes the value both ways, as the importer does. This is the fourth departure found by a live run
+rather than by the suite, and every one of them has been a fixture that was simpler than reality.
+
+Two more of this session's defects were found the same way and are not departures from the spec at
+all, so they are recorded here only as a pattern: the console sat on *Running* after an import
+finished, and the picker rendered at Material's default 560px with its content clipped. Neither is
+visible to a test — the first needs a run that ends while being watched, the second needs layout,
+and jsdom has none.
+
+### 22. The Issues search reads every field, against §13.2
+
+§13.2 restricts the search box to `key`, `summary` and `__name`, and sends anyone wanting more to
+the Cypher console. **Overruled on request, with the cost understood.** A reviewer looking for an
+issue knows a component, a label, an assignee or a fix version far more often than they know a key,
+and a box that silently ignores what was typed into it is worse than a slow one.
+
+What is searched: every property of the issue whose key does not start with `__`, and every property
+of its `:__JiraProjection`. The projection half is what makes searching a *status* work — the issue
+stores `{"self":"…","name":"Idea"}` and the projection stores `Idea` — and the `__` filter is the
+same one attribute discovery uses (R5), so a search for `000` cannot match a `__sortKey` nobody has
+been shown.
+
+Two things this cost:
+
+- **The list branch.** `toString()` takes a scalar and errors on a list, so `labels` — the field a
+  person is most likely to search — would have failed the whole request at runtime rather than at
+  parse time. The predicate branches on `v IS :: LIST<ANY>` and searches element by element.
+- **The projection has to be matched before the filter**, in the page query *and* the count query,
+  which is why both now `OPTIONAL MATCH` it above the `WHERE` rather than below it.
+
+**The scaling answer is not a wider `CONTAINS`.** This predicate is per issue over every property
+it carries, with no index and no query governor (CLAUDE.md §7). At 784 issues × ~145 fields it is
+comfortable; at the 50 000 the spec projects it is millions of comparisons per search. When that
+bites, the fix is a full-text index built from the field catalogue at import time — which is a
+design, not a tweak, and is not built.
+
+### 23. Related issues are a column and a diagram, which §13.2 does not have at all
+
+The spec gives the Issues table three fixed columns and no way to see what an issue is linked to;
+`issuelinks` is imported (§9.4) and then never surfaced. A **Related** column now sits immediately
+before the link-out column, carrying the same graph icon the requirement dependency graph uses,
+and **only on rows that have links** — a disabled control in every row is something a reader checks
+one row at a time, where an empty cell is read at a glance down the column.
+
+Clicking it opens the same kind of picture ADR 0011 built for DOORS, and the split is deliberate:
+
+- **The layout is shared, exactly.** `GraphLayoutService` runs ELK in the same worker and the edge
+  geometry comes from the same `edge-path` helpers. That is the expensive, subtle half, and ADR
+  0011's "one graph-layout implementation" still holds.
+- **The drawing is not shared.** The DOORS canvas measures requirement cards and places them in
+  system-level bands with sub-lane compression and lane labels. A JIRA link is not a decomposition,
+  an issue has no system level, and its box is a fixed size holding four short things. Generalising
+  that component would produce one whose every feature is conditional on which source it draws.
+
+Three decisions inside it worth stating:
+
+- **Vertical rank is distance from the seed**, not a level: the issue you opened is the top row and
+  each hop is the next. There is no direction control, because "what is this related to" has no
+  upstream — the walk follows links both ways, always.
+- **Sub-task edges are drawn alongside `linkedTo`**, dashed and labelled *Sub-task of*. JIRA shows
+  them in the same panel and a reader means them when they say "related".
+- **Edges are labelled with JIRA's own link type** — *Relates*, *Blocks* — which the DOORS graph
+  cannot do, because the DXL exporter discards the link module name (§8 of that spec). Where a
+  source states what a relationship is, the picture says it.
+
+Depth is 1–5, default 2, clamped server-side, with the same 300-node cap the DOORS graph uses. A
+link the cap or the depth left out is counted on its node as a `+n` badge and announced above the
+diagram, because a picture that stops with nothing to say it stopped is read as a picture that
+ended.
+
+### 24. A cell wraps; it is not truncated at 120 characters
+
+§13.2 cuts a long value at 120 characters and puts the whole of it in a tooltip. Every other table
+in this application wraps — the review table's Description is a paragraph and grows its row — and a
+description is simultaneously the field most worth reading and the least likely to fit. A tooltip is
+not a place to read one.
+
+So the JIRA table's value cells wrap and the row grows, which they get from `wrapText` and
+`autoHeight` in `SEC_GRID_DEFAULT_COL_DEF` — the same defaults every other grid starts from. The
+renderer's host is `display: block; inline-size: 100%` so a wrapped value uses the whole column, and
+text wraps with `overflow-wrap: anywhere` because a JIRA custom field routinely holds a URL with no
+spaces in it. Lists still cap at three chips and a `+n`: that is a *count* of values, not a
+truncation of one.
+
+**One thing this cost, and it is worth knowing before the next grid.** ag-grid builds its cells at
+runtime, outside any component template, so Angular's emulated encapsulation never stamps them —
+a `.sec-grid__cell` rule written in a *component's* stylesheet silently matches nothing. The JIRA
+table shipped with its icons 18px left of centre for exactly that reason, and the fix was to move
+the rule to `styles/_grid.scss`, where §6 says all grid styling belongs. There is now a
+`.sec-grid__cell--control` class there for a cell whose whole content is one icon.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -268,8 +446,14 @@ dry-run count arrives with it and this becomes a check rather than a report.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Fourteen departures is a lot for seven build steps, and most were found by writing a test rather
-  than by reading. That is the argument for §16.1's insistence that the mapper be pure and
+- Twenty-four departures over eleven build steps, and most were found by writing a test rather than by
+  reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
+- Points 22, 23 and 24 are the ones that are not *discoveries*: they are changes the product owner
+  asked for after seeing the thing work, and both widen what the spec deliberately narrowed. Each
+  states its cost where the cost lands.
+- Points 15 to 20 are the frontend's, and they share a shape: the spec drew a screen, and building
+  it found that one of its parts was answering two questions at once. Splitting them — choosing
+  from ordering, a control from a report — is the change in every one of them.
 - Points 12, 13 and 14 are all in the two phases that delete. Anyone changing the sweep should read
   them together with `JiraImporter.sweep`'s own note on why the guard is stated twice.

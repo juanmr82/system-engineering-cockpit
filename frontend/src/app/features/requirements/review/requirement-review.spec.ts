@@ -101,6 +101,23 @@ const OBJECTS: ModuleObjectsResponse = {
         'SYS. Rationale': '',
       },
       comment: { metaId: 'meta-1', text: 'Checked at review', updatedAt: '2026-08-05T10:00:00Z' },
+      // One outgoing link into a module that has not been imported, and nothing deleted. This is
+      // the row that tells the widened filter from the old one: it has an unresolved link and no
+      // deleted target, so the "links to deleted objects" filter would have hidden it.
+      references: {
+        outgoing: [
+          {
+            ref: 'cGxhY2Vob2xkZXItOQ',
+            id: null,
+            resolved: false,
+            deletedInSource: false,
+            moduleRef: 'bW9kLTk',
+            moduleName: 'ICD',
+          },
+        ],
+        incoming: [],
+        incomingComplete: true,
+      },
     }),
     // The container object of an embedded table. It stays in the list — the table is drawn on
     // this row, in the Description column, where DOORS draws it (DOORS_TABLES.md §1).
@@ -492,7 +509,7 @@ describe('RequirementReview', () => {
     expect(renderedText()).toContain('No mandatory attributes');
     // The issues filter stays: a fixed check runs whatever the configuration, so an empty result
     // is an honest "none found" rather than "none looked for". Four filters now — requirements
-    // only, objects with issues, requirements without parents, links to deleted objects.
+    // only, objects with issues, requirements without parents, links to unresolved objects.
     expect(element().querySelectorAll('.sec-review__filter').length).toBe(4);
 
     openSpy.mockRestore();
@@ -525,24 +542,33 @@ describe('RequirementReview', () => {
   });
 
   /**
-   * The links a reviewer cannot fix from here, collected so they can be taken to DOORS.
+   * Every link that does not land on something a reviewer can open, in one sweep.
    *
-   * Counted in both directions: the fixture's deleted link is an *incoming* one, because that is
-   * the harder half to get right — a filter that only looked at outgoing references would report
+   * Two stored states and one filter: a target DOORS deleted, and one whose module has not been
+   * imported. The model keeps them apart because they ask for opposite fixes, and the row says
+   * which it is — but the sweep that finds them is the same sweep, which is what a reviewer is
+   * doing when they tick this.
+   *
+   * Counted in both directions. The fixture's deleted link is an *incoming* one, because that is
+   * the harder half to get right: a filter that only looked at outgoing references would report
    * this module as clean while it is the module the stale link lands in.
    */
-  it('narrows to the objects linked to something deleted in DOORS', async () => {
+  it('narrows to the objects whose links do not land on an imported object', async () => {
     const toggles = Array.from(
       element().querySelectorAll<HTMLInputElement>('.sec-review__filter input'),
     );
-    // Last checkbox: "Links to deleted objects".
+    // Last checkbox: "Links to unresolved objects".
     toggles[toggles.length - 1].click();
     await settle();
 
     const text = renderedText();
+    // A deleted incoming target.
     expect(text).toContain('SRD-1');
+    // Unresolved outgoing only — the assertion that fails under the old, deleted-only filter.
+    expect(text).toContain('SRD-2');
+    // No references at all.
     expect(text).not.toContain('SRD-4');
-    expect(text).toContain('1 shown');
+    expect(text).toContain('2 shown');
   });
 
   // The id is printed rather than counted: it is what the reviewer searches for in DOORS.

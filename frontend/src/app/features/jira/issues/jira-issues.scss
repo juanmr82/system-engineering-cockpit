@@ -1,0 +1,83 @@
+@use 'mixins' as sec;
+
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-jira-issues {
+  @include sec.page-shell;
+}
+
+.sec-jira-issues__header {
+  flex: none;
+}
+
+.sec-jira-issues__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-jira-issues__title {
+  @include sec.view-title;
+}
+
+.sec-jira-issues__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-jira-issues__search {
+  flex: 1 1 260px;
+
+  // The bar sets its own rhythm; the form field's subscript reserve would double the bar's height.
+  --mat-form-field-container-height: 34px;
+}
+
+.sec-jira-issues__stats {
+  @include sec.stat-readout;
+}
+
+.sec-jira-issues__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+// The table is the sheet in this view. The grid inside it is styled globally in styles/_grid.scss —
+// ag-grid's DOM is built outside Angular's template compiler, so nothing scoped here can reach it.
+.sec-jira-issues__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-jira-issues__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.sec-jira-issues__paginator {
+  flex: none;
+  background: transparent;
+}
+
+// A reserved lane for the reload indicator. Held open whether or not a request is in flight, so
+// a search does not move the table down by the height of a progress bar and back up again.
+.sec-jira-issues__progress {
+  block-size: 4px;
+}
+
+.sec-jira-issues__no-match {
+  @include sec.absent-text;
+}

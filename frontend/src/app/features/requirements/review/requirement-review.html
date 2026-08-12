@@ -139,17 +139,20 @@
       Requirements without parents
     </mat-checkbox>
 
-    <!-- The one finding on this table that cannot be fixed from this table: the stale link lives
-         in DOORS. Offered unconditionally, like the issues filter and for the same reason — an
-         empty result honestly means the module has none, and hiding the control when it does
-         would leave a reviewer unable to tell that from not having looked. -->
+    <!-- Both ways a link can fail to land on something a reviewer can open: a target deleted in
+         DOORS, and one whose module has not been imported. The two ask for opposite fixes and the
+         row says which it is; the sweep that finds them is the same sweep.
+
+         Offered unconditionally, like the issues filter and for the same reason — an empty result
+         honestly means the module has none, and hiding the control when it does would leave a
+         reviewer unable to tell that from not having looked. -->
     <mat-checkbox
       class="sec-review__filter"
-      matTooltip="Objects with a link to or from an object that was deleted in DOORS. DOORS keeps the link when it deletes the object, so the link has to be removed there — nothing here can repair it."
-      [checked]="deletedLinksOnly()"
-      (change)="deletedLinksOnly.set($event.checked)"
+      matTooltip="Objects with a link to or from an object this application cannot show — one deleted in DOORS, or one whose module has not been imported. A deleted target has to be fixed in DOORS; an unimported one needs its module imported."
+      [checked]="unresolvedLinksOnly()"
+      (change)="unresolvedLinksOnly.set($event.checked)"
     >
-      Links to deleted objects
+      Links to unresolved objects
     </mat-checkbox>
 
     <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded

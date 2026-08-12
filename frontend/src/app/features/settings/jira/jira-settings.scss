@@ -1,0 +1,135 @@
+@use 'mixins' as sec;
+
+// A settings page scrolls as a page: it is a stack of sheets, not a view with a table whose header
+// has to stay put. So `page-shell` (which bounds the height for a sticky header) is deliberately
+// not used here — the sheets flow and the shell's own gutter frames them.
+:host {
+  display: block;
+}
+
+.sec-jira-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+  // Long enough to read comfortably, short enough that a line of JQL does not run the width of a
+  // wide monitor.
+  max-inline-size: 980px;
+}
+
+.sec-jira-settings__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-jira-settings__title {
+  @include sec.view-title;
+}
+
+// One lead sheet per view is the rule (§8); the page header is not a sheet, so every section here
+// is a plain one.
+.sec-jira-settings__sheet {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sec-jira-settings__section {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-jira-settings__subsection {
+  @include sec.field-label;
+
+  margin: 6px 0 0;
+}
+
+.sec-jira-settings__hint {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+}
+
+.sec-jira-settings__facts {
+  @include sec.fact-rows(140px);
+
+  margin: 0;
+}
+
+.sec-jira-settings__ok {
+  color: var(--sec-highlight-verified);
+}
+
+.sec-jira-settings__bad {
+  color: var(--sec-highlight-error);
+}
+
+// The JQL preview: the single best debugging aid in this feature, so it is shown as what it is —
+// a machine string, monospaced, selectable, wrapping rather than truncating.
+.sec-jira-settings__jql {
+  @include sec.mono;
+
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--sec-wash);
+  border: var(--sec-hairline) solid var(--sec-line-soft);
+  border-radius: var(--sec-radius);
+  font-size: var(--sec-text-sm);
+  overflow-wrap: anywhere;
+  inline-size: 100%;
+}
+
+.sec-jira-settings__columns {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+}
+
+.sec-jira-settings__add {
+  inline-size: 320px;
+}
+
+// A consequence, not a failure: the import that will act on it has not run yet.
+.sec-jira-settings__warning {
+  @include sec.note-panel;
+
+  inline-size: 100%;
+}
+
+.sec-jira-settings__error {
+  @include sec.error-panel;
+}
+
+.sec-jira-settings__absent {
+  @include sec.absent-text;
+}
+
+.sec-jira-settings__running {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-blue);
+}
+
+.sec-jira-settings__counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--sec-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-jira-settings__link {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-blue-mid);
+}
+
+// A progress bar inside a sheet is a full-width element, not a control sized to its content.
+.sec-jira-settings mat-progress-bar {
+  inline-size: 100%;
+}

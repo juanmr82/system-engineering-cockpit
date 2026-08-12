@@ -1,0 +1,17 @@
+// The cell is header-less and holds one control, so the icon sits where a value would.
+.sec-jira-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--sec-ink-3);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--sec-blue-mid);
+  }
+
+  mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+}

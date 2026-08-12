@@ -45,6 +45,19 @@ export const routes: Routes = [
         path: 'jira/kids',
         loadComponent: () => import('./features/jira/kids/jira-kids').then((m) => m.JiraKids),
       },
+      // The settings subtree. One place, so RBAC is one guard on one path rather than a
+      // scattering of checks (spec §13.1) — there is no authorization anywhere yet (ADR 0014).
+      { path: 'settings', pathMatch: 'full', redirectTo: 'settings/jira' },
+      {
+        path: 'settings/jira',
+        loadComponent: () =>
+          import('./features/settings/jira/jira-settings').then((m) => m.JiraSettings),
+      },
+      {
+        path: 'settings/importers',
+        loadComponent: () =>
+          import('./features/settings/importers/import-runs').then((m) => m.ImportRuns),
+      },
       {
         path: 'documents/windchill',
         loadComponent: () =>

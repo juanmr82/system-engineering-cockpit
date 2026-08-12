@@ -10,8 +10,14 @@ import { MatDialogConfig } from '@angular/material/dialog';
 //
 // `satisfies` keeps the literal types (autoFocus stays 'first-tabbable', not string) while still
 // type-checking the shape against MatDialogConfig.
+// `maxWidth` is here because Material's own default is **560px**, and it beats the `width` a
+// dialog asks for: a dialog opened with `width: '900px'` renders at 560 and its content is clipped
+// with no warning of any kind. Every dialog in this application is wider than that, so the escape
+// belongs in the shared contract rather than being rediscovered per dialog — which is how the JIRA
+// column picker shipped at 560px with its type chips cut off. A dialog may still state its own.
 export const SEC_MODAL_DIALOG = {
   disableClose: true,
   autoFocus: 'first-tabbable',
   restoreFocus: true,
+  maxWidth: '94vw',
 } as const satisfies MatDialogConfig;

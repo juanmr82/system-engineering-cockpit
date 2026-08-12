@@ -1,0 +1,79 @@
+<div class="sec-jira-issues">
+  <header class="sec-jira-issues__header">
+    <p class="sec-jira-issues__eyebrow">JIRA</p>
+    <h1 class="sec-jira-issues__title">Issues</h1>
+  </header>
+
+  <!-- The order of these branches is the order the states exclude each other in: an error is worth
+       saying whatever else is true, nothing has been answered yet only before the first response,
+       and an empty import is a fact about the graph rather than about this request. -->
+  @if (issues.error()) {
+    <div class="sec-jira-issues__error" role="alert">
+      <p>Couldn't load issues.</p>
+      <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else if (!hasPage()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (isEmpty()) {
+    <sec-empty-state
+      title="No JIRA issues imported yet"
+      description="Run a JIRA import to bring issues into the cockpit."
+    />
+  } @else {
+    <!-- Everything below this line stays mounted for the life of the view. A reload must not take
+         the search box away: it is what started the request, and re-creating it drops the focus
+         and the caret a quarter of a second after the user typed. -->
+    <div class="sec-jira-issues__bar">
+      <mat-form-field appearance="outline" class="sec-jira-issues__search" subscriptSizing="dynamic">
+        <input
+          matInput
+          type="text"
+          placeholder="Search every field"
+          aria-label="Search issues"
+          [value]="search()"
+          (input)="onSearch($any($event.target).value)"
+        />
+      </mat-form-field>
+
+      <p class="sec-jira-issues__stats">
+        <span><b>{{ total() }}</b> {{ total() === 1 ? 'issue' : 'issues' }}</span>
+      </p>
+
+      <button mat-stroked-button type="button" (click)="openColumns()">Columns</button>
+    </div>
+
+    <!-- A reserved lane, so a reload does not move the table down four pixels and back. -->
+    <div class="sec-jira-issues__progress" aria-hidden="true">
+      @if (issues.isLoading()) {
+        <mat-progress-bar mode="indeterminate" />
+      }
+    </div>
+
+    @if (hasNoMatches()) {
+      <p class="sec-jira-issues__no-match">No issues match "{{ search() }}".</p>
+    } @else {
+      <!-- The theme class goes on this wrapper, never on <ag-grid-angular> (styles/_grid.scss). -->
+      <div class="sec-jira-issues__table-scroll sec-grid sec-grid--middle">
+        <ag-grid-angular
+          class="sec-jira-issues__grid"
+          [gridOptions]="gridOptions"
+          [columnDefs]="columnDefs()"
+          [rowData]="rows()"
+          [getRowId]="getRowId"
+          (sortChanged)="onSortChanged($event)"
+        />
+      </div>
+
+      <!-- Server-side paging, so the paginator is the only thing that can reach the other pages:
+           the grid holds one of them and knows nothing about the rest. -->
+      <mat-paginator
+        class="sec-jira-issues__paginator"
+        [length]="total()"
+        [pageIndex]="page()"
+        [pageSize]="size()"
+        [pageSizeOptions]="pageSizes"
+        (page)="onPage($event)"
+      />
+    }
+  }
+</div>

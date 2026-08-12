@@ -46,6 +46,22 @@ const PANEL_WIDTH_MAX = 900;
 // presses, fine enough to land on a width you meant.
 const PANEL_WIDTH_STEP = 24;
 
+/**
+ * Whether a row has a link that does not land on an imported object.
+ *
+ * Both directions and both kinds: a target DOORS deleted, and one whose module has not been
+ * imported. `unresolvedCount` rather than a list because that is what `refGroup` keeps — the
+ * unresolved targets have no id to show, so the column counts them rather than naming them.
+ */
+function hasUnresolvedLink(entry: { outgoing: RefGroup; incoming: RefGroup }): boolean {
+  return (
+    entry.outgoing.deleted.length > 0 ||
+    entry.incoming.deleted.length > 0 ||
+    entry.outgoing.unresolvedCount > 0 ||
+    entry.incoming.unresolvedCount > 0
+  );
+}
+
 function extractErrorDetail(error: unknown): string {
   if (error instanceof HttpErrorResponse && error.error) {
     const problem = error.error as Partial<ProblemDetails>;
@@ -152,14 +168,20 @@ export class RequirementReview {
   protected readonly issuesOnly = signal(false);
 
   /**
-   * Narrows the table to objects linking to, or linked from, something DOORS deleted.
+   * Narrows the table to objects whose links do not land on an imported object.
    *
-   * Its own filter rather than a search of the Issues column because it is the one finding a
-   * reviewer cannot act on from inside this table: the stale link exists only in DOORS, so the
-   * working pattern is to collect every row carrying one and take the list there. A filter is
-   * what makes that list.
+   * **Two stored states, one filter, and the merge is deliberate.** A link can point at an object
+   * DOORS deleted (`deletedInSource`) or at one no import has brought in yet (`:__UNDEFINED`), and
+   * the model keeps those strictly apart because they ask for opposite fixes — one is repaired in
+   * DOORS, the other by importing a module. A reviewer sweeping a module is not making that
+   * distinction yet: they are asking *which links do not go anywhere I can see*, and the row itself
+   * says which kind it is once they are looking at it.
+   *
+   * Its own filter rather than a search of the Issues column because a deleted target is the one
+   * finding a reviewer cannot act on from inside this table: the stale link exists only in DOORS,
+   * so the working pattern is to collect every row carrying one and take the list there.
    */
-  protected readonly deletedLinksOnly = signal(false);
+  protected readonly unresolvedLinksOnly = signal(false);
 
   /**
    * Narrows the table to requirements with no outgoing `refersTo` — nothing they refine.
@@ -519,12 +541,12 @@ export class RequirementReview {
     const requirementsOnly = this.requirementsOnly();
     const issuesOnly = this.issuesOnly();
     const withoutParents = this.withoutParents();
-    const deletedLinksOnly = this.deletedLinksOnly();
+    const unresolvedLinksOnly = this.unresolvedLinksOnly();
     return this.allRows().filter(
       (entry) =>
         (!requirementsOnly || entry.row.requirementLike) &&
         (!issuesOnly || entry.row.issues.length > 0) &&
-        (!deletedLinksOnly || entry.outgoing.deleted.length > 0 || entry.incoming.deleted.length > 0) &&
+        (!unresolvedLinksOnly || hasUnresolvedLink(entry)) &&
         (!withoutParents ||
           (entry.row.requirementLike && entry.row.references.outgoing.length === 0)) &&
         (!term || entry.searchText.includes(term)),

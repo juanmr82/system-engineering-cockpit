@@ -74,16 +74,29 @@ claim about how many objects there are.
 | **Requirements only** | `requirementLike` | headings, information objects and table structure are context, not requirements (§11 O4) |
 | **Objects with issues** | a non-empty Issues list | unconditional — see §5.3 |
 | **Requirements without parents** | `requirementLike` **and** no outgoing `refersTo` | below |
-| **Links to deleted objects** | a reference, in **either** direction, whose target DOORS deleted | unconditional; below |
+| **Links to unresolved objects** | a reference, in **either** direction, whose target DOORS deleted **or** whose target has not been imported | unconditional; below |
 
-**Links to deleted objects.** DOORS deletes an object and keeps the links to it, so a requirement
-can go on refining something that no longer exists (ADR 0012). This is the one finding in the table
-a reviewer cannot act on from inside the table — the stale link exists only in DOORS — so the
-working pattern is to collect every row carrying one and take the list there. A filter is what makes
-that list, which is why it is not left to a search of the Issues column.
+**Links to unresolved objects.** Two stored states, one checkbox, and the merge is deliberate. A
+link can point at an object DOORS deleted — it keeps the link when it deletes the object, so a
+requirement goes on refining something that no longer exists (ADR 0012) — or at one whose module no
+import has brought in, which the graph holds as a `:__UNDEFINED` placeholder. The model keeps those
+strictly apart, because they ask for opposite fixes: one is repaired in DOORS, the other by
+importing a module.
 
-**Both directions count.** An outgoing one says this requirement refines something that is gone; an
-incoming one says something that is gone claims to refine this. They are the same defect seen from
+**A reviewer sweeping a module is not making that distinction yet.** The question being asked is
+*which of these links do not go anywhere I can see*, and the row itself says which kind it is once
+the list is on screen. So the filter is the union and the wording is the user's rather than the
+model's — *unresolved*, not `__UNDEFINED` and not "deleted" (R5). It was called **Links to deleted
+objects** and matched only the first kind, which left the far commoner case — 376 of the reference
+module's objects point at modules nobody has imported — findable only by scrolling.
+
+The deleted half is still the one finding in the table a reviewer cannot act on from inside the
+table, since the stale link exists only in DOORS. The working pattern is unchanged: collect every
+row carrying one and take the list there. A filter is what makes that list, which is why it is not
+left to a search of the Issues column.
+
+**Both directions count.** An outgoing one says this requirement refines something that is gone or
+unseen; an incoming one says something gone or unseen claims to refine this. They are the same defect seen from
 two sides and are fixed in the same place, and a filter that looked only at outgoing references
 would report a module as clean while it is the module the stale links land in.
 

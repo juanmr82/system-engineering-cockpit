@@ -90,6 +90,36 @@ public data class MappedIssue(
 )
 
 /**
+ * `__sortKey` for an issue, so a plain string sort reproduces JIRA's own order (R3).
+ *
+ * This is the JIRA implementation of the contract DOORS meets by zero-padding the segments of an
+ * outline number: the *derivation* is per-source, the name and the promise are not. `SCRUM-10`
+ * sorts before `SCRUM-2` as a string and after it in every JIRA screen, which is the same failure
+ * `objectNumber` has and the same reason `__sortKey` exists at all.
+ *
+ * The number is padded to nine digits rather than DOORS's six, because the two are not the same
+ * quantity: an outline segment counts children of one object, and an issue number counts every
+ * issue a project has ever had, never reset. Padding does not fail *gracefully* on overflow —
+ * `SCRUM-1000000` sorts before `SCRUM-999999` once the shorter one is padded to six — so the width
+ * has to be beyond what the source can produce rather than merely generous.
+ *
+ * A key that is not `<PROJECT>-<number>` is returned unchanged. It sorts by its own text, which is
+ * the best available answer for a shape JIRA does not document and this code has never seen.
+ */
+internal fun sortKey(key: String): String {
+    val dash = key.lastIndexOf('-')
+    if (dash <= 0) return key
+
+    val number = key.substring(dash + 1)
+    if (number.isEmpty() || !number.all { it.isDigit() }) return key
+
+    return key.substring(0, dash + 1) + number.padStart(SORT_KEY_DIGITS, '0')
+}
+
+/** Nine digits: see [sortKey] on why this is not DOORS's six. */
+private const val SORT_KEY_DIGITS = 9
+
+/**
  * Turns one `/search` issue into the rows that phase 3 writes (spec §7, §9.3).
  *
  * ## Pure, and that is the design
@@ -161,6 +191,7 @@ public class IssueMapper(private val catalogue: JiraFieldCatalogue = JiraFieldCa
         props[Prop.ID] = envelope.self
         props[Prop.NAME] = displayName(envelope)
         props[Prop.VERSION] = fields.stringOrNull(JiraFieldId.UPDATED) ?: UNKNOWN_VERSION
+        props[Prop.SORT_KEY] = sortKey(envelope.key)
 
         // The one denormalisation this design allows, and it is a copy of imported data rather
         // than a derivation — so a re-import reproduces it exactly, which is the Tier-1 test. It

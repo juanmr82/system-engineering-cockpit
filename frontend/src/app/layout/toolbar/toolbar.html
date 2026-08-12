@@ -1,6 +1,23 @@
 <mat-toolbar class="sec-toolbar">
   <span class="sec-toolbar__spacer"></span>
 
+  <!-- Settings is a menu into a route rather than a dialog: it holds a project multi-select, a
+       field picker over the whole catalogue and an import console, none of which fit in a panel,
+       and each needs a URL an error message can link to (spec §13.1). -->
+  <button
+    mat-icon-button
+    class="sec-toolbar__action"
+    [matMenuTriggerFor]="settingsMenu"
+    matTooltip="Settings"
+    aria-label="Settings menu"
+  >
+    <mat-icon svgIcon="gearbox" />
+  </button>
+  <mat-menu #settingsMenu="matMenu">
+    <a mat-menu-item routerLink="/settings/jira">JIRA</a>
+    <a mat-menu-item routerLink="/settings/importers">Importers and runs</a>
+  </mat-menu>
+
   <button
     mat-icon-button
     class="sec-toolbar__action"

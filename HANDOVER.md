@@ -3,6 +3,244 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (session 21) — search every field, and a diagram of related issues
+
+Branch **`feature/jira-issues-table`**. Two changes asked for after seeing steps 9–11 working, both
+widening something the spec deliberately narrowed. Both are ADR 0014, points 22 and 23.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The Issues search reads every field**, the issue's and its projection's | `JiraCypher.MATCHES_ANY_FIELD` |
+| 2 | **A Related column**, before the link-out, with the graph icon only where there are links | `issues/cells/jira-links-cell.ts` |
+| 3 | **The related-issues diagram** — ELK layout reused, drawing not | `features/jira/links/` |
+| 4 | **`GET /api/v1/jira/issues/{ref}/graph`** — BFS walk, depth 1–5, 300-node cap | `JiraLinkGraphProjection.kt` |
+
+### What is not done, and would be easy to assume is
+
+- **No full-text index.** The widened search is a scan: per issue, over every property it carries,
+  with no index and no query governor. Comfortable at 784 issues; at the spec's 50 000 target it is
+  millions of comparisons per search, and the answer then is a full-text index built from the field
+  catalogue at import time. That is a design, not a tweak.
+- **The diagram has no edge labels on screen** — the link type is JIRA's own word and is carried in
+  the data and shown on hover, but drawing it beside the line needs a label position ELK can be
+  asked for and currently is not.
+- **Everything still missing from session 20 is still missing**: the detail drawer, the issue-type
+  icon, the empty state's deep link, the console's log filter.
+
+### The traps this session hit
+
+1. **`toString()` errors on a list**, and `labels` is the field a person is most likely to search —
+   so the naive widening would have failed the *whole request* at runtime rather than narrowing
+   badly. The predicate branches on `v IS :: LIST<ANY>` and searches element by element. Neo4j
+   2026.06 accepts the type predicate; that was the one unknown worth testing first.
+2. **A widened search reads the projection, so the projection has to be matched before the filter**
+   — in the page query *and* the count query. Both now `OPTIONAL MATCH` it above the `WHERE`.
+3. **Two old search tests failed and were right to.** `thermal` now matches an issue that carries it
+   as a *label* as well as the one with it in its summary. The fixture also had no `summary`
+   property at all — the name lived only in `__name`, which the search deliberately does not read —
+   so it was made realistic. Third time this feature's fixtures have been simpler than reality.
+4. **Neo4j will not take a parameter as a variable-length bound**, which is why both graph walks in
+   this repository are breadth-first loops in Kotlin rather than one closure pattern. Read
+   `DependencyGraphCypher`'s note before writing a third.
+5. **A walk seeded with an unknown id produces a non-empty *set* and an empty *graph*.** Reading the
+   nodes is what tells a typo from an issue with no links, and the test caught it.
+6. **Kotlin `const val` initialisers resolve in declaration order**, so a constant interpolated into
+   another has to be declared above it. Twice this session: `MATCHES_ANY_FIELD` and
+   `JIRA_ISSUE_GRAPH`.
+
+### Verified this session
+
+- `mvn test` — **319**; `mvn -Pdocker test` — **138**, both 0 failures. Lint clean, **240** frontend
+  specs, build green.
+- **Live**: searching `idea` matches on a status that exists only on the projection, `juan` matches
+  on a reporter; the Related column shows the icon on exactly the two linked issues; the diagram
+  draws OTS-1 → OTS-2 with type, key, status and summary on each node and the seed named in words.
+- Incidentally proved by the new search: the two `Subtarea` issues in the test instance genuinely
+  have no parent stored, so the absent `subTaskOf` edges are the data rather than the importer.
+
+### Four finishing changes, after the above
+
+1. **The Related and open-in-JIRA icons are centred**, and the rule that centres them lives in
+   `styles/_grid.scss`. It was in the feature's own stylesheet, where it matched nothing:
+   **ag-grid builds cells at runtime, so Angular's emulated encapsulation never stamps them** and a
+   `.sec-grid__cell` rule in a component `.scss` is silently dead. The icons sat 18px left of
+   centre for exactly that reason. There is now a `.sec-grid__cell--control` class for a cell whose
+   whole content is one icon, and `.sec-grid__header-cell--stale` moved for the same reason.
+2. **JIRA cells wrap instead of truncating at 120 characters** (ADR 0014 point 24). Lists still cap
+   at three chips and a `+n` — that is a count of values, not a truncation of one.
+3. **The Req review comment box fills its cell.** It stopped at its own text, leaving up to 20px of
+   dead space below it that looked like a margin and did not take a click. The chain is: the cell is
+   a column flex container, its child is told to fill it, and *that* child is told to stretch —
+   because ag-grid's wrapper is a flex row that **centres** its child, so one level was not enough.
+   Both selectors are `> *` under our own class; neither names an `.ag-*` internal.
+4. **"Links to deleted objects" is now "Links to unresolved objects"** and matches both a target
+   DOORS deleted and one whose module has not been imported. The model keeps those apart because
+   they ask for opposite fixes; a reviewer sweeping a module is not making that distinction yet.
+   Live on SRD it narrows 486 rows to 350, where the old filter found a handful.
+   `docs/REQ_REVIEW.md` §3 is updated.
+
+**One flake seen once**: `dependency-graph-dialog.spec.ts` failed a text assertion in a full run and
+passed alone and on re-run. It mounts ELK; not chased.
+
+### Resume here
+
+Unchanged from session 20 — the detail drawer, the icon proxy, the empty state's link — plus the
+date formatting question, which is now the most visible unfinished thing on the Issues table.
+
+---
+
+## State as of 2026-08-12 (session 20) — JIRA steps 9, 10 and 11: settings, console, columns
+
+Branch **`feature/jira-issues-table`**. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18 numbers the steps;
+**1–11 are done**, in the order 8 → 10 → 11 → 9 rather than the order the spec numbers them, for a
+reason that came from running the application: until something in the UI could choose a project and
+start an import, a column picker had nothing to pick from. Session 19 started its import with
+`curl`.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`/settings` subtree** behind a toolbar gear — one path for RBAC to guard later | `app.routes.ts`, `layout/toolbar/` |
+| 2 | **JIRA settings page** — connection, project chips, JQL preview, columns summary, import | `features/settings/jira/` |
+| 3 | **Import console** — phase rail, live log, counters, cancel, history. Names no source | `features/settings/importers/` |
+| 4 | **`ImportRunStore`** — reads the run resource, then follows it over SSE, with backoff | `core/import/` |
+| 5 | **Column picker** — two panes, search by name and id, filters, drag order, stale section | `features/jira/columns/` |
+| 6 | **Four endpoints** — field catalogue, columns, column defaults, live project proxy | `JiraRoutes.kt`, `JiraFieldsProjection.kt`, `JiraColumnStore.kt` |
+| 7 | **Seven more departures**, points 15–21 | ADR 0014 |
+
+### What is not done, and would be easy to assume is
+
+- **No detail drawer** on row click (§13.2), **no issue-type icon** (it needs the icon proxy of
+  §9.1), and **no deep link** from the Issues empty state to `/settings/jira` — the third is now
+  buildable and simply is not built.
+- **The console has no log level filter and no pause-on-scroll**, and its history rows do not expand
+  to show a run's JQL and warnings (§13.6). The log pane, counters, cancel and history are built.
+- **There is still no authorization anywhere.** `/settings/*` is one subtree so that one guard will
+  cover it, and that guard does not exist (ADR 0014 point 9).
+- **A date renders as JIRA sent it** — `2026-08-11T12:14:08.833+0200`. It is source data shown
+  verbatim, which is consistent, and it is not pretty.
+
+### The traps this session hit, in the order they cost time
+
+1. **`coalesce(i[k], p[k])` is backwards, and the spec says to write it that way.** §7.4's own
+   formula contradicts §7.2's storage decision: a complex value is stored *both* as JSON text on the
+   issue and as a display string on the projection, so reading the issue first means the blob always
+   wins. Live, every Status and Priority cell was a wall of JSON. **The test that should have caught
+   it asserted the impossible case** — its fixture put the value on the projection alone, which no
+   import produces, so it passed under either order. ADR 0014 point 21.
+2. **The catalogue was keyed by `__id` instead of JIRA's `id`.** The synthesised resource URL and
+   the field id are one character apart in a statement, and nothing downstream can tell them apart:
+   a column keyed by a URL reads every cell as null. The docker test caught this one.
+3. **A root-provided service with an eager `httpResource` field is fetched by every page that
+   injects it.** The settings page wanted a column *summary* and pulled the whole 1 171-field
+   catalogue with it. A resource wanted by one dialog is a factory method, not a field —
+   `ModulesApiService` had the pattern already.
+4. **The console sat on "Running" after the import finished.** The stream describes one run and says
+   nothing about the importer list or the history, both of which were fetched once on load. An
+   effect on the terminal status re-reads them. **Found by watching a real import**, not by a test.
+5. **jsdom has no `EventSource`**, so anything touching the store needs a fake — `new EventSource()`
+   is a `ReferenceError` otherwise. `import-run-store.spec.ts` carries one, and it is what makes the
+   event half of the store testable at all.
+6. **Material caps a dialog at 560px, and that beats the `width` you ask for.** A dialog opened with
+   `width: '900px'` renders at 560 with its content clipped and says nothing. The two settings
+   dialogs escape it with their own `maxWidth: '94vw'`, which is why nobody had met it; the escape
+   is now in `SEC_MODAL_DIALOG` so the next dialog does not rediscover it. Found by looking at the
+   picker on screen — every spec passed, because jsdom has no layout.
+
+### Verified this session
+
+- `mvn test` — **319 tests**; `mvn -Pdocker test` — **124 tests**, both 0 failures.
+- `npm run lint` clean, **231 frontend specs**, `npm run build` green.
+- **In the browser**: the settings page (connection, chips, JQL, summary, last run), an import
+  started from the settings page, a second started from the console with its **log streaming live**
+  and the phase rail advancing, and the Issues table drawing the six default columns.
+
+### Resume here
+
+The three gaps of §13.2 and §13.6 above, in whichever order the next reader cares about. The detail
+drawer is the one a reviewer will ask for first; the icon proxy is the one that makes the Type
+column look finished.
+
+**Before anything else, look at a date in the Issues table.** It is the only thing on that screen
+that still reads as raw data rather than as a value, and deciding what to do about it is a display
+decision the alias map (R5) has no entry for yet.
+
+---
+
+## State as of 2026-08-12 (session 19) — JIRA build-order step 8, the Issues table
+
+Branch **`feature/jira-issues-table`**, one commit. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18
+numbers the steps; **1–8 are done**, with step 4's second half (the import console) still not.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`GET /api/v1/jira/issues`** — server-side paging, search and sort, with `ref` and `browseUrl` derived on read | `JiraIssuesProjection.kt`, `JiraCypher` |
+| 2 | **`__sortKey` for issues and placeholders** — nine digits, not DOORS's six | `mapping/IssueMapper.kt`, `JiraGraphWriter.placeholderRow` |
+| 3 | **The Issues table**, three fixed columns: type, key, link out | `features/jira/issues/` |
+| 4 | **`settleGrid`** — waits for the grid's DOM to stop changing, instead of two fixed frames | `core/grid/grid-testing.ts` |
+
+### What is not done, and would be easy to assume is
+
+- **There is still no JIRA settings UI and no import console.** The backend has had both
+  endpoints since step 4 — `GET`/`PUT /api/v1/jira/settings` for the project keys and JQL preview,
+  and `POST /api/v1/import/jira/runs` with its SSE feed — but nothing in the application calls
+  them, so today an import is started with `curl`. That is §13.5 and §13.6, build-order steps 10
+  and 11, and it is the gap a user hits first.
+- **Every configurable column is still empty.** `fieldIds`, `columns` and `values` run end to end
+  and the route never passes any: the picker and `__JiraColumnConfig` are step 9. `SortField`
+  therefore offers exactly one column, `key`.
+- **The issue type is a name, not an icon.** The icon proxy (§9.1) does not exist, and an `<img>`
+  to JIRA's own `iconUrl` would send the browser to a host it cannot authenticate against.
+- **No detail drawer** (§13.2, last bullet) and **no deep link from the empty state** to
+  `/settings/jira`, because that page does not exist yet.
+
+### The traps this step hit, in the order they cost time
+
+1. **`httpResource` drops its value the moment a new request starts.** Reading it directly means
+   the whole view re-renders from nothing on every keystroke — including the search box that
+   started the request, which is destroyed and re-created a quarter of a second after the user
+   typed, taking the focus and the caret with it. This is trap 7 of session 14 ("a component inside
+   an `@if` on a resource unmounts while that resource reloads") arriving through a different door,
+   and it was **reported from the running app, not by the suite**. The fix is a `linkedSignal` that
+   latches the last page; the regression test asserts the input's *identity*, because a re-created
+   input looks identical and behaves nothing like the same one.
+2. **In a spec, a debounced signal's timer does not start until the next change detection.** This
+   TestBed has no auto-detection, so `dispatchEvent` then `await 300ms` measures the wait from
+   whenever the next `detectChanges()` happens — the request is still unsent when the assertion
+   runs, and the spec times out instead of failing. One `fixture.detectChanges()` between the event
+   and the wait is the whole fix.
+3. **`settle()` must never be called while a request is in flight** — the same `whenStable()` trap
+   as session 14's item 15, met twice here: once after the debounce fires and once after a
+   paginator click. Both now call `detectChanges()` and assert the request instead.
+4. **`flushGridFrames()`'s two frames are not enough for a row with a cell renderer.** The fifth
+   row was drawn some runs and not others, so a spec passed alone and failed in the suite.
+   `settleGrid` waits for two consecutive identical readings instead of a fixed duration.
+5. **Data imported before `__sortKey` existed sorts arbitrarily**, because `coalesce(…, '')` makes
+   every row equal. Nothing warns; the table simply comes back in storage order. A re-import fixes
+   it, and this is the general shape of every Tier-1 derivation added after an import has run.
+
+### Verified this session
+
+- `mvn test` green; `mvn -Pdocker test -Dtest=JiraIssuesReadTest` — **14 tests, 0 failures**.
+- `npm run lint` clean, **209 frontend specs**, `npm run build` green.
+- **A real import against the live JIRA Cloud instance** (9 issues, 59 fields, 14 issue types, 1
+  link, 0 deletions, `SUCCEEDED`), then the table **in the browser**: JIRA's own order, reversed on
+  a second header click, `scrum` narrowing to 6, `scrumzzz` giving the no-match sentence with the
+  term kept in the box, and all five characters of a search landing in one box that never lost
+  focus.
+
+### Resume here
+
+**Step 9 — column config**: `__JiraColumnConfig` (§10.2), the picker dialog (§13.3), stale columns
+(§13.4). The read path already takes `fieldIds` and returns `columns`; what is missing is the
+persisted set, the `GET`/`PUT /api/v1/jira/columns` pair, and the dialog.
+
+**But consider steps 10 and 11 first.** Nothing in the UI can configure the JIRA projects or start
+an import, so today a user cannot get data into the table without `curl`, and the picker has
+nothing to pick from until they can. The build order puts columns first; the running application
+argues for settings first.
+
+---
+
 ## State as of 2026-08-12 (sessions 16–18) — JIRA, build-order steps 1–7
 
 One continuous piece of work over three sessions, on branch **`feature/jira-issues-dynamic-view`**.

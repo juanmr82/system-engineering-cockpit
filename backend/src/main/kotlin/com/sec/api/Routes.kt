@@ -12,7 +12,11 @@ import com.sec.config.JiraSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
+import com.sec.source.jira.JiraColumnStore
+import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraLinkGraphProjection
+import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
@@ -51,13 +55,31 @@ public fun Application.configureRouting(
     // and editable whether or not this deployment has a JIRA host, which is what lets an operator
     // set the two up in either order.
     jiraSettingsStore: JiraSettingsStore,
+    // Also never null, and for a stronger reason than the store's: the issues it reads are in this
+    // graph, so the table works on a deployment whose JIRA credentials have expired. A table that
+    // went blank because a token did would be reporting a connection problem as an absence of data.
+    jiraIssuesProjection: JiraIssuesProjection,
+    // The related-issues picture. Reads links this graph already holds; never reaches JIRA.
+    jiraLinkGraphProjection: JiraLinkGraphProjection,
+    // The chosen columns and the catalogue they are chosen from. Neither reaches JIRA, so both
+    // answer on a deployment whose token has expired — a column choice is ours, not JIRA's.
+    jiraColumnStore: JiraColumnStore,
+    jiraFieldsProjection: JiraFieldsProjection,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
 ) {
     routing {
         healthRoutes(graphDriver)
-        jiraRoutes(jiraSettings, jiraClient, jiraSettingsStore)
+        jiraRoutes(
+            jiraSettings,
+            jiraClient,
+            jiraSettingsStore,
+            jiraIssuesProjection,
+            jiraLinkGraphProjection,
+            jiraColumnStore,
+            jiraFieldsProjection,
+        )
         importRoutes(importRunService)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(
