@@ -52,6 +52,15 @@ jira:
   connectTimeoutMs: 15000
   maxRetries: 5
 
+# PTC Windchill. Fed by an uploaded OData export rather than connected to, so there is deliberately
+# no credential here: the backend never authenticates against Windchill and has nothing to hold.
+#
+# The host decides exactly one thing — where a document row links to. Empty means the Documents
+# table shows no link out and says so; importing an export still works, because the file is the
+# source and the host is not. State the scheme and the context path; a trailing slash is stripped.
+windchill:
+  host: "$SEC_WINDCHILL_HOST:"
+
 # The import framework, shared by every source (spec §11). Source-agnostic on purpose: nothing here
 # may ever say "jira" or "doors".
 #

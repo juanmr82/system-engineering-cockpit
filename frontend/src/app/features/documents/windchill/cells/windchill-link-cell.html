@@ -1,0 +1,14 @@
+@if (row(); as entry) {
+  @if (entry.kind === 'document' && entry.document.browseUrl; as href) {
+    <a
+      class="sec-windchill-link"
+      [href]="href"
+      target="_blank"
+      rel="noopener noreferrer"
+      [attr.aria-label]="'Open ' + entry.document.number + ' ' + entry.document.version + ' in Windchill'"
+      [matTooltip]="'Open in Windchill'"
+    >
+      <mat-icon svgIcon="open-in-new" />
+    </a>
+  }
+}

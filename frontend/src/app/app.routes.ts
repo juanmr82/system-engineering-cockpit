@@ -54,6 +54,13 @@ export const routes: Routes = [
           import('./features/settings/jira/jira-settings').then((m) => m.JiraSettings),
       },
       {
+        path: 'settings/windchill',
+        loadComponent: () =>
+          import('./features/settings/windchill/windchill-settings').then(
+            (m) => m.WindchillSettings,
+          ),
+      },
+      {
         path: 'settings/importers',
         loadComponent: () =>
           import('./features/settings/importers/import-runs').then((m) => m.ImportRuns),

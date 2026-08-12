@@ -18,7 +18,6 @@ dev = [
 
 [project.scripts]
 sec-import-doors = "sec_import.doors.cli:main"
-sec-import-windchill = "sec_import.windchill.cli:main"
 sec-import-cameo = "sec_import.cameo.cli:main"
 
 [build-system]

@@ -930,6 +930,11 @@ class JiraIssueImportTest {
         var params: Map<String, String> = emptyMap()
 
         override val runId: String = "test-run"
+
+        // The JIRA importer is self-driving: its input is configuration and the graph, never an
+        // uploaded file, so a run of it never carries a request.
+        override val request: com.sec.importer.ImportRequest? = null
+
         override suspend fun phase(phaseId: String) = Unit
         override suspend fun progress(current: Int, total: Int) = Unit
         override suspend fun log(message: String, level: ImportLogLevel) { logs += message }

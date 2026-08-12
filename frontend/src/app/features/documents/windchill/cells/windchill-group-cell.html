@@ -1,0 +1,30 @@
+@if (row(); as entry) {
+  @if (entry.kind === 'group') {
+    <button
+      type="button"
+      class="sec-windchill-group"
+      [attr.aria-expanded]="isExpanded(entry.number)"
+      [attr.aria-label]="
+        (isExpanded(entry.number) ? 'Collapse ' : 'Expand ') +
+        entry.number +
+        ', ' +
+        entry.versions +
+        ' versions'
+      "
+      (click)="toggle()"
+    >
+      <span
+        class="sec-windchill-group__twisty"
+        [class.sec-windchill-group__twisty--closed]="!isExpanded(entry.number)"
+      ></span>
+      <span class="sec-windchill-group__text">{{ entry.folderLocation }}</span>
+      <!-- The count is on the header rather than in a column of its own: it is a fact about the
+           group, and a column for it would be blank on every other row in the table. -->
+      <span class="sec-windchill-group__count">{{ entry.versions }} versions</span>
+    </button>
+  } @else {
+    <span class="sec-windchill-group__leaf" [class.sec-windchill-group__leaf--indented]="entry.grouped">
+      {{ entry.document.folderLocation }}
+    </span>
+  }
+}

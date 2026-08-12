@@ -3,6 +3,7 @@ package com.sec.domain
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsModuleAttr
 import com.sec.source.doors.DoorsRel
+import com.sec.source.windchill.WindchillProp
 
 // R5's single source of truth: internal __-prefixed property/relationship names to user-facing
 // labels. API DTOs are built from this. The frontend never carries a second copy and never
@@ -88,6 +89,28 @@ public object Aliases {
         DoorsModuleAttr.WORD_DOC_ISSUE to "Word export issue",
         DoorsModuleAttr.WORD_DOC_NUMBER to "Word export number",
         DoorsModuleAttr.WORD_DOC_TITLE to "Word export title",
+    )
+
+    /**
+     * Windchill document field labels, for the Documents table's column headers.
+     *
+     * Source-native names, so this is the same kind of entry `modulePropertyLabels` holds: the value
+     * is displayed verbatim (it is content) and the *key* never is (it is a name). `FolderLocation`
+     * becomes two sentence-case words, and `StateDisplay` becomes plain "State" — the split into a
+     * code and a wording is our storage decision, not something a reader should have to know about.
+     *
+     * Closed to this list, and it is the whole set: Windchill's export has fixed columns, so an
+     * absent entry is a field that would render with no header rather than a guess.
+     *
+     * `ID` is deliberately absent. It is stored and never shown (the user's instruction), which
+     * means it never needs a label — and an alias for it would invite one.
+     */
+    public val windchillDocumentLabels: Map<String, String> = mapOf(
+        WindchillProp.FOLDER_LOCATION to "Folder location",
+        WindchillProp.NAME to "Name",
+        WindchillProp.NUMBER to "Number",
+        WindchillProp.VERSION to "Version",
+        WindchillProp.STATE_DISPLAY to "State",
     )
 
     // __version's value, not its name, is content the user needs (R5): "current" reads as

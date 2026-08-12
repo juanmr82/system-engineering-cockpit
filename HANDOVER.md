@@ -3,6 +3,105 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (session 22) — the Windchill importer, fed by an uploaded export
+
+Branch **`master`** (session 21 was merged as PR #5 before this started). The whole design is in
+**`docs/adr/0015`** — read it before changing anything below; it is short and every paragraph is a
+decision that cost something.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`WindchillImporter`** — three phases, fed by an upload rather than connected to a host | `source/windchill/` |
+| 2 | **`ImportRequest`** — a run can now be *given* its input, source-agnostically | `importer/ImportRequest.kt` |
+| 3 | **`POST /api/v1/windchill/import`** — the upload **is** the import, one request (R7) | `api/routes/WindchillRoutes.kt` |
+| 4 | **`GET /api/v1/windchill/documents`** — the whole set, unpaged, capped at 20 000 | `WindchillProjection.kt` |
+| 5 | **The Documents view** — version groups, collapsible, instant search over every column | `features/documents/windchill/` |
+| 6 | **`/settings/windchill`** — the address, the file picker, the last import | `features/settings/windchill/` |
+| 7 | The Python Windchill stubs are **deleted** — two importers for one source is the thing this repo forbids | `importers/` |
+
+### The four decisions the user made, so they are not re-litigated
+
+1. **Valid JSON only.** The exporter emitted Python dict syntax at one point; that is a `400` naming
+   the parse position, not a lenient reader.
+2. **The whole set loads into the browser.** ~1 500 documents, instant search, and — decisively —
+   grouping a document's versions needs all of them at once. The opposite call from JIRA Issues.
+3. **Newest version first** inside a group.
+4. **The export is the whole truth**, with a mass-deletion *warning* rather than a narrower sweep.
+   A file covering one folder removes every document it does not mention; the run says so.
+
+### What is not done, and would be easy to assume is
+
+- **No folder hierarchy.** `FolderLocation` is a string on the document, as Windchill sends it.
+  There are no folder nodes and no `__child`; when there are, R3 says where they go.
+- **No Tier 2 on a document** — no notes, no tags, nothing. The re-import test protects an
+  annotation that nothing writes yet, on purpose: what it pins is that `MERGE … SET` leaves
+  relationships alone, which has to stay true as this source grows.
+- **`/windchill/import` deletes documents and is unguarded**, like every other route here. That is
+  the standing authorization gap (ADR 0014 point 9), not a new one — but this is the first endpoint
+  where "unguarded" and "deletes data" are the same sentence.
+- **Dates on the settings page are raw ISO**, the same unfinished thing the Issues table has. One
+  decision, two views, still not made.
+- **The file is read into memory whole**, on the client and again on the server. Fine at 1 500
+  documents; the 64 MB cap is what stands between a bigger export and an `OutOfMemoryError`.
+
+### The traps this session hit, in the order they cost time
+
+1. **`|` is the wrong separator for a sort key**, and it looked right. `__sortKey` is
+   `<number><sep><complemented version>`, and a separator only works if it sorts *below* every
+   character a Number can contain — `|` sorts above every letter and digit, so `ABC-1` came before
+   `ABC`. Groups stayed adjacent, which is exactly why it passed a glance. It is **U+0001** now, and
+   a test pins it.
+2. **`[context]` on `<ag-grid-angular>` is an input of its own, and it beats the same key inside
+   `gridOptions`.** A context passed only through `gridOptions` reaches a renderer as `undefined`,
+   `this.context?.toggleGroup(…)` is a silent no-op, and the twisty does nothing with no error
+   anywhere. **Every spec passed.** Found by clicking it.
+3. **ag-grid refreshes a cell only when its *value getter's output* changed.** A group header's
+   folder, name and number read the same open or shut, so a header whose expanded state travelled in
+   its row data is a header ag-grid never redraws — the versions below it vanished and the arrow went
+   on pointing down. Two wrong fixes were tried first: folding the state into the row **id** (which
+   made a row's identity change while the row stayed the same thing, and broke re-expanding), and
+   `refreshCells({force: true})` from an effect (which fixed the rows and not the header, because
+   effect ordering against the grid's own update is not guaranteed). The right shape is that the
+   renderer **reads the view's signal** through `context.isExpanded(number)`: Angular then redraws
+   the arrow for the ordinary reason and ag-grid is not involved at all.
+4. **A cell renderer's row must be a signal.** ag-grid updates a row in place and calls `refresh`,
+   and a plain field written there never marks an OnPush view dirty in a zoneless application.
+5. **An indent sized to "line up with the header's text" is not an indent.** 13px put the two
+   columns of text within two pixels of each other; it is 26px and visible.
+6. **Bash heredocs mangled two large files** in this session (a Kotlin file and an HTML template)
+   and once turned `''` into a raw control byte in a `.kt` file. Use the Write tool for
+   anything large; `cat -A` is what caught the control byte.
+
+### Verified this session
+
+- `mvn verify` — **349** tests; `mvn -Pdocker test` — **149**, both 0 failures. Lint clean,
+  **261** frontend specs, build green.
+- **Live, against the running application**: the committed sample imported (2 documents, `paged:
+  true`, the run amber with the next-link warning); a six-document export with two version groups
+  imported and drawn — headers bold on the blue band with no version and no state, `10 [1]` above
+  `02 [2]` above `01 [2]`, which a string sort gets wrong; collapse and re-expand both directions
+  with the arrow following; `in work` matching the **State** column with no request at all and the
+  header keeping its whole-set count of 3; the sweep removing 5 of 6 with the mass-deletion warning;
+  and `{"value":[]}` refused as a `400` problem detail rather than run.
+- **The graph now holds six fabricated Windchill documents** from that testing. They are harmless —
+  the first real export deletes them, because the export is the whole truth — but they are there.
+
+### Resume here
+
+Unchanged from session 21 for JIRA: the detail drawer, the issue-type icon proxy, the empty state's
+deep link, and **the date formatting decision**, which now shows up in two places rather than one.
+
+For Windchill specifically, in the order a user will hit them:
+
+1. **Import a real export** and see what a production file does that the sample does not — 1 500
+   documents rather than 6, and real `Version` strings. The version parser reads three digit runs
+   and warns on a version with none; that warning is the thing to watch.
+2. **Folder hierarchy**, if the folder column turns out to be how people navigate. `__child`, per R3.
+3. **A confirm-before-delete on the upload**, if the mass-deletion warning proves too weak. The count
+   is already known before the sweep runs, so this is a dialog rather than a redesign.
+
+---
+
 ## State as of 2026-08-12 (session 21) — search every field, and a diagram of related issues
 
 Branch **`feature/jira-issues-table`**. Two changes asked for after seeing steps 9–11 working, both
