@@ -274,8 +274,8 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false),
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = true),
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = true, excludedFromOpenPoints = false),
             ),
         )
         assertEquals(SaveModuleSettingsOutcome.Saved, outcome)
@@ -358,7 +358,7 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
 
@@ -395,7 +395,7 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
         assertEquals(
@@ -407,7 +407,7 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
         assertEquals(
@@ -431,8 +431,8 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false),
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
         assertEquals(
@@ -445,8 +445,8 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false),
-                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
+                MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
 
@@ -467,7 +467,7 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("Object Text", mandatory = false, visible = true, verification = false),
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
         )
 
@@ -482,7 +482,7 @@ class ReviewFeatureTest {
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
-                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = true),
+                MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = true, excludedFromOpenPoints = false),
             ),
         )
         val before = rawProperties("obj-1")

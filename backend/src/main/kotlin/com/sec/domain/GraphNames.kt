@@ -282,6 +282,19 @@ public object MetaProp {
 
     /** `:__AttributeSetting` — this attribute is how the requirement will be shown to be met. */
     public const val VERIFICATION: String = "verification"
+
+    /**
+     * `:__AttributeSetting` — the TBD / TBC scan skips this attribute's value.
+     *
+     * A *role for an attribute*, like [VISIBLE] and [VERIFICATION], which is why it belongs on the
+     * setting node and not on a `:__Policy` (R2: a policy models a rule about a *value*, and this
+     * says nothing about what the value may be).
+     *
+     * Named for what it excludes from rather than for the control that sets it: the scan is over
+     * open points (`requirements-statistics.md` §3.3), and TBD / TBC is what an open point looks
+     * like in DOORS. The user-facing wording lives in `Aliases`.
+     */
+    public const val EXCLUDED_FROM_OPEN_POINTS: String = "excludedFromOpenPoints"
 }
 
 /** Values of controlled vocabularies stored in a meta payload. Wording comes from [Aliases]. */

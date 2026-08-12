@@ -24,9 +24,30 @@ const DETAIL: ModuleDetail = {
 // watches: the Modules dialog must post it back untouched rather than as false.
 const ATTRIBUTES: ModuleAttributesResponse = {
   attributes: [
-    { name: 'Object Text', mandatory: false, visible: true, verification: false, fixed: true },
-    { name: 'REQ. Priorität', mandatory: true, visible: false, verification: false, fixed: false },
-    { name: 'Verification Method', mandatory: false, visible: false, verification: true, fixed: false },
+    {
+      name: 'Object Text',
+      mandatory: false,
+      visible: true,
+      verification: false,
+      excludedFromOpenPoints: false,
+      fixed: true,
+    },
+    {
+      name: 'REQ. Priorität',
+      mandatory: true,
+      visible: false,
+      verification: false,
+      excludedFromOpenPoints: false,
+      fixed: false,
+    },
+    {
+      name: 'Verification Method',
+      mandatory: false,
+      visible: false,
+      verification: true,
+      excludedFromOpenPoints: false,
+      fixed: false,
+    },
   ],
 };
 
@@ -109,12 +130,18 @@ describe('ModuleSettingsDialog', () => {
    * Tab 2 is the same searchable list the Req review settings dialog uses, minus one column.
    *
    * **Shown in table** configures the review table's columns and there is no table in this view,
-   * so offering it here would be offering a setting whose effect is nowhere on screen.
+   * so offering it here would be offering a setting whose effect is nowhere on screen. Every other
+   * flag is offered, including the TBD/TBC exclusion — that one's effect is the Statistics view,
+   * which is not on screen either, but it is a decision about the module rather than about a table.
    */
   it('lists the attributes with a search box, and without Shown in table', async () => {
     await openAttributesTab();
 
-    expect(flagHeaders()).toEqual(['Mandatory', 'Verification attribute']);
+    expect(flagHeaders()).toEqual([
+      'Mandatory',
+      'Verification attribute',
+      'Exclude from TBD/TBC statistics',
+    ]);
     expect(require('.sec-attr-settings__search input')).toBeTruthy();
     expect(renderedText()).toContain('3 attributes');
     expect(renderedText()).toContain('REQ. Priorität');
@@ -147,7 +174,8 @@ describe('ModuleSettingsDialog', () => {
     const checkboxes = Array.from(
       element().querySelectorAll<HTMLInputElement>('.sec-attr-settings__row input[type="checkbox"]'),
     );
-    // Two flag columns per row, so the first row's Mandatory box is index 0.
+    // Mandatory is the first flag column, so the first row's box is index 0 however many
+    // columns follow it.
     checkboxes[0].click();
     await settle();
 
@@ -156,14 +184,38 @@ describe('ModuleSettingsDialog', () => {
     const request = httpTesting.expectOne(`/api/v1/modules/${MODULE_REF}/settings`);
     const body = request.request.body as {
       systemLevel: string | null;
-      attributeSettings: { name: string; mandatory: boolean; visible: boolean; verification: boolean }[];
+      attributeSettings: {
+        name: string;
+        mandatory: boolean;
+        visible: boolean;
+        verification: boolean;
+        excludedFromOpenPoints: boolean;
+      }[];
     };
 
     expect(body.systemLevel).toBe('L2');
     expect(body.attributeSettings).toEqual([
-      { name: 'Object Text', mandatory: true, visible: true, verification: false },
-      { name: 'REQ. Priorität', mandatory: true, visible: false, verification: false },
-      { name: 'Verification Method', mandatory: false, visible: false, verification: true },
+      {
+        name: 'Object Text',
+        mandatory: true,
+        visible: true,
+        verification: false,
+        excludedFromOpenPoints: false,
+      },
+      {
+        name: 'REQ. Priorität',
+        mandatory: true,
+        visible: false,
+        verification: false,
+        excludedFromOpenPoints: false,
+      },
+      {
+        name: 'Verification Method',
+        mandatory: false,
+        visible: false,
+        verification: true,
+        excludedFromOpenPoints: false,
+      },
     ]);
 
     request.flush(DETAIL);

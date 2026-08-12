@@ -8,8 +8,21 @@ import { ReviewSettingsDialog } from './review-settings-dialog';
 
 const MODULE_REF = 'bW9kdWxlLTE';
 
-function attribute(name: string, overrides: Partial<{ mandatory: boolean; visible: boolean; verification: boolean }> = {}) {
-  return { name, mandatory: false, visible: false, verification: false, fixed: false, ...overrides };
+function attribute(name: string, overrides: Partial<{
+    mandatory: boolean;
+    visible: boolean;
+    verification: boolean;
+    excludedFromOpenPoints: boolean;
+  }> = {}) {
+  return {
+    name,
+    mandatory: false,
+    visible: false,
+    verification: false,
+    excludedFromOpenPoints: false,
+    fixed: false,
+    ...overrides,
+  };
 }
 
 // Names shaped like the reference module: dots, umlauts, and a group sharing a common word — the

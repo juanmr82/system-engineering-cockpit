@@ -25,11 +25,26 @@ export interface ReviewSettingsDialogData {
 // are listed rather than merely described because a reviewer looking for "why can't I hide ID"
 // should find ID where they went looking for it.
 const FIXED_COLUMNS: readonly FixedColumnRow[] = [
-  { label: 'ID', checked: { mandatory: true, visible: true, verification: false } },
-  { label: 'Type', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'Name', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'References', checked: { mandatory: false, visible: true, verification: false } },
-  { label: 'Comment', checked: { mandatory: false, visible: true, verification: false } },
+  {
+    label: 'ID',
+    checked: { mandatory: true, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Type',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Name',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'References',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
+  {
+    label: 'Comment',
+    checked: { mandatory: false, visible: true, verification: false, excludedFromOpenPoints: false },
+  },
 ];
 
 function extractErrorDetail(error: unknown): string {
@@ -110,6 +125,7 @@ export class ReviewSettingsDialog {
           mandatory: attribute.mandatory,
           visible: attribute.visible,
           verification: attribute.verification,
+          excludedFromOpenPoints: attribute.excludedFromOpenPoints,
         })),
       });
     });
@@ -133,6 +149,7 @@ export class ReviewSettingsDialog {
           mandatory: row.mandatory,
           visible: row.visible,
           verification: row.verification,
+          excludedFromOpenPoints: row.excludedFromOpenPoints,
         })),
       });
       this.dialogRef.close(true);

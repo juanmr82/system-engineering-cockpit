@@ -144,6 +144,7 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                             mandatory = it.mandatory,
                             visible = it.visible,
                             verification = it.verification,
+                            excludedFromOpenPoints = it.excludedFromOpenPoints,
                         )
                     },
                 )

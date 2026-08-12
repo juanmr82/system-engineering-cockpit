@@ -63,6 +63,8 @@ public data class ModuleAttributeDto(
     public val mandatory: Boolean,
     public val visible: Boolean = false,
     public val verification: Boolean = false,
+    /** The TBD / TBC scan skips this attribute's value (`requirements-statistics.md` §3.3). */
+    public val excludedFromOpenPoints: Boolean = false,
     public val fixed: Boolean = false,
 )
 
@@ -86,6 +88,7 @@ public data class AttributeSettingDto(
     public val mandatory: Boolean = false,
     public val visible: Boolean = false,
     public val verification: Boolean = false,
+    public val excludedFromOpenPoints: Boolean = false,
 )
 
 // Two shapes reach this endpoint, and both are one request and one transaction (R7):

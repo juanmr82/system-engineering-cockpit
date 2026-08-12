@@ -192,6 +192,7 @@ class StatisticsFeatureTest {
                     mandatory = false,
                     visible = false,
                     verification = true,
+                    excludedFromOpenPoints = false,
                 ),
             ),
         )
@@ -292,6 +293,54 @@ class StatisticsFeatureTest {
         val module = moduleOf(levelledModule)
         assertEquals(1, module.completeness.itemsWithOpenPoints)
         assertEquals(listOf("Object Text"), module.openPointsByAttribute.map { it.attribute })
+    }
+
+    /**
+     * The configured exclusion, end to end: the settings dialogs write it, and the scan honours it.
+     *
+     * `Object Text` is the fixture's one open-point carrier, so excluding it must take the module
+     * from one item with open points to none — and it has to do so through the *stored* setting,
+     * written the way either dialog writes it, rather than through anything this test hands the
+     * check directly. `DoorsChecksTest` covers the filter itself; what is proved here is that the
+     * flag survives the round trip and reaches the scan.
+     */
+    @Test
+    fun `an attribute excluded in the settings dialog leaves the TBD scan`() = runBlocking {
+        assertEquals(1, moduleOf(levelledModule).completeness.itemsWithOpenPoints)
+
+        // This class seeds once in @BeforeAll and never resets, so the exclusion is put back in a
+        // `finally` — every other test here asserts against the module in its seeded state, and a
+        // leaked setting would make them pass or fail on execution order.
+        try {
+            exclude("Object Text", excluded = true)
+
+            val module = moduleOf(levelledModule)
+            assertEquals(0, module.completeness.itemsWithOpenPoints)
+            assertTrue(module.openPointsByAttribute.isEmpty(), module.openPointsByAttribute.toString())
+        } finally {
+            // Every flag false, which deletes the node outright — so this restores the seeded
+            // state exactly rather than leaving a row of `false` behind.
+            exclude("Object Text", excluded = false)
+        }
+
+        assertEquals(1, moduleOf(levelledModule).completeness.itemsWithOpenPoints)
+    }
+
+    /** Writes the exclusion the way either settings dialog writes it: one absolute row, one save. */
+    private suspend fun exclude(attribute: String, excluded: Boolean) {
+        metaWriter.saveModuleSettings(
+            levelledModule,
+            SystemLevelChange.Unchanged,
+            attributeSettings = listOf(
+                MetaWriter.AttributeSettingInput(
+                    name = attribute,
+                    mandatory = false,
+                    visible = false,
+                    verification = false,
+                    excludedFromOpenPoints = excluded,
+                ),
+            ),
+        )
     }
 
     /**

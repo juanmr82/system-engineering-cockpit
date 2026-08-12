@@ -170,17 +170,30 @@ public object DoorsChecks {
      * attribute on a table object is still scanned — a cell whose text says "value TBC" is a real
      * open point wherever it sits — and `Object Type` is still scanned on everything that is not
      * table structure, where an untyped requirement genuinely is one.
+     *
+     * ## [excluded] is the configured half of the same idea
+     *
+     * The exemption above is a fact about DOORS and is hard-coded. [excluded] is a *decision about
+     * one module*, made in either settings dialog and stored as `excludedFromOpenPoints` on a
+     * `:__AttributeSetting` — the answer to an attribute whose text legitimately carries the word
+     * TBD without that being an open point. It is passed in rather than read here because this file
+     * is pure: the caller loads it once per module, not once per object.
+     *
+     * Required, not defaulted. There is one production caller, and a default would let the next one
+     * silently scan attributes a module has said to leave alone.
      */
     public fun openPointAttributes(
         labels: Collection<String>,
         props: Map<String, Any?>,
+        excluded: Set<String>,
     ): List<String> {
         val carrying = TextMarkers.attributesCarrying(props)
-        return if (isStructural(labels)) {
+        val scanned = if (isStructural(labels)) {
             carrying.filterNot { it == DoorsAttr.OBJECT_TYPE }
         } else {
             carrying
         }
+        return scanned.filterNot { it in excluded }
     }
 
     /**

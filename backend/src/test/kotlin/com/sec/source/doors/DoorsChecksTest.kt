@@ -26,14 +26,14 @@ class DoorsChecksTest {
     @Test
     fun `a table cell's own Object Type is not an open point`() {
         val props = mapOf("Object Type" to "TBD", "Object Text" to "a value")
-        assertEquals(emptyList(), DoorsChecks.openPointAttributes(cell, props))
+        assertEquals(emptyList(), DoorsChecks.openPointAttributes(cell, props, emptySet()))
     }
 
     /** The exemption is the attribute, not the object: a cell's prose is scanned like any other. */
     @Test
     fun `every other attribute on a table cell is still scanned`() {
         val props = mapOf("Object Type" to "TBD", "Object Text" to "width TBC")
-        assertEquals(listOf("Object Text"), DoorsChecks.openPointAttributes(cell, props))
+        assertEquals(listOf("Object Text"), DoorsChecks.openPointAttributes(cell, props, emptySet()))
     }
 
     /**
@@ -44,7 +44,7 @@ class DoorsChecksTest {
     @Test
     fun `Object Type is still scanned on a requirement`() {
         val props = mapOf("Object Type" to "TBD", "Object Text" to "The mass shall be defined")
-        assertEquals(listOf("Object Type"), DoorsChecks.openPointAttributes(requirement, props))
+        assertEquals(listOf("Object Type"), DoorsChecks.openPointAttributes(requirement, props, emptySet()))
     }
 
     /**
@@ -95,7 +95,35 @@ class DoorsChecksTest {
         val props = mapOf("Rationale" to "TBC", "Object Text" to "mass TBD kg")
         assertEquals(
             listOf("Object Text", "Rationale"),
-            DoorsChecks.openPointAttributes(requirement, props),
+            DoorsChecks.openPointAttributes(requirement, props, emptySet()),
+        )
+    }
+
+    /**
+     * An attribute the module has excluded is not scanned, and the others still are.
+     *
+     * The configured half of the table-structure exemption above: some attributes legitimately
+     * carry the word TBD without that being an open point, and which ones is a decision about the
+     * module rather than a fact about DOORS.
+     */
+    @Test
+    fun `an excluded attribute is left out and the rest are still scanned`() {
+        val props = mapOf("Rationale" to "TBC", "Object Text" to "mass TBD kg")
+
+        assertEquals(
+            listOf("Object Text"),
+            DoorsChecks.openPointAttributes(requirement, props, setOf("Rationale")),
+        )
+    }
+
+    /** Excluding every carrier leaves the object clean rather than leaving an empty finding. */
+    @Test
+    fun `excluding every carrying attribute reports no open point at all`() {
+        val props = mapOf("Rationale" to "TBC", "Object Text" to "mass TBD kg")
+
+        assertEquals(
+            emptyList(),
+            DoorsChecks.openPointAttributes(requirement, props, setOf("Rationale", "Object Text")),
         )
     }
 }

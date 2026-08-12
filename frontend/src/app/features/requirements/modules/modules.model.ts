@@ -38,14 +38,16 @@ export interface ModuleDetail {
   readonly properties: ModuleProperty[];
 }
 
-// The three per-module attribute flags (REQ_REVIEW.md §6). `fixed` marks a column the review
-// table always shows: its Visible checkbox renders checked and disabled. It is derived per
-// request, never stored.
+// The per-module attribute flags (REQ_REVIEW.md §6). `fixed` marks a column the review table
+// always shows: its Visible checkbox renders checked and disabled. It is derived per request,
+// never stored. `excludedFromOpenPoints` takes the attribute out of the TBD/TBC scan the
+// Statistics view runs, and out of nothing else.
 export interface ModuleAttribute {
   readonly name: string;
   readonly mandatory: boolean;
   readonly visible: boolean;
   readonly verification: boolean;
+  readonly excludedFromOpenPoints: boolean;
   readonly fixed: boolean;
 }
 
@@ -63,6 +65,7 @@ export interface AttributeSetting {
   readonly mandatory: boolean;
   readonly visible: boolean;
   readonly verification: boolean;
+  readonly excludedFromOpenPoints: boolean;
 }
 
 // Two dialogs post this, and both are one request in one transaction (R7): the Modules dialog

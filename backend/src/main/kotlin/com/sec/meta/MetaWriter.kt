@@ -53,7 +53,7 @@ public class MetaWriter(
         // stale name no longer discovered on this module's objects — un-marking is always safe.
         // The review dialog's absolute list is checked the same way, for the names it turns on.
         val proposed = addAttributes + attributeSettings.orEmpty()
-            .filter { it.mandatory || it.visible || it.verification }
+            .filter { it.mandatory || it.visible || it.verification || it.excludedFromOpenPoints }
             .map { it.name }
         if (proposed.isNotEmpty()) {
             val discovered = doorsProjection.discoverAttributeNames(moduleId).toSet()
@@ -247,9 +247,12 @@ public class MetaWriter(
         val mandatoryOn = settings.filter { it.mandatory }.map { it.name }
         val mandatoryOff = settings.filterNot { it.mandatory }.map { it.name }
 
-        // A row with both flags off carries no information; its node goes rather than lingering
-        // as a stored `false`, so MATCH (m:__Meta) stays an inventory of decisions actually made.
-        val (keep, drop) = settings.partition { it.visible || it.verification }
+        // A row with every flag off carries no information; its node goes rather than lingering
+        // as a row of `false`, so MATCH (m:__Meta) stays an inventory of decisions actually made.
+        // `mandatory` is deliberately not in this test: it lives on a :__Policy, not on this node.
+        val (keep, drop) = settings.partition {
+            it.visible || it.verification || it.excludedFromOpenPoints
+        }
 
         return buildList {
             if (mandatoryOn.isNotEmpty()) {
@@ -264,6 +267,7 @@ public class MetaWriter(
                         "attributeName" to it.name,
                         "visible" to it.visible,
                         "verification" to it.verification,
+                        "excludedFromOpenPoints" to it.excludedFromOpenPoints,
                         "metaId" to UuidV7.generate(),
                     )
                 }
@@ -285,12 +289,13 @@ public class MetaWriter(
         }
     }
 
-    /** One attribute's three flags, decoded from the wire and validated by the caller. */
+    /** One attribute's flags, decoded from the wire and validated by the caller. */
     public data class AttributeSettingInput(
         public val name: String,
         public val mandatory: Boolean,
         public val visible: Boolean,
         public val verification: Boolean,
+        public val excludedFromOpenPoints: Boolean,
     )
 
     /** One comment edit. A blank `text` means the reviewer cleared the box: delete the node. */
