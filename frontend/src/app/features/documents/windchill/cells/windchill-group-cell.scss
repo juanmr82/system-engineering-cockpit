@@ -1,0 +1,67 @@
+@use 'document' as doc;
+
+// The disclosure on a group header.
+//
+// A button rather than a clickable span, because it is a real control: it has a state, it is in the
+// tab order, and a screen reader is told which state it is in. The whole first cell is the target,
+// so the click area is the width of the column rather than eight pixels of triangle.
+.sec-windchill-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  padding: 0;
+  background: none;
+  // A user-agent border on a button would draw a box around a row that is already a filled band.
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.sec-windchill-group__twisty {
+  @include doc.twisty;
+  // `twisty` builds the triangle out of three borders and says nothing about the fourth, so on a
+  // element inside a <button> the UA's own border-right survives and it renders as an hourglass.
+  // Zeroing it has to come *after* the include; `border: 0` before it takes the triangle with it.
+  border-right: 0;
+  // The header's own colour, so the control belongs to the band rather than sitting on it.
+  border-left-color: var(--sec-blue);
+
+  &--closed {
+    transform: rotate(0deg);
+  }
+}
+
+.sec-windchill-group__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// How many versions the header stands for. Non-content text, so it follows rule 4 of §8.
+.sec-windchill-group__count {
+  margin-inline-start: auto;
+  flex: none;
+  font-size: var(--sec-text-label);
+  font-weight: 400;
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+  color: var(--sec-ink-3);
+}
+
+// A version sitting under a header. The indent is the whole reason this branch exists: it is what
+// says "this row belongs to the band above it" once the reader has scrolled the header off screen
+// or sorted the table by something else.
+.sec-windchill-group__leaf--indented {
+  display: inline-block;
+  // A clear step *past* the header's own text, not level with it.
+  //
+  // The first attempt indented by the twisty's width plus its gap, on the reasoning that a version
+  // should line up with its header's text. On screen that produced no visible indent at all — the
+  // two columns of text sat within two pixels of each other — so the only thing saying "this row
+  // belongs to the band above" was the band, which is exactly what stops saying it once the header
+  // has scrolled away or the reader is looking at the middle of a long group.
+  padding-inline-start: 26px;
+}

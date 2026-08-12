@@ -90,6 +90,36 @@ public object ApiPaths {
     public const val JIRA_PROJECTS: String = "$JIRA/projects"
 
     /**
+     * The Windchill integration.
+     *
+     * Two endpoints and no credential: this source is fed by an uploaded export, so the backend
+     * never authenticates against Windchill and has nothing to hold. [WINDCHILL_HEALTH] reports
+     * whether a host is configured, which decides only whether a document row can link back.
+     */
+    public const val WINDCHILL: String = "$V1/windchill"
+
+    public const val WINDCHILL_HEALTH: String = "$WINDCHILL/health"
+
+    /**
+     * Every imported document, in one response.
+     *
+     * Deliberately unpaged, unlike [JIRA_ISSUES]: the view groups versions of one document under a
+     * header, and a group is only drawable with every version of a `Number` in hand. The set is
+     * ~1 500 rows and the server caps it — see `WindchillProjection`.
+     */
+    public const val WINDCHILL_DOCUMENTS: String = "$WINDCHILL/documents"
+
+    /**
+     * Upload an export and import it — one gesture, one request (R7).
+     *
+     * The file is parsed here and the run is started with it, so a malformed file is a `400` on this
+     * call rather than a run that fails out of sight. It is **not** under [IMPORT] because the
+     * framework's `POST /import/{importerId}/runs` takes no body: an importer that is fed needs a
+     * door of its own, and the door belongs to the source, not to the framework.
+     */
+    public const val WINDCHILL_IMPORT: String = "$WINDCHILL/import"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *

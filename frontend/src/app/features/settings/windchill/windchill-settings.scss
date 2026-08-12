@@ -1,0 +1,148 @@
+@use 'mixins' as sec;
+
+// A settings page scrolls as a page: it is a stack of sheets, not a view with a table whose header
+// has to stay put. `page-shell` bounds the height for a sticky header and is deliberately not used.
+:host {
+  display: block;
+}
+
+.sec-windchill-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+  max-inline-size: 980px;
+}
+
+.sec-windchill-settings__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-windchill-settings__title {
+  @include sec.view-title;
+}
+
+.sec-windchill-settings__sheet {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sec-windchill-settings__section {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-windchill-settings__hint {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+}
+
+.sec-windchill-settings__facts {
+  @include sec.fact-rows(140px);
+
+  margin: 0;
+}
+
+.sec-windchill-settings__picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+// The native file input is replaced rather than styled: it cannot be made to match a Material
+// button, and a label wrapping it is the one way to keep the control keyboard-reachable and
+// screen-reader-correct without a script pretending to be a form control.
+.sec-windchill-settings__file {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+  color: var(--sec-blue);
+  font-size: var(--sec-text-sm);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sec-wash);
+  }
+
+  // Clipped rather than display:none — a hidden input is not focusable, and this one has to be.
+  input {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  // The focus ring belongs to the label, since that is what a reader sees as the control.
+  &:focus-within {
+    outline: 2px solid var(--sec-blue-mid);
+    outline-offset: 2px;
+  }
+}
+
+.sec-windchill-settings__chosen {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink);
+
+  span {
+    color: var(--sec-ink-3);
+  }
+}
+
+.sec-windchill-settings__accepted {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-highlight-verified);
+}
+
+// A consequence, not a failure: the import ran and there is something to read about it.
+.sec-windchill-settings__warning {
+  @include sec.note-panel;
+
+  inline-size: 100%;
+}
+
+.sec-windchill-settings__error {
+  @include sec.error-panel;
+}
+
+.sec-windchill-settings__absent {
+  @include sec.absent-text;
+}
+
+.sec-windchill-settings__running {
+  margin: 0;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-blue);
+}
+
+.sec-windchill-settings__counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--sec-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-windchill-settings__link {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-blue-mid);
+}
+
+// A progress bar inside a sheet is a full-width element, not a control sized to its content.
+.sec-windchill-settings mat-progress-bar {
+  inline-size: 100%;
+}

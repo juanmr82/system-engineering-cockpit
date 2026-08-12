@@ -50,6 +50,16 @@ public interface ImportContext {
     public val runId: String
 
     /**
+     * What this run was asked to do, when starting it carried an input — an uploaded export file,
+     * most of all. Null for every self-driving importer, which is all of them until one is fed.
+     *
+     * The framework never reads it. An importer casts it to its own [ImportRequest] type and treats
+     * a mismatch as the wiring error it is; see that interface for why the input travels with the
+     * run rather than being left in a slot on the importer.
+     */
+    public val request: ImportRequest?
+
+    /**
      * Enter [phaseId], which must be one of the declared [ImportJob.phases].
      *
      * Resets progress to zero and emits a `phase` event. Calling it with an undeclared id is a

@@ -326,6 +326,24 @@
   }
 }
 
+// --- Group rows -------------------------------------------------------------------------------
+//
+// A header the *view* synthesises over rows that belong together — the versions of one Windchill
+// document. ag-grid Community has no row grouping, so this is an ordinary row wearing a band.
+//
+// It is deliberately the same ground as a DOORS heading row and deliberately not the same class:
+// the argument for the colour is identical (§8's third exception — a whole row that has to be
+// findable among rows that look exactly like it), and the *level* scale above is an outline depth,
+// which a document group does not have. Reusing `--h1` would have said it did.
+.sec-grid__row--group {
+  background: var(--sec-heading-1);
+
+  .sec-grid__cell {
+    font-weight: 700;
+    color: var(--sec-blue);
+  }
+}
+
 // No left rail on a heading row, deliberately: a row is three sibling elements when columns are
 // pinned — left, centre, right — so a `:first-child` rule would draw the rail three times, once
 // inside each container. The tint and the weight carry the level on their own.

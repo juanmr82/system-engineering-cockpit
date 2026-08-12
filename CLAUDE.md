@@ -16,7 +16,7 @@ out of several source tools and joined in one Neo4j graph:
 | Source | What it contributes | Importer |
 |---|---|---|
 | IBM DOORS | Requirements, modules, hierarchy, traceability links | Python + `.bat`, **Windows 11 only** |
-| PTC Windchill | Document metadata | Python |
+| PTC Windchill | Document metadata, with versions | **in the backend**, fed by an uploaded OData export (ADR 0015) |
 | Cameo Systems Modeler | MBSE elements — SOI views, functions | Python |
 | *(future)* | Test management, PLM, ... | must join on `SEItem`, nothing else |
 
@@ -300,6 +300,8 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `__schemaVersion`, `__metaKind` | never shown |
 | `__metaId`, `__metaKind` | never shown |
 | `__createdBy` / `__createdAt` | **Added by** / **Added on** |
+| a Windchill `Number` carried by more than one document | a **group header row** over its versions — bold, Airbus blue, on `--sec-heading-1`, the same ground a DOORS heading row uses and for the same reason (§8, third exception). It shows folder location, name and number and **no version and no state**, because those are exactly what the rows under it disagree about. Its own class (`sec-grid__row--group`), never the heading *level* scale — a document group has no outline depth. Versions sit under it newest first, indented; a number with one document gets no header at all (ADR 0015) |
+| a Windchill group header's version count | **n versions** — counted over the **whole** set, never the filtered one. Counting after a search would make headers appear and vanish as a reader typed, which reads as the data changing rather than as the view narrowing |
 
 Controlled vocabularies and source-native field labels also live in `Aliases.kt`:
 
@@ -314,6 +316,10 @@ Controlled vocabularies and source-native field labels also live in `Aliases.kt`
 | `created_By` / `created_On` | Created by / Created on |
 | `last_Modified_By` / `last_Modified_On` | Last modified by / Last modified |
 | `_ModuleType` | Module type |
+| `FolderLocation` | Folder location |
+| Windchill `Name` / `Number` / `Version` | Name / Number / Version — Windchill's own words, shown verbatim. Its `Version` (`01 [2]`) is **source data and never `__version`**, which stays `current` for every node in the graph (ADR 0015) |
+| `StateDisplay` | **State** — Windchill's own wording. `StateValue` (the code, `RELEASED`) is stored beside it and never shown: the split into a code and a wording is our storage decision, not something a reader should have to know |
+| Windchill `ID` (`OR:wt.doc.WTDocument:…`) | never shown; the info-page link is built from it, and the row is addressed by `:ref` like every other item |
 | `wordDocBaseline`, `wordDocCaptionLevel`, `wordDocIssue`, `wordDocNumber`, `wordDocTitle` | Word export baseline / caption level / issue / number / title |
 
 Note `_ModuleType` carries a **single** leading underscore — it is source data and is
@@ -409,7 +415,8 @@ system-engineering-cockpit/
 │   ├── pyproject.toml            ← one Python project, several entry points
 │   ├── src/sec_import/
 │   │   ├── core/                 ← graph writer, identity, config, reporting (shared)
-│   │   └── doors/, windchill/, cameo/   ← one package per source (§1), nothing shared
+│   │   └── doors/, cameo/         ← one package per source (§1), nothing shared
+│   │                                 no windchill/ — that importer moved in-process (ADR 0015)
 │   ├── win/                      ← .bat wrappers, Windows-only, thin
 │   └── tests/
 │       └── fixtures/             ← smoke_module_current.json, a 6-object DOORS export
@@ -531,6 +538,29 @@ all, because Cloud answers `/search` with 410 Gone). **Set both for a Cloud host
 derived from each other because Data Center accepts Basic auth too, and deriving one would silently
 point a Server host at an endpoint it does not have; preflight warns when the configuration
 disagrees with what `/myself` looked like. Details and evidence in ADR 0014.
+
+---
+
+## 6b. Windchill integration
+
+See **`docs/adr/0015`** — the whole design is there, and it is short. What must not be re-derived:
+
+- **Windchill's importer runs in the backend**, fed by an uploaded OData export. There is no Python
+  importer and no credential: this application never talks to Windchill. `WindchillGraphWriter` is
+  the only class that writes imported Windchill data, which is what stands in for R1 the way
+  ADR 0013 does for JIRA.
+- **`POST /api/v1/windchill/import` is the upload *and* the import** — one gesture, one request
+  (R7). The file is parsed there, so a broken file is a `400` naming the problem and never becomes
+  a run.
+- **The export is the whole truth**: anything in the graph and not in the file is deleted, whatever
+  folder it is in. Three things guard that, and all three are already built — an empty export is
+  refused at the door, an `@odata.nextLink` warns twice, and removing more than 20 % ends the run
+  amber saying how much went. Do not "fix" the sweep's scope without reading ADR 0015 §7.
+- **`ImportRequest` is how a run is fed**, and it is source-agnostic on purpose. Nothing in
+  `importer/` may name a source; DOORS reuses this seam unchanged when it moves in-process.
+- **The Documents view loads every row and works in the browser.** That is the opposite call from
+  the JIRA Issues table and it is deliberate: grouping a document's versions needs all of them at
+  once. The server caps at 20 000 rows and says when it hit the cap.
 
 ---
 

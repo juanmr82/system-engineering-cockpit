@@ -1,0 +1,78 @@
+<div class="sec-windchill">
+  <header class="sec-windchill__header">
+    <p class="sec-windchill__eyebrow">Documents</p>
+    <h1 class="sec-windchill__title">Windchill</h1>
+  </header>
+
+  <!-- The order of these branches is the order the states exclude each other in: an error is worth
+       saying whatever else is true, nothing has been answered yet only before the first response,
+       and an empty import is a fact about the graph rather than about this request. -->
+  @if (documents.error()) {
+    <div class="sec-windchill__error" role="alert">
+      <p>Couldn't load documents.</p>
+      <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+    </div>
+  } @else if (!hasAnswer()) {
+    <mat-progress-bar mode="indeterminate" />
+  } @else if (isEmpty()) {
+    <sec-empty-state
+      title="No Windchill documents imported yet"
+      description="Upload a Windchill export to bring documents into the cockpit."
+    />
+    <p class="sec-windchill__empty-action">
+      <a mat-stroked-button routerLink="/settings/windchill">Import an export</a>
+    </p>
+  } @else {
+    <div class="sec-windchill__bar">
+      <mat-form-field appearance="outline" class="sec-windchill__search" subscriptSizing="dynamic">
+        <input
+          matInput
+          type="text"
+          placeholder="Search every column"
+          aria-label="Search documents"
+          [value]="search()"
+          (input)="onSearch($any($event.target).value)"
+        />
+      </mat-form-field>
+
+      <p class="sec-windchill__stats">
+        @if (search()) {
+          <span><b>{{ matchCount() }}</b> of {{ total() }} documents</span>
+        } @else {
+          <span><b>{{ total() }}</b> {{ total() === 1 ? 'document' : 'documents' }}</span>
+        }
+      </p>
+    </div>
+
+    @if (!hostConfigured()) {
+      <p class="sec-windchill__notice">
+        No Windchill address is configured on this server, so a document cannot be opened in
+        Windchill from here. Everything else works.
+      </p>
+    }
+
+    @if (truncated()) {
+      <p class="sec-windchill__notice sec-windchill__notice--warn" role="alert">
+        This server returns at most {{ total() }} documents and that limit was reached, so some
+        documents are missing from the table below.
+      </p>
+    }
+
+    @if (hasNoMatches()) {
+      <p class="sec-windchill__no-match">No documents match "{{ search() }}".</p>
+    } @else {
+      <!-- The theme class goes on this wrapper, never on <ag-grid-angular> (styles/_grid.scss). -->
+      <div class="sec-windchill__table-scroll sec-grid sec-grid--middle">
+        <ag-grid-angular
+          class="sec-windchill__grid"
+          [gridOptions]="gridOptions"
+          [context]="gridContext"
+          [columnDefs]="columnDefs()"
+          [rowData]="rows()"
+          [getRowId]="getRowId"
+          (sortChanged)="onSortChanged($event)"
+        />
+      </div>
+    }
+  }
+</div>

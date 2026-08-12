@@ -134,6 +134,7 @@ export const COUNTER_LABELS: Readonly<Record<string, string>> = {
   issueTypesSeen: 'Issue types',
   fieldsSeen: 'Fields',
   issuesSeen: 'Issues',
+  documentsSeen: 'Documents',
   linksSeen: 'Links',
   unresolvedCreated: 'Placeholders created',
   unresolvedResolved: 'Placeholders resolved',

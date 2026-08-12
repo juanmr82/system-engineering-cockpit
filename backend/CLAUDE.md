@@ -48,6 +48,11 @@ types, `__metaKind` values and meta payload keys each have exactly one declarati
   `__` namespace, `:SEItem`, `:__UNDEFINED`, all of Tier 2. Source-agnostic, imports nothing.
 - `source/doors/DoorsNames.kt` — `DoorsAttr`, `DoorsModuleAttr`, `DoorsProp`, `DoorsRel`,
   `DoorsLabel`. **A new source adds its own names file; it never edits another's.**
+- `source/jira/JiraNames.kt`, `source/windchill/WindchillNames.kt` — the same, per source. Note the
+  rule both inherit: **no Kotlin type in those packages may share its name with a label the file
+  declares**, because the inverse guard reads statement *source* including its import lines. That is
+  why the wire type is `WindchillDocumentRow` and the parsed record is `WindchillRecord`, and why
+  neither is called `WindchillDocument`.
 
 `props["__id"]` and `labels.contains("DOORSTBD")` are defects. So is a second constant for a name
 that already has one — `__UNDEFINED` was declared twice before this rule existed.
@@ -133,6 +138,9 @@ GET  /api/v1/modules/{ref}/tables      ← reconstructed DOORS tables, no parame
 GET  /api/v1/items/{ref}/table         ← the table a table, row or cell belongs to
 GET  /api/v1/statistics/requirements     ← Statistics view; ?module={ref} scopes it
 GET  /api/v1/statistics/requirements/cycles  ← loop detection, its own endpoint so Band 4 loads apart
+GET  /api/v1/windchill/health           ← is a Windchill host configured; no credential exists
+GET  /api/v1/windchill/documents        ← every imported document, unpaged and server-capped
+POST /api/v1/windchill/import           ← upload an OData export and import it, one request (ADR 0015)
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
 GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
 POST /api/v1/cypher/explain             ← see docs/CYPHER_API_DESIGN.md

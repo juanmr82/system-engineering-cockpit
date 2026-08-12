@@ -5,6 +5,7 @@ import com.sec.api.configureRouting
 import com.sec.config.ConfigArgs
 import com.sec.config.ImporterSettings
 import com.sec.config.JiraSettings
+import com.sec.config.WindchillSettings
 import com.sec.config.loadAppConfig
 import com.sec.graph.GraphDriver
 import com.sec.importer.GraphImportRunStore
@@ -26,6 +27,9 @@ import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
 import com.sec.source.jira.JiraSettingsStore
+import com.sec.source.windchill.WindchillGraphWriter
+import com.sec.source.windchill.WindchillImporter
+import com.sec.source.windchill.WindchillProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
@@ -70,7 +74,13 @@ public fun Application.module() {
         importRunStore.applySchema()
     }
 
-    configureApp(graphDriver, appConfig.jira, importerSettings = appConfig.importer, importRunStore = importRunStore)
+    configureApp(
+        graphDriver,
+        appConfig.jira,
+        windchillSettings = appConfig.windchill,
+        importerSettings = appConfig.importer,
+        importRunStore = importRunStore,
+    )
 }
 
 // Everything that does not need a live database, so the HTTP surface — plugins, error mapping,
@@ -87,6 +97,10 @@ internal fun Application.configureApp(
     // value is its connection pool, and a client per request discards it.
     jiraClient: JiraHttpClient? =
         if (jiraSettings.isConfigured) JiraHttpClient(jiraSettings) else null,
+    // Unconfigured by default. Unlike JIRA's, an absent host does not switch the source off: the
+    // importer is fed by an upload, so it runs regardless, and the host decides only whether a
+    // document row can link back into Windchill.
+    windchillSettings: WindchillSettings = WindchillSettings(host = ""),
     importerSettings: ImporterSettings = ImporterSettings(),
     // Defaulted so a test of the HTTP surface gets a store that talks to the same driver every
     // other collaborator here does, and a test with no database can pass its own.
@@ -137,6 +151,9 @@ internal fun Application.configureApp(
     val jiraColumnStore = JiraColumnStore(graphDriver)
     val jiraFieldsProjection = JiraFieldsProjection(graphDriver)
     val jiraLinkGraphProjection = JiraLinkGraphProjection(graphDriver)
+    // Takes the settings because a row's link into Windchill is derived from the host on every read
+    // — the export's own URL is an OData resource, and opening one shows raw JSON.
+    val windchillProjection = WindchillProjection(graphDriver, windchillSettings)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -162,6 +179,11 @@ internal fun Application.configureApp(
         logger.info { "JIRA integration is not configured; /api/v1/jira routes will report so" }
     }
 
+    // Registered unconditionally, and that is the difference between a fed importer and a connected
+    // one: there is no host to be missing and no credential to be absent, so there is no state in
+    // which uploading an export should not work.
+    importRunService.register(WindchillImporter(WindchillGraphWriter(graphDriver)))
+
     configureRouting(
         graphDriver,
         doorsProjection,
@@ -178,6 +200,8 @@ internal fun Application.configureApp(
         jiraLinkGraphProjection,
         jiraColumnStore,
         jiraFieldsProjection,
+        windchillSettings,
+        windchillProjection,
         importRunService,
     )
 }

@@ -8,7 +8,9 @@ import com.sec.api.routes.moduleRoutes
 import com.sec.api.routes.reviewRoutes
 import com.sec.api.routes.statisticsRoutes
 import com.sec.api.routes.tableRoutes
+import com.sec.api.routes.windchillRoutes
 import com.sec.config.JiraSettings
+import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
@@ -24,6 +26,7 @@ import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
+import com.sec.source.windchill.WindchillProjection
 import io.ktor.server.application.Application
 import io.ktor.server.routing.routing
 
@@ -65,6 +68,11 @@ public fun Application.configureRouting(
     // answer on a deployment whose token has expired — a column choice is ours, not JIRA's.
     jiraColumnStore: JiraColumnStore,
     jiraFieldsProjection: JiraFieldsProjection,
+    // Carries the host and nothing else — this source has no credential, because it is fed by an
+    // uploaded export rather than connected to. Unconfigured only removes the link out.
+    windchillSettings: WindchillSettings,
+    // Reads documents this graph already holds, so it answers whether or not a host is configured.
+    windchillProjection: WindchillProjection,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
@@ -80,6 +88,7 @@ public fun Application.configureRouting(
             jiraColumnStore,
             jiraFieldsProjection,
         )
+        windchillRoutes(windchillSettings, windchillProjection, importRunService)
         importRoutes(importRunService)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(

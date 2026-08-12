@@ -39,6 +39,9 @@ public data class ImporterSettings(
 public data class AppConfig(
     public val neo4j: Neo4jSettings,
     public val jira: JiraSettings,
+    // Unconfigured by default, and that is a working state: Windchill's importer is fed by an
+    // uploaded file, so the host only decides whether a document row can link back to Windchill.
+    public val windchill: WindchillSettings = WindchillSettings(host = ""),
     public val importer: ImporterSettings = ImporterSettings(),
 )
 
@@ -60,6 +63,7 @@ public fun loadAppConfig(config: ApplicationConfig): AppConfig {
     return AppConfig(
         neo4j = neo4j,
         jira = loadJiraSettings(config),
+        windchill = loadWindchillSettings(config),
         importer = ImporterSettings(
             runHistoryLimit = config.propertyOrNull("importer.runHistoryLimit")
                 ?.getString()?.toIntOrNull()?.coerceAtLeast(1)

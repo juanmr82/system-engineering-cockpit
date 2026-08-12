@@ -101,14 +101,19 @@ public class ImportRunService(
      *
      * Returns as soon as the run is registered — the work happens on this service's scope, and the
      * caller gets a run id to watch rather than a result to wait for.
+     *
+     * [request] is the run's input, for an importer that has one — carried through untouched and
+     * never read here. See [ImportRequest].
      */
-    public suspend fun start(importerId: String): StartResult {
+    public suspend fun start(importerId: String, request: ImportRequest? = null): StartResult {
         val job = jobs[importerId] ?: return StartResult.UnknownImporter
 
         val active = startLocks.computeIfAbsent(importerId) { Mutex() }.withLock {
             activeByImporter[importerId]?.let { return StartResult.AlreadyRunning(it.snapshot.runId) }
 
-            ActiveRun(job).also {
+            // The request is handed to the run here and reachable only from its own context: two
+            // runs of one importer can never see each other's input, whatever the locking becomes.
+            ActiveRun(job, request).also {
                 activeByImporter[importerId] = it
                 activeByRunId[it.runId] = it
             }
@@ -193,7 +198,10 @@ public class ImportRunService(
      * and a subscriber that has fallen behind re-reads it. A buffer that blocked instead would make
      * one stalled browser tab able to stop an import.
      */
-    private inner class ActiveRun(private val job: ImportJob) {
+    private inner class ActiveRun(
+        private val job: ImportJob,
+        private val request: ImportRequest?,
+    ) {
 
         val runId: String = "run-${UUID.randomUUID()}"
 
@@ -307,6 +315,8 @@ public class ImportRunService(
 
         val context: ImportContext = object : ImportContext {
             override val runId: String get() = this@ActiveRun.runId
+
+            override val request: ImportRequest? get() = this@ActiveRun.request
 
             override suspend fun phase(phaseId: String) {
                 val index = job.phases.indexOfFirst { it.id == phaseId }

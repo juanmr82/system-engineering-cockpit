@@ -11,6 +11,7 @@ import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.cypher.SystemCypher
 import com.sec.graph.cypher.TableCypher
+import com.sec.graph.cypher.WindchillCypher
 import com.sec.meta.MetaSchema
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsProp
@@ -18,6 +19,7 @@ import com.sec.source.doors.DoorsRel
 import com.sec.source.jira.JiraLabel
 import com.sec.source.jira.JiraProp
 import com.sec.source.jira.JiraRel
+import com.sec.source.windchill.WindchillLabel
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
@@ -54,7 +56,7 @@ class GraphNamesTest {
     // source is one term in each of these three sets.
     private val declaredLabels: Set<String> =
         setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN) +
-            NodeLabel.meta + DoorsLabel.all + JiraLabel.all
+            NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
@@ -137,6 +139,12 @@ class GraphNamesTest {
             JiraCypher.LOAD_COLUMNS, JiraCypher.SAVE_COLUMNS,
             JiraCypher.LINK_NEIGHBOURS, JiraCypher.GRAPH_NODES,
             *JiraCypher.SCHEMA.toTypedArray(),
+        )
+        add(
+            "WindchillCypher",
+            WindchillCypher.UPSERT_DOCUMENTS, WindchillCypher.SWEEP_DELETED,
+            WindchillCypher.COUNT_DOCUMENTS, WindchillCypher.LIST_DOCUMENTS,
+            *WindchillCypher.SCHEMA.toTypedArray(),
         )
         add(
             "ImportRunCypher",

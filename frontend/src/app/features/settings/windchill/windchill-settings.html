@@ -1,0 +1,138 @@
+<div class="sec-windchill-settings">
+  <header>
+    <p class="sec-windchill-settings__eyebrow">Settings</p>
+    <h1 class="sec-windchill-settings__title">Windchill</h1>
+  </header>
+
+  @if (error(); as message) {
+    <p class="sec-windchill-settings__error" role="alert">{{ message }}</p>
+  }
+
+  <!-- 1. Where Windchill is. There is no credential here, because this source is fed rather than
+       connected to: the backend never talks to Windchill at all. -->
+  <section class="sec-windchill-settings__sheet">
+    <h2 class="sec-windchill-settings__section">Address</h2>
+    <p class="sec-windchill-settings__hint">
+      Documents are imported from an export file, so the cockpit never signs in to Windchill. This
+      address is used for one thing: the link that opens a document in Windchill.
+    </p>
+
+    @if (health.isLoading()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (health.hasValue()) {
+      <dl class="sec-windchill-settings__facts">
+        <dt>Address</dt>
+        <dd>{{ health.value().host || 'Not configured' }}</dd>
+      </dl>
+
+      @if (!health.value().configured) {
+        <p class="sec-windchill-settings__absent">
+          Without an address, documents still import and the table still works — only the link out
+          is missing. It is set on the server, in its configuration file.
+        </p>
+      }
+    } @else {
+      <p class="sec-windchill-settings__absent">Could not ask the server about Windchill.</p>
+    }
+  </section>
+
+  <!-- 2. The import itself. Choosing a file writes nothing; pressing Import is the one act. -->
+  <section class="sec-windchill-settings__sheet">
+    <h2 class="sec-windchill-settings__section">Import an export</h2>
+    <p class="sec-windchill-settings__hint">
+      The export is the whole truth: a document already here that the file does not contain is
+      treated as deleted in Windchill and removed.
+    </p>
+
+    <div class="sec-windchill-settings__picker">
+      <label class="sec-windchill-settings__file">
+        <input
+          type="file"
+          accept="application/json,.json"
+          aria-label="Choose a Windchill export file"
+          (change)="onFile($event)"
+        />
+        <span>Choose export file</span>
+      </label>
+
+      @if (reading()) {
+        <span class="sec-windchill-settings__absent">Reading…</span>
+      } @else if (file(); as chosen) {
+        <span class="sec-windchill-settings__chosen">
+          {{ chosen.name }} <span>({{ sizeOf(chosen.size) }})</span>
+        </span>
+      } @else {
+        <span class="sec-windchill-settings__absent">No file chosen.</span>
+      }
+    </div>
+
+    @if (activeRun(); as run) {
+      <p class="sec-windchill-settings__running">
+        Importing — {{ run.phase ?? 'starting' }}@if (run.percent !== null) {, {{ run.percent }}%}
+      </p>
+      <mat-progress-bar
+        [mode]="run.percent === null ? 'indeterminate' : 'determinate'"
+        [value]="run.percent ?? 0"
+      />
+    } @else {
+      <button mat-flat-button type="button" [disabled]="!canImport()" (click)="runImport()">
+        Import documents
+      </button>
+    }
+
+    @if (started(); as result) {
+      <p class="sec-windchill-settings__accepted" role="status">
+        {{ result.documents }} document{{ result.documents === 1 ? '' : 's' }} read from the file.
+      </p>
+
+      @if (result.paged) {
+        <p class="sec-windchill-settings__warning" role="alert">
+          This export is one page of several — Windchill has more documents than the file contains.
+          Documents on the pages it does not carry will be removed as though they had been deleted.
+        </p>
+      }
+
+      @for (warning of result.warnings; track warning) {
+        <p class="sec-windchill-settings__warning">{{ warning }}</p>
+      }
+
+      @if (!watching()) {
+        <p class="sec-windchill-settings__absent">
+          The import is running; its progress cannot be followed from this page. Open the import
+          console to watch it.
+        </p>
+      }
+    }
+  </section>
+
+  <!-- 3. What the last import did — the removals above all, which is the consequence a person
+       most needs to see and the reason this is here and not only in the console. -->
+  <section class="sec-windchill-settings__sheet">
+    <h2 class="sec-windchill-settings__section">Last import</h2>
+
+    @if (lastRun(); as run) {
+      <dl class="sec-windchill-settings__facts">
+        <dt>Outcome</dt>
+        <dd>{{ run.status }}</dd>
+        <dt>Started</dt>
+        <dd>{{ run.startedAt }}</dd>
+        @if (run.finishedAt; as finished) {
+          <dt>Finished</dt>
+          <dd>{{ finished }}</dd>
+        }
+      </dl>
+
+      <ul class="sec-windchill-settings__counters">
+        @for (counter of counterEntries(run); track counter.key) {
+          <li><b>{{ counter.value }}</b> {{ counter.label }}</li>
+        }
+      </ul>
+    } @else {
+      <p class="sec-windchill-settings__absent">
+        No Windchill import has been run on this server yet.
+      </p>
+    }
+
+    <a routerLink="/settings/importers" class="sec-windchill-settings__link">View details</a>
+  </section>
+</div>

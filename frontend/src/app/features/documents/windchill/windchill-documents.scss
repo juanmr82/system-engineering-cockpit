@@ -1,0 +1,95 @@
+@use 'mixins' as sec;
+
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-windchill {
+  @include sec.page-shell;
+}
+
+.sec-windchill__header {
+  flex: none;
+}
+
+.sec-windchill__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-windchill__title {
+  @include sec.view-title;
+}
+
+.sec-windchill__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-windchill__search {
+  flex: 1 1 260px;
+
+  // The bar sets its own rhythm; the form field's subscript reserve would double the bar's height.
+  --mat-form-field-container-height: 34px;
+}
+
+.sec-windchill__stats {
+  @include sec.stat-readout;
+}
+
+.sec-windchill__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+// A standing sentence about the whole table — no host configured, or the row cap reached. A rule
+// on the left rather than a fill, which is what §8 asks of anything that is not one of its four
+// named exceptions.
+.sec-windchill__notice {
+  flex: none;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--sec-grey-blue);
+  color: var(--sec-ink-2);
+  font-size: var(--sec-text-sm);
+
+  &--warn {
+    border-left-color: var(--sec-highlight-undefined);
+    color: var(--sec-ink);
+  }
+}
+
+.sec-windchill__empty-action {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+}
+
+// The table is the sheet in this view. The grid inside it is styled globally in styles/_grid.scss —
+// ag-grid's DOM is built outside Angular's template compiler, so nothing scoped here can reach it.
+.sec-windchill__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-windchill__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.sec-windchill__no-match {
+  @include sec.absent-text;
+}
