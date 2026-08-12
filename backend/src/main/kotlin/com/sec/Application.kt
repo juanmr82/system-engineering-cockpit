@@ -19,6 +19,7 @@ import com.sec.source.doors.RequirementCardProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
 import com.sec.source.jira.JiraGraphWriter
+import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
 import com.sec.source.jira.JiraSettingsStore
@@ -125,6 +126,9 @@ internal fun Application.configureApp(
     // readable and editable before a host exists, which lets an operator set the two up in either
     // order.
     val jiraSettingsStore = JiraSettingsStore(graphDriver)
+    // Takes the host because a row's `browseUrl` is derived from it on every read — JIRA's stored
+    // `self` is an API URL, and opening one shows raw JSON (spec §13.2).
+    val jiraIssuesProjection = JiraIssuesProjection(graphDriver, jiraSettings.host)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -162,6 +166,7 @@ internal fun Application.configureApp(
         jiraSettings,
         jiraClient,
         jiraSettingsStore,
+        jiraIssuesProjection,
         importRunService,
     )
 }

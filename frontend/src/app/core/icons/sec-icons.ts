@@ -25,6 +25,9 @@ const SEC_ICONS = {
   graph: '/icons/graph.svg',
   info: '/icons/info.svg',
   minus: '/icons/minus.svg',
+  // A box with an arrow leaving it, the near-universal "opens elsewhere" glyph. The Issues table's
+  // last column is nothing but this icon, so it carries the whole meaning of the control.
+  'open-in-new': '/icons/open-in-new.svg',
   plus: '/icons/plus.svg',
   save: '/icons/save.svg',
   search: '/icons/search.svg',

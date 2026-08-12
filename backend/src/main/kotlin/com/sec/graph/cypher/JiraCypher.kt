@@ -2,6 +2,8 @@ package com.sec.graph.cypher
 
 import com.sec.domain.NodeLabel.SE_ITEM
 import com.sec.domain.NodeLabel.UNDEFINED
+import com.sec.domain.Prop.NAME as ITEM_NAME
+import com.sec.domain.Prop.SORT_KEY
 import com.sec.domain.Prop.ID
 import com.sec.source.jira.JiraAppProp.PROJECT_KEYS
 import com.sec.source.jira.JiraAppProp.UPDATED_AT
@@ -91,6 +93,15 @@ public object JiraCypher {
         CYPHER 25
         CREATE INDEX jira_field_name IF NOT EXISTS
         FOR (n:$JIRA_FIELD) ON (n.$NAME)
+        """,
+        // The issues table's default order, and the reason it is an index rather than a sort: the
+        // table reads one page of 50 out of a set that is 784 today and tens of thousands later,
+        // and `ORDER BY … SKIP … LIMIT` without an index sorts the whole set to answer for fifty
+        // rows of it. The DOORS importer creates the same index over the same property.
+        """
+        CYPHER 25
+        CREATE INDEX jira_issue_sortkey IF NOT EXISTS
+        FOR (n:$JIRA_ISSUE) ON (n.$SORT_KEY)
         """,
         // The projection is not a :SEItem, so the constraint above does not reach it — and without
         // one, a MERGE that ever ran on an unbound pattern would silently make a second projection
@@ -530,6 +541,114 @@ public object JiraCypher {
         WITH count(i) AS issues
         OPTIONAL MATCH (:$JIRA_ISSUE)-[r:$PROJECTION]->(:$JIRA_PROJECTION)
         RETURN issues, count(r) AS projections
+    """
+
+    // -- the read path (spec §14.4) --------------------------------------------------------------
+
+    /**
+     * The `WHERE` every issues query shares, so the page and its total can never disagree.
+     *
+     * Written once and interpolated into both statements rather than repeated, because a filter
+     * that is applied to the rows and not to the count produces a table whose paginator promises
+     * pages that are empty — and each of the three clauses is independently easy to add to one and
+     * forget in the other.
+     *
+     * Every filter is **null-permissive**: a parameter that is null means "no filter", so one
+     * statement serves the unfiltered table, the search box, and the project filter, without any
+     * of them being assembled from fragments (R10).
+     *
+     * The search is deliberately narrow — the key and the name, which is `<key>: <summary>`. Spec
+     * §13.2 puts the escape hatch in the Cypher console rather than offering JQL here, and a
+     * `CONTAINS` across 145 arbitrary properties per issue is a table scan a user can trigger by
+     * typing.
+     */
+    private const val ISSUE_FILTER: String = """
+        WHERE (${'$'}q IS NULL OR toLower(i.$KEY) CONTAINS ${'$'}q OR toLower(i.$ITEM_NAME) CONTAINS ${'$'}q)
+          AND (${'$'}projectKeys IS NULL OR i.$PROJECT_KEY IN ${'$'}projectKeys)
+    """
+
+    /**
+     * The columns of the issues table, for one page (spec §14.4).
+     *
+     * ## The dynamic part, and why it is not string-built Cypher
+     *
+     * `[k IN ${'$'}fieldIds | coalesce(i[k], p[k])]` reads a runtime-chosen set of properties with
+     * a **parameter**, not with a statement assembled per request. That is the whole reason the
+     * storage design keys properties by JIRA field id (§7.2): a configurable column set costs one
+     * list parameter instead of a Cypher builder, and R10 is intact by construction rather than by
+     * review.
+     *
+     * `coalesce(i[k], p[k])` is §7.4's rule — the issue's own value, or the display scalar its
+     * projection derived for a value too complex to sort on. The order matters: a projection entry
+     * only exists where the issue's value is a JSON blob, so the issue always wins where it has
+     * anything to say.
+     *
+     * ## Ordering
+     *
+     * `${'$'}sortField` is a property name, so it cannot be a parameter of `ORDER BY` — but it can
+     * be one of a dynamic *property access*, which is what this uses. `coalesce(…, '')` puts an
+     * issue that lacks the sorted property at the start of the ascending order rather than dropping
+     * it: a row missing from a table because a cell is empty is the worst available answer.
+     *
+     * The direction is the one thing here that is not a parameter, because Cypher has no way to
+     * make it one. Two statements, [LIST_ISSUES_DESC] being this one with `DESC`, and the choice
+     * made in Kotlin from a validated enum — never by interpolating a string that arrived over
+     * HTTP.
+     *
+     * `__sortKey` is the tie-break and the default, so a page is stable: without a total order,
+     * `SKIP`/`LIMIT` over rows that compare equal can show one issue on two pages and another on
+     * none.
+     *
+     * The issue type's *id* is deliberately not returned. The only thing that wants it is the icon
+     * proxy, which does not exist yet, and returning `__id` under the name `issueTypeId` would hand
+     * whoever builds it the resource URL where JIRA's own numeric id was meant to be.
+     */
+    public const val LIST_ISSUES_ASC: String = """
+        CYPHER 25
+        MATCH (i:$JIRA_ISSUE)
+        $ISSUE_FILTER
+        OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
+        WITH i, p
+        ORDER BY coalesce(i[${'$'}sortField], p[${'$'}sortField], '') ASC, i.$SORT_KEY ASC
+        SKIP ${'$'}skip LIMIT ${'$'}limit
+        OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
+        RETURN i.$ID                             AS id,
+               i.$KEY                            AS key,
+               i.$ITEM_NAME                      AS name,
+               (i:$UNDEFINED)                    AS unresolved,
+               t.$ITEM_NAME                      AS issueTypeName,
+               [k IN ${'$'}fieldIds | coalesce(i[k], p[k])] AS values
+    """
+
+    /** [LIST_ISSUES_ASC] with the direction reversed — see its note on why this is two statements. */
+    public const val LIST_ISSUES_DESC: String = """
+        CYPHER 25
+        MATCH (i:$JIRA_ISSUE)
+        $ISSUE_FILTER
+        OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
+        WITH i, p
+        ORDER BY coalesce(i[${'$'}sortField], p[${'$'}sortField], '') DESC, i.$SORT_KEY DESC
+        SKIP ${'$'}skip LIMIT ${'$'}limit
+        OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
+        RETURN i.$ID                             AS id,
+               i.$KEY                            AS key,
+               i.$ITEM_NAME                      AS name,
+               (i:$UNDEFINED)                    AS unresolved,
+               t.$ITEM_NAME                      AS issueTypeName,
+               [k IN ${'$'}fieldIds | coalesce(i[k], p[k])] AS values
+    """
+
+    /**
+     * How many issues the same filter matches — the paginator's denominator.
+     *
+     * A separate cheap count rather than `collect()`-ing the rows to size them, which would read
+     * every issue in the database to tell a user there are 784 of them.
+     */
+    public const val COUNT_ISSUES_MATCHING: String = """
+        CYPHER 25
+        MATCH (i:$JIRA_ISSUE)
+        $ISSUE_FILTER
+        RETURN count(i) AS total
     """
 
     /**

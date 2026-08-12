@@ -130,6 +130,8 @@ class GraphNamesTest {
             JiraCypher.SWEEP_DELETED, JiraCypher.SWEEP_DECONFIGURED,
             JiraCypher.DELETE_ORPHANED_ENTITIES, JiraCypher.DELETE_ORPHANED_PLACEHOLDERS,
             JiraCypher.COUNT_PLACEHOLDERS,
+            JiraCypher.LIST_ISSUES_ASC, JiraCypher.LIST_ISSUES_DESC,
+            JiraCypher.COUNT_ISSUES_MATCHING,
             JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
             *JiraCypher.SCHEMA.toTypedArray(),
         )

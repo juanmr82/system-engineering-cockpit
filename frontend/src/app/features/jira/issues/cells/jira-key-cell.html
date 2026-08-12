@@ -1,0 +1,6 @@
+@if (row; as issue) {
+  <span class="sec-jira-key" [class.sec-jira-key--unresolved]="issue.unresolved">{{ issue.key }}</span>
+  @if (issue.unresolved) {
+    <span class="sec-jira-key__state">Not yet imported</span>
+  }
+}

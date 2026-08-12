@@ -9,6 +9,7 @@ import com.sec.api.respondProblem
 import com.sec.config.JiraSettings
 import com.sec.source.jira.JiraFailure
 import com.sec.source.jira.JiraHttpClient
+import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraJql
 import com.sec.source.jira.JiraSettingsStore
 import com.sec.security.CurrentUser
@@ -36,7 +37,58 @@ public fun Route.jiraRoutes(
     settings: JiraSettings,
     client: JiraHttpClient?,
     settingsStore: JiraSettingsStore,
+    issuesProjection: JiraIssuesProjection,
 ) {
+    /**
+     * The Issues table (spec §14.4).
+     *
+     * Not guarded by [requireConfigured], and that is the point rather than an oversight: these
+     * issues are in *our* graph. A deployment that has lost its JIRA credentials, or never had
+     * them, can still read everything the last import brought in — and a table that went blank
+     * because a token expired would be reporting a connection problem as an absence of data.
+     *
+     * Every parameter is validated before it reaches a statement. `sort` matters most: it becomes a
+     * dynamic property access, so an unknown value is a 400 rather than a silent fall back to the
+     * default, which would leave a user looking at a table that ignored them.
+     */
+    get(ApiPaths.JIRA_ISSUES) {
+        val page = call.intParam("page", default = 0, min = 0)
+            ?: return@get call.respondBadPaging()
+        // Clamped, not rejected: `size` is what the client would like, and the ceiling is the
+        // server's business (spec §14.4). A cap that 400s teaches a client to send the cap.
+        val size = call.intParam("size", default = JiraIssuesProjection.DEFAULT_SIZE, min = 1)
+            ?.coerceAtMost(JiraIssuesProjection.MAX_SIZE)
+            ?: return@get call.respondBadPaging()
+
+        val sort = JiraIssuesProjection.SortField.of(call.request.queryParameters["sort"])
+            ?: return@get call.respondProblem(
+                HttpStatusCode.BadRequest,
+                "Cannot sort by that",
+                "This table cannot be sorted by the requested column.",
+                ProblemType.VALIDATION,
+            )
+        val direction = JiraIssuesProjection.SortDirection.of(call.request.queryParameters["dir"])
+            ?: return@get call.respondProblem(
+                HttpStatusCode.BadRequest,
+                "Invalid sort direction",
+                "Sort direction must be 'asc' or 'desc'.",
+                ProblemType.VALIDATION,
+            )
+
+        call.respond(
+            issuesProjection.listIssues(
+                page = page,
+                size = size,
+                sort = sort,
+                direction = direction,
+                query = call.request.queryParameters["q"],
+                // Repeatable rather than comma-separated: a project key cannot contain a comma, but
+                // a splitter that assumes so is one more rule the client has to know.
+                projectKeys = call.request.queryParameters.getAll("projectKey"),
+            ),
+        )
+    }
+
     /**
      * The configured projects, with the query they produce.
      *
@@ -122,6 +174,29 @@ public fun Route.jiraRoutes(
         )
     }
 }
+
+/**
+ * A whole, non-negative query parameter, or null when it is neither.
+ *
+ * The same shape `ReviewRoutes` uses, and for the same reason: Community has no query governor
+ * (CLAUDE.md §7), so a paging value is validated rather than passed through — a negative `SKIP` is
+ * a Cypher error and an unbounded `LIMIT` is the failure the transaction timeout exists to catch.
+ */
+private fun ApplicationCall.intParam(name: String, default: Int, min: Int): Int? {
+    val raw = request.queryParameters[name] ?: return default
+    val value = raw.toIntOrNull() ?: return null
+    return if (value < min) null else value
+}
+
+// The value is deliberately not echoed: a query string is user input, and reflecting it puts
+// whatever was sent into an error page (CLAUDE.md §5).
+private suspend fun ApplicationCall.respondBadPaging(): Unit =
+    respondProblem(
+        HttpStatusCode.BadRequest,
+        "Invalid paging",
+        "page must be zero or more and size at least one.",
+        ProblemType.VALIDATION,
+    )
 
 /**
  * Guards every JIRA route except `/health`.

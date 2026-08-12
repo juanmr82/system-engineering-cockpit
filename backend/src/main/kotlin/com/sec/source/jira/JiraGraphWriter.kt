@@ -10,6 +10,7 @@ import com.sec.source.jira.mapping.IssueLink
 import com.sec.source.jira.mapping.IssueRef
 import com.sec.source.jira.mapping.MappedIssue
 import com.sec.source.jira.mapping.PromotedEntity
+import com.sec.source.jira.mapping.sortKey
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.neo4j.driver.Query
 
@@ -472,6 +473,9 @@ internal fun placeholderRow(ref: IssueRef): Map<String, Any?> = row(
         Prop.NAME to "<unresolved ${ref.key}>",
         // Not `current`: this node is not a version of anything, it is a promise that one exists.
         Prop.VERSION to UNRESOLVED_VERSION,
+        // A stub sorts among the issues of its own project rather than at the top of every listing,
+        // which is where an absent sort key would put it (R3).
+        Prop.SORT_KEY to sortKey(ref.key),
         JiraProp.KEY to ref.key,
         JiraProp.ID to ref.id,
         JiraProp.SELF to ref.self,

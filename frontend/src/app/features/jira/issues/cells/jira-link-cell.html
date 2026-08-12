@@ -1,0 +1,14 @@
+@if (row; as issue) {
+  @if (issue.browseUrl; as href) {
+    <a
+      class="sec-jira-link"
+      [href]="href"
+      target="_blank"
+      rel="noopener noreferrer"
+      [attr.aria-label]="'Open ' + issue.key + ' in JIRA'"
+      [matTooltip]="'Open ' + issue.key + ' in JIRA'"
+    >
+      <mat-icon svgIcon="open-in-new" />
+    </a>
+  }
+}

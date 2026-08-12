@@ -1,0 +1,18 @@
+// An id is data: tabular figures so a column of keys reads as a column (CLAUDE.md §8).
+.sec-jira-key {
+  font-variant-numeric: tabular-nums;
+}
+
+// A stub is not a lesser issue, it is a different kind of thing — so it is muted rather than
+// coloured, and the words beside it carry the meaning. Colour alone would be the only signal.
+.sec-jira-key--unresolved {
+  color: var(--sec-ink-3);
+}
+
+.sec-jira-key__state {
+  display: block;
+  color: var(--sec-ink-3);
+  font-size: var(--sec-text-micro);
+  letter-spacing: var(--sec-tracking-wide);
+  text-transform: uppercase;
+}

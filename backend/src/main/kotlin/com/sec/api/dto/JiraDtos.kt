@@ -1,6 +1,7 @@
 package com.sec.api.dto
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * What `GET /api/v1/jira/health` reports, and what the settings page's *Test connection* button
@@ -56,3 +57,79 @@ public data class JiraProjectSettingsDto(
  */
 @Serializable
 public data class JiraProjectSettingsRequest(public val projectKeys: List<String> = emptyList())
+
+/**
+ * One page of the Issues table (spec §14.3).
+ *
+ * [columns] travels with the rows rather than being fetched separately, and that is what keeps a
+ * table from rendering last request's headers over this request's cells: the two are one answer to
+ * one question. It is empty until the column picker exists — the three fixed columns are the
+ * client's own and are never described here, because they are not configurable and a server that
+ * announced them would be inviting a client to hide one.
+ */
+@Serializable
+public data class JiraIssuesPageDto(
+    public val page: Int,
+    public val size: Int,
+    /** Issues matching the same filter, for the paginator. Not the number of [rows]. */
+    public val total: Int,
+    public val columns: List<JiraColumnDto>,
+    public val rows: List<JiraIssueRowDto>,
+)
+
+/**
+ * One configurable column.
+ *
+ * [name] is the field's display name from the catalogue; it falls back to the field id, which is
+ * also what a **stale** column shows — one the user chose and JIRA has since removed (spec §13.4).
+ * Nothing here is `__`-prefixed: a JIRA field id is source data and a legitimate thing to show (R5).
+ */
+@Serializable
+public data class JiraColumnDto(
+    public val fieldId: String,
+    public val name: String,
+    public val sortable: Boolean = true,
+    /** True when the field is no longer in the catalogue. The column still renders, empty (§13.4). */
+    public val stale: Boolean = false,
+)
+
+/**
+ * One row of the Issues table.
+ *
+ * ## Three things here are derived on read and never stored
+ *
+ * [ref] is the base64url handle over `__id`, so no internal id reaches a URL or a DOM attribute
+ * (R5). [browseUrl] is the page a person opens — JIRA's stored `self` is an API URL that answers
+ * with raw JSON, which spec §13.2 names as a trap in the requirement as written. [unresolved] is a
+ * label test, not a property.
+ *
+ * [issueTypeName] is the type's own name and is nullable, because an issue can point at a type this
+ * import has not seen. The icon it will eventually carry needs the icon proxy (§9.1) and is not
+ * here yet: a `<img>` to JIRA's own `iconUrl` would send the browser to a host it cannot
+ * authenticate against.
+ */
+@Serializable
+public data class JiraIssueRowDto(
+    public val ref: String,
+    /** `SCRUM-7`. Source data, shown as-is, and the one column a reader identifies a row by. */
+    public val key: String,
+    /** `<key>: <summary>`, or the key alone when a permission hides the summary. */
+    public val name: String,
+    public val issueTypeName: String? = null,
+    public val browseUrl: String? = null,
+    /**
+     * A stub for an issue outside the configured projects, standing in for a link target.
+     *
+     * A state channel, not display text: the client renders *Not yet imported* from it (R5, and the
+     * same treatment `labels` gets on a DOORS row).
+     */
+    public val unresolved: Boolean = false,
+    /**
+     * The configured columns' values, keyed by field id — **only** the configured ones.
+     *
+     * `Map<String, JsonElement>` for the same reason a DOORS attribute bag is: the set differs per
+     * deployment and per user, so a typed DTO per column set is not a thing that can exist. A list
+     * stays a list, because the table renders those as chips.
+     */
+    public val values: Map<String, JsonElement> = emptyMap(),
+)

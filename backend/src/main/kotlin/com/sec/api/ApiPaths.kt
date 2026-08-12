@@ -49,6 +49,15 @@ public object ApiPaths {
     public const val JIRA_SETTINGS: String = "$JIRA/settings"
 
     /**
+     * The Issues table's rows (spec §14.4).
+     *
+     * Paged, filtered and sorted **server-side**, because the set is 784 issues on the reference
+     * instance and tens of thousands on a real one. A client that asks for more than the cap gets
+     * the cap, not an error: the size is a request, and the ceiling is the server's.
+     */
+    public const val JIRA_ISSUES: String = "$JIRA/issues"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *
