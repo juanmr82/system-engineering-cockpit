@@ -265,7 +265,7 @@ public object JiraCypher {
      *
      * The same stale-key removal as the issues, for the same reason: a field that stops being
      * complex — an option replaced by a plain string — must lose its projection entry, or a column
-     * would resolve `coalesce(i[k], p[k])` to a value that is no longer derived from anything.
+     * would resolve `coalesce(p[k], i[k])` to a value that is no longer derived from anything.
      *
      * A projection is written for **every** issue, including one with nothing to project. An issue
      * with no companion and an issue whose companion is empty would otherwise be the same shape to
@@ -578,23 +578,28 @@ public object JiraCypher {
      *
      * ## The dynamic part, and why it is not string-built Cypher
      *
-     * `[k IN ${'$'}fieldIds | coalesce(i[k], p[k])]` reads a runtime-chosen set of properties with
+     * `[k IN ${'$'}fieldIds | coalesce(p[k], i[k])]` reads a runtime-chosen set of properties with
      * a **parameter**, not with a statement assembled per request. That is the whole reason the
      * storage design keys properties by JIRA field id (§7.2): a configurable column set costs one
      * list parameter instead of a Cypher builder, and R10 is intact by construction rather than by
      * review.
      *
-     * `coalesce(i[k], p[k])` is §7.4's rule — the issue's own value, or the display scalar its
-     * projection derived for a value too complex to sort on. The order matters: a projection entry
-     * only exists where the issue's value is a JSON blob, so the issue always wins where it has
-     * anything to say.
+     * `coalesce(p[k], i[k])` is §7.4's rule, **with the two arguments the other way round from the
+     * way §7.4 writes them**, and the order is the whole point. A projection entry exists exactly
+     * where the issue's own value is a JSON blob — that is what the projection is *for* — so
+     * putting the issue first means the blob always wins and the derived string is never read.
+     * Live, that renders a Status column as `{"self":"…","description":"","iconUrl":"…"}`. The
+     * projection first, the issue as the fallback for every scalar that has no projection entry
+     * (ADR 0014 point 21).
      *
      * ## Ordering
      *
      * `${'$'}sortField` is a property name, so it cannot be a parameter of `ORDER BY` — but it can
-     * be one of a dynamic *property access*, which is what this uses. `coalesce(…, '')` puts an
-     * issue that lacks the sorted property at the start of the ascending order rather than dropping
-     * it: a row missing from a table because a cell is empty is the worst available answer.
+     * be one of a dynamic *property access*, which is what this uses. It reads the projection first
+     * for the same reason the values do: sorting a Status column by its stored JSON sorts by the
+     * text of a URL. `coalesce(…, '')` puts an issue that lacks the sorted property at the start of
+     * the ascending order rather than dropping it: a row missing from a table because a cell is
+     * empty is the worst available answer.
      *
      * The direction is the one thing here that is not a parameter, because Cypher has no way to
      * make it one. Two statements, [LIST_ISSUES_DESC] being this one with `DESC`, and the choice
@@ -615,7 +620,7 @@ public object JiraCypher {
         $ISSUE_FILTER
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
         WITH i, p
-        ORDER BY coalesce(i[${'$'}sortField], p[${'$'}sortField], '') ASC, i.$SORT_KEY ASC
+        ORDER BY coalesce(p[${'$'}sortField], i[${'$'}sortField], '') ASC, i.$SORT_KEY ASC
         SKIP ${'$'}skip LIMIT ${'$'}limit
         OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
         RETURN i.$ID                             AS id,
@@ -623,7 +628,7 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               [k IN ${'$'}fieldIds | coalesce(i[k], p[k])] AS values
+               [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
     /** [LIST_ISSUES_ASC] with the direction reversed — see its note on why this is two statements. */
@@ -633,7 +638,7 @@ public object JiraCypher {
         $ISSUE_FILTER
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
         WITH i, p
-        ORDER BY coalesce(i[${'$'}sortField], p[${'$'}sortField], '') DESC, i.$SORT_KEY DESC
+        ORDER BY coalesce(p[${'$'}sortField], i[${'$'}sortField], '') DESC, i.$SORT_KEY DESC
         SKIP ${'$'}skip LIMIT ${'$'}limit
         OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
         RETURN i.$ID                             AS id,
@@ -641,7 +646,7 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               [k IN ${'$'}fieldIds | coalesce(i[k], p[k])] AS values
+               [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
     /**

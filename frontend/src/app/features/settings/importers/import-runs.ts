@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
@@ -94,8 +94,25 @@ export class ImportRuns {
     }));
   });
 
+  /** The run whose ending has already been reacted to, so the refresh happens once per run. */
+  private refreshedFor: string | null = null;
+
   constructor() {
     void this.load();
+
+    // A run ending changes two things this view fetched once and cannot learn from the stream:
+    // the importer is no longer running, and the history has a new row. The stream describes one
+    // run and says nothing about either, so the transition into a terminal status is what re-reads
+    // them — without this the console sits on "Running" after the import has finished, which is
+    // exactly what a live run showed it doing.
+    effect(() => {
+      const current = this.run();
+      if (!current || !isFinished(current.status) || this.refreshedFor === current.runId) return;
+
+      this.refreshedFor = current.runId;
+      void this.refreshImporters();
+      void this.refreshHistory();
+    });
   }
 
   protected async start(importerId: string): Promise<void> {
@@ -132,6 +149,7 @@ export class ImportRuns {
 
   protected async open(runId: string): Promise<void> {
     await this.store.watch(runId);
+    this.markSettled();
     await this.refreshHistory();
   }
 
@@ -165,11 +183,24 @@ export class ImportRuns {
         const last = this.history()[0];
         if (last) await this.store.watch(last.runId);
       }
+      this.markSettled();
     } catch {
       this.error.set('Could not load the import history.');
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /**
+   * Record an already-finished run as reacted to.
+   *
+   * Opening a run from the history is opening something that ended long ago, and re-reading the
+   * importers and the history because of it would be two requests answering a question nobody
+   * asked. Only a run that ends *while being watched* is news.
+   */
+  private markSettled(): void {
+    const current = this.run();
+    if (current && isFinished(current.status)) this.refreshedFor = current.runId;
   }
 
   private async refreshImporters(): Promise<void> {

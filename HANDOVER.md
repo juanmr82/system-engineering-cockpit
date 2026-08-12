@@ -3,6 +3,78 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (session 20) — JIRA steps 9, 10 and 11: settings, console, columns
+
+Branch **`feature/jira-issues-table`**. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18 numbers the steps;
+**1–11 are done**, in the order 8 → 10 → 11 → 9 rather than the order the spec numbers them, for a
+reason that came from running the application: until something in the UI could choose a project and
+start an import, a column picker had nothing to pick from. Session 19 started its import with
+`curl`.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`/settings` subtree** behind a toolbar gear — one path for RBAC to guard later | `app.routes.ts`, `layout/toolbar/` |
+| 2 | **JIRA settings page** — connection, project chips, JQL preview, columns summary, import | `features/settings/jira/` |
+| 3 | **Import console** — phase rail, live log, counters, cancel, history. Names no source | `features/settings/importers/` |
+| 4 | **`ImportRunStore`** — reads the run resource, then follows it over SSE, with backoff | `core/import/` |
+| 5 | **Column picker** — two panes, search by name and id, filters, drag order, stale section | `features/jira/columns/` |
+| 6 | **Four endpoints** — field catalogue, columns, column defaults, live project proxy | `JiraRoutes.kt`, `JiraFieldsProjection.kt`, `JiraColumnStore.kt` |
+| 7 | **Seven more departures**, points 15–21 | ADR 0014 |
+
+### What is not done, and would be easy to assume is
+
+- **No detail drawer** on row click (§13.2), **no issue-type icon** (it needs the icon proxy of
+  §9.1), and **no deep link** from the Issues empty state to `/settings/jira` — the third is now
+  buildable and simply is not built.
+- **The console has no log level filter and no pause-on-scroll**, and its history rows do not expand
+  to show a run's JQL and warnings (§13.6). The log pane, counters, cancel and history are built.
+- **There is still no authorization anywhere.** `/settings/*` is one subtree so that one guard will
+  cover it, and that guard does not exist (ADR 0014 point 9).
+- **A date renders as JIRA sent it** — `2026-08-11T12:14:08.833+0200`. It is source data shown
+  verbatim, which is consistent, and it is not pretty.
+
+### The traps this session hit, in the order they cost time
+
+1. **`coalesce(i[k], p[k])` is backwards, and the spec says to write it that way.** §7.4's own
+   formula contradicts §7.2's storage decision: a complex value is stored *both* as JSON text on the
+   issue and as a display string on the projection, so reading the issue first means the blob always
+   wins. Live, every Status and Priority cell was a wall of JSON. **The test that should have caught
+   it asserted the impossible case** — its fixture put the value on the projection alone, which no
+   import produces, so it passed under either order. ADR 0014 point 21.
+2. **The catalogue was keyed by `__id` instead of JIRA's `id`.** The synthesised resource URL and
+   the field id are one character apart in a statement, and nothing downstream can tell them apart:
+   a column keyed by a URL reads every cell as null. The docker test caught this one.
+3. **A root-provided service with an eager `httpResource` field is fetched by every page that
+   injects it.** The settings page wanted a column *summary* and pulled the whole 1 171-field
+   catalogue with it. A resource wanted by one dialog is a factory method, not a field —
+   `ModulesApiService` had the pattern already.
+4. **The console sat on "Running" after the import finished.** The stream describes one run and says
+   nothing about the importer list or the history, both of which were fetched once on load. An
+   effect on the terminal status re-reads them. **Found by watching a real import**, not by a test.
+5. **jsdom has no `EventSource`**, so anything touching the store needs a fake — `new EventSource()`
+   is a `ReferenceError` otherwise. `import-run-store.spec.ts` carries one, and it is what makes the
+   event half of the store testable at all.
+
+### Verified this session
+
+- `mvn test` — **319 tests**; `mvn -Pdocker test` — **124 tests**, both 0 failures.
+- `npm run lint` clean, **231 frontend specs**, `npm run build` green.
+- **In the browser**: the settings page (connection, chips, JQL, summary, last run), an import
+  started from the settings page, a second started from the console with its **log streaming live**
+  and the phase rail advancing, and the Issues table drawing the six default columns.
+
+### Resume here
+
+The three gaps of §13.2 and §13.6 above, in whichever order the next reader cares about. The detail
+drawer is the one a reviewer will ask for first; the icon proxy is the one that makes the Type
+column look finished.
+
+**Before anything else, look at a date in the Issues table.** It is the only thing on that screen
+that still reads as raw data rather than as a value, and deciding what to do about it is a display
+decision the alias map (R5) has no entry for yet.
+
+---
+
 ## State as of 2026-08-12 (session 19) — JIRA build-order step 8, the Issues table
 
 Branch **`feature/jira-issues-table`**, one commit. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18

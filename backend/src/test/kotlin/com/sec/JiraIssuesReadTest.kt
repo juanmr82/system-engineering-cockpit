@@ -210,12 +210,31 @@ class JiraIssuesReadTest {
         )
     }
 
-    /** §7.4: the issue's own value, or the display scalar its projection derived for a complex one. */
+    /**
+     * §7.4, and the order of the two arguments is the whole test (ADR 0014 point 21).
+     *
+     * The importer stores a complex value **both** ways: verbatim as JSON text on the issue, because
+     * R1 keeps the source untouched, and as a derived display string on the projection, because a
+     * table cannot sort or show a blob. So both properties exist under the same key, and reading the
+     * issue first means the blob always wins — which rendered a live Status column as
+     * `{"self":"…","description":"","iconUrl":"…"}`.
+     *
+     * The original fixture put the value on the projection alone, which no import produces, and the
+     * test passed for a case that cannot happen.
+     */
     @Test
-    fun `a complex field falls back to the value its projection derived`() = runBlocking {
+    fun `a complex field shows the string its projection derived, not the stored JSON`() = runBlocking {
         val row = list(fieldIds = listOf("customfield_1")).rows.first { it.key == "SCRUM-1" }
 
         assertEquals(mapOf("customfield_1" to JsonPrimitive("WSS")), row.values)
+    }
+
+    /** The fallback half of the same rule: a scalar has no projection entry, so the issue answers. */
+    @Test
+    fun `a scalar is read from the issue, which has no projection entry for it`() = runBlocking {
+        val row = list(fieldIds = listOf("duedate")).rows.first { it.key == "SCRUM-1" }
+
+        assertEquals(mapOf("duedate" to JsonPrimitive("2026-09-01")), row.values)
     }
 
     /** A list stays a list: the table renders those as chips, and `[a, b]` as text is unrecoverable. */
@@ -294,7 +313,8 @@ class JiraIssuesReadTest {
               __id: 'https://jira.example.com/rest/api/2/issue/1', __name: 'SCRUM-1: A first issue',
               __version: '2026-08-01', __sortKey: 'SCRUM-000000001', __projectKey: 'SCRUM',
               key: 'SCRUM-1', id: '1', status: 'In Progress', duedate: '2026-09-01',
-              labels: ['thermal', 'safety'] })
+              labels: ['thermal', 'safety'],
+              customfield_1: '{"self":"https://jira.example.com/rest/api/2/customFieldOption/38303","value":"WSS","id":"38303"}' })
             CREATE (i2:SEItem:JiraIssue {
               __id: 'https://jira.example.com/rest/api/2/issue/2', __name: 'SCRUM-2: Thermal margins',
               __version: '2026-08-02', __sortKey: 'SCRUM-000000002', __projectKey: 'SCRUM',

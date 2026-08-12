@@ -6,13 +6,13 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–11 of its own build order turned up twenty points where following it literally
+built. Building steps 1–11 of its own build order turned up twenty-one points where following it literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all of them in one place, because the alternative is twenty comments
+then contradicted. This ADR records all of them in one place, because the alternative is twenty-one comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -325,6 +325,27 @@ the empty state's deep link to `/settings/jira`. The first two are step 11 of th
 third is now buildable and simply is not built — the empty state says an import is needed and does
 not offer the route that runs one.
 
+### 21. The display projection is read **before** the issue, not after
+
+§7.4 ends by saying the API layer resolves a column with `coalesce(i[$fieldId], p[$fieldId])`.
+That formula contradicts the storage decision three paragraphs above it. §7.2 keeps every value
+verbatim on the issue — a complex one as JSON text — and §7.4 puts the *derived display string* on
+the projection. So for exactly the fields the projection exists to serve, **both** properties are
+present under the same key, and reading the issue first means the blob always wins.
+
+What that renders is not subtle. A live Status column came back as
+`{"self":"https://…/status/10005","description":"","iconUrl":"https://…"}`, in every row, and
+Priority beside it did the same. Sorting was worse: ordering by that column orders by the text of
+a URL.
+
+The statements read `coalesce(p[k], i[k])`, in the values and in the `ORDER BY` alike. The issue is
+the fallback, which is correct for every scalar, because a scalar has no projection entry at all.
+
+**The test that should have caught this asserted the impossible case.** Its fixture put the complex
+value on the projection *alone*, which no import produces, so it passed under either order. It now
+writes the value both ways, as the importer does. This is the fourth departure found by a live run
+rather than by the suite, and every one of them has been a fixture that was simpler than reality.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -336,7 +357,7 @@ not offer the route that runs one.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Twenty departures over nine build steps, and most were found by writing a test rather than by
+- Twenty-one departures over eleven build steps, and most were found by writing a test rather than by
   reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
 - Points 15 to 20 are the frontend's, and they share a shape: the spec drew a screen, and building

@@ -210,6 +210,9 @@ private fun Value.asStringOrNull(): String? = if (isNull) null else asString()
  * One stored property as JSON — the same dynamic-bag treatment `ReviewProjection` gives a DOORS
  * attribute, with one addition that matters here.
  *
+ * What arrives is already `coalesce(p[k], i[k])`: the projection's display string where the stored
+ * value was too complex to show, and the issue's own value everywhere else (ADR 0014 point 21).
+ *
  * **A list stays a list.** JIRA stores `array<string>` fields — labels, most notably — as a Neo4j
  * list, and the table renders those as chips (spec §13.2). Falling through to `toString()` would
  * put the literal text `[a, b]` in a cell and there would be no way back to the elements.
