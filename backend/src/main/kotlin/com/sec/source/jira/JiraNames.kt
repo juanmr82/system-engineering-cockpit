@@ -86,6 +86,32 @@ public object JiraLabel {
     public val imported: Set<String> = setOf(
         ISSUE, PROJECT, ISSUE_TYPE, FIELD, STATUS, PRIORITY, RESOLUTION, USER, COMPONENT, VERSION,
     )
+
+    /**
+     * The nodes phase 5 deletes once nothing points at them any more.
+     *
+     * These exist only to be pointed at — a user, a status, a component is a node with no meaning of
+     * its own — so the last issue naming one leaving makes it unreachable by every view in the
+     * product.
+     *
+     * A placeholder is the same idea and is **not** here, because it cannot be matched by label
+     * alone: it carries `:__UNDEFINED`, which is source-agnostic (ADR 0014), so a statement keyed on
+     * it would have JIRA's sweep deleting DOORS placeholders. It gets its own statement, scoped to
+     * the `:JiraIssue:__UNDEFINED` pair.
+     *
+     * Four more labels are deliberately **not** here:
+     *
+     *  - [PROJECT] — cheap, listed by the settings screen, and the thing a user who just
+     *    de-configured a project is most likely to re-tick;
+     *  - [ISSUE] — deleting an issue is the sweep's own decision and is scoped by project;
+     *  - [ISSUE_TYPE] — has its own guarded delete, which runs before the issues are written and
+     *    must check for references rather than for zero degree (§9.1);
+     *  - [FIELD] — a catalogue entry, never pointed at by anything, so "orphaned" is its normal
+     *    state.
+     */
+    public val orphanable: Set<String> = setOf(
+        STATUS, PRIORITY, RESOLUTION, USER, COMPONENT, VERSION,
+    )
 }
 
 /**

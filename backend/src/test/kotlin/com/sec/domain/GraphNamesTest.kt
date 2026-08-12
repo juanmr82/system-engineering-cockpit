@@ -124,6 +124,12 @@ class GraphNamesTest {
             JiraCypher.UPSERT_ENTITIES, JiraCypher.UPSERT_ISSUES,
             JiraCypher.UPSERT_PROJECTIONS, JiraCypher.MERGE_PROMOTED,
             JiraCypher.PRUNE_PROMOTED, JiraCypher.COUNT_ISSUES,
+            JiraCypher.MERGE_PLACEHOLDERS, JiraCypher.MERGE_LINKS,
+            JiraCypher.DELETE_STALE_LINKS, JiraCypher.MERGE_SUB_TASKS,
+            JiraCypher.DELETE_STALE_SUB_TASKS,
+            JiraCypher.SWEEP_DELETED, JiraCypher.SWEEP_DECONFIGURED,
+            JiraCypher.DELETE_ORPHANED_ENTITIES, JiraCypher.DELETE_ORPHANED_PLACEHOLDERS,
+            JiraCypher.COUNT_PLACEHOLDERS,
             JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
             *JiraCypher.SCHEMA.toTypedArray(),
         )

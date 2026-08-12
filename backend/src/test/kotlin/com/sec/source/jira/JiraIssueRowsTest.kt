@@ -134,6 +134,108 @@ class JiraIssueRowsTest {
         assertEquals("$HOST/rest/api/2/issue/1", row["issueId"])
     }
 
+    // -- phase 4: stubs, links and sub-tasks -------------------------------------------------------
+
+    /**
+     * The rule the whole of phase 4 turns on: stub what this run did not import, and nothing else.
+     *
+     * Getting it backwards is not a visible failure — it is a `MERGE` on a real issue's `__id`,
+     * which finds the real issue and, thanks to `ON CREATE`, does nothing at all. The graph looks
+     * right and the link silently never appears.
+     */
+    @Test
+    fun `only a link target this run did not import gets a stub`() {
+        val imported = mapper.map(issue(1))
+        val links = mapper.map(issue(2, fields = LINKS_TO_3_AND_1)).links
+
+        val rows = placeholderRows(links, parents = emptyMap(), seenIds = setOf(imported.id))
+
+        assertEquals(listOf("$HOST/rest/api/2/issue/3"), rows.map { it["id"] })
+    }
+
+    /**
+     * Fifty issues linking to one unimported epic is one stub, not fifty.
+     *
+     * The same reason the entity rows are deduplicated: fifty rows merging one node inside one
+     * transaction is fifty lock acquisitions for a node that will be identical either way.
+     */
+    @Test
+    fun `stubs are deduplicated across every link in the run`() {
+        val links = mapper.map(issue(1, fields = LINKS_TO_3_AND_1)).links +
+            mapper.map(issue(2, fields = LINKS_TO_3_AND_1)).links
+
+        val rows = placeholderRows(links, parents = emptyMap(), seenIds = emptySet())
+
+        assertEquals(setOf("$HOST/rest/api/2/issue/3", "$HOST/rest/api/2/issue/1"), rows.map { it["id"] }.toSet())
+    }
+
+    /** A parent nobody imported is a stub too — same rule, and the read path must not tell them apart. */
+    @Test
+    fun `an unimported parent gets a stub as well`() {
+        val child = mapper.map(issue(1, fields = HAS_PARENT))
+
+        val rows = placeholderRows(emptyList(), parents = mapOf(child.id to child.parent!!), seenIds = setOf(child.id))
+
+        assertEquals(listOf("$HOST/rest/api/2/issue/9"), rows.map { it["id"] })
+    }
+
+    /**
+     * The stub's shape is a subset of the real issue's, never a parallel one.
+     *
+     * `summary` under JIRA's own field id is what makes phase 3 able to fill the stub in rather than
+     * leave two spellings of the same fact on one node.
+     */
+    @Test
+    fun `a stub carries the key, the summary and a version that is not current`() {
+        val links = mapper.map(issue(2, fields = LINKS_TO_3_AND_1)).links
+        val row = placeholderRows(links, emptyMap(), seenIds = emptySet()).first { it["id"] == "$HOST/rest/api/2/issue/3" }
+
+        @Suppress("UNCHECKED_CAST")
+        val props = row["props"] as Map<String, Any?>
+
+        assertEquals("SCRUM-3", props["key"])
+        assertEquals("The third one", props["summary"])
+        assertEquals("<unresolved SCRUM-3>", props["__name"])
+        assertEquals("unresolved", props["__version"], "a stub must not read as a current issue")
+    }
+
+    /**
+     * A reference with no `self` is dropped rather than stubbed.
+     *
+     * Identity is the resource URL, so a node keyed on `""` is one that every future reference
+     * without a `self` would collide with — one shared node standing for every unknown issue.
+     */
+    @Test
+    fun `a reference with no self is not stubbed`() {
+        val links = mapper.map(
+            issue(1, fields = """"issuelinks":[{"id":"7","type":{"id":"1","name":"Blocks"},"outwardIssue":{"id":"3","key":"SCRUM-3"}}]"""),
+        ).links
+
+        assertEquals(emptyList(), placeholderRows(links, emptyMap(), emptySet()))
+    }
+
+    /**
+     * `linkId` travels beside the properties because it is the `MERGE` key.
+     *
+     * Both phrases are stored: `IsRelated` has identical inward and outward text, so direction is
+     * not recoverable from the words and the UI renders the phrase rather than inferring from it.
+     */
+    @Test
+    fun `a link row keys on the link id and carries both phrases`() {
+        val link = mapper.map(issue(2, fields = LINKS_TO_3_AND_1)).links.first()
+        val row = linkRow(link)
+
+        assertEquals(link.linkId, row["linkId"])
+        assertEquals(link.fromId, row["fromId"])
+        assertEquals(link.toId, row["toId"])
+
+        @Suppress("UNCHECKED_CAST")
+        val props = row["props"] as Map<String, Any?>
+        assertEquals("blocks", props["outward"])
+        assertEquals("is blocked by", props["inward"])
+        assertTrue("linkId" !in props, "the merge key must not also be in the map that += rewrites")
+    }
+
     // -- fixtures ----------------------------------------------------------------------------------
 
     private val mapper = IssueMapper()
@@ -153,5 +255,22 @@ class JiraIssueRowsTest {
 
     private companion object {
         const val HOST = "https://jira.example.com"
+
+        /** Two links: one to an issue the run may not have, one to issue 1. */
+        val LINKS_TO_3_AND_1 = """
+            "issuelinks":[
+              {"id":"100","type":{"id":"1","name":"Blocks","inward":"is blocked by","outward":"blocks"},
+               "outwardIssue":{"id":"3","key":"SCRUM-3","self":"$HOST/rest/api/2/issue/3",
+                "fields":{"summary":"The third one"}}},
+              {"id":"101","type":{"id":"1","name":"Blocks","inward":"is blocked by","outward":"blocks"},
+               "inwardIssue":{"id":"1","key":"SCRUM-1","self":"$HOST/rest/api/2/issue/1",
+                "fields":{"summary":"The first one"}}}
+            ]
+        """.trimIndent()
+
+        val HAS_PARENT = """
+            "parent":{"id":"9","key":"SCRUM-9","self":"$HOST/rest/api/2/issue/9",
+             "fields":{"summary":"The epic"}}
+        """.trimIndent()
     }
 }

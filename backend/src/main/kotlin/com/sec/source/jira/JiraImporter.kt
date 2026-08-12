@@ -5,7 +5,9 @@ import com.sec.config.JiraSettings
 import com.sec.importer.ImportContext
 import com.sec.importer.ImportJob
 import com.sec.importer.ImportPhase
+import com.sec.source.jira.mapping.IssueLink
 import com.sec.source.jira.mapping.IssueMapper
+import com.sec.source.jira.mapping.IssueRef
 import com.sec.source.jira.mapping.JiraFieldCatalogue
 import java.time.Instant
 import java.time.ZoneId
@@ -14,17 +16,15 @@ import java.time.ZoneOffset
 /**
  * The JIRA import, as a job the generic framework runs (spec §12).
  *
- * ## Which phases exist
+ * ## The phases
  *
- * Three of the six, and the list is deliberately honest about it: `preflight`, `issuetypes` and
- * `fields` are built, so those are what is declared. `issues`, `links` and `sweep` join
- * [phases] when they are written.
+ * All six of the spec's, with its own weights: preflight, issue types, fields, issues, links,
+ * sweep. Phase 6 in the spec is the report, which is not a progress phase — the framework writes
+ * the counters and the outcome once [run] returns.
  *
- * Declaring the missing three now as no-ops would draw a stepper with three steps that flash past,
- * and an aggregate bar that reaches 10 % and stops — a progress display that lies about what the
- * product does. The weights are the spec's own, and because [com.sec.importer.percentComplete]
- * normalises by their sum, adding the remaining phases needs no rebalancing here: 2/3/5 reads as
- * 20/30/50 today and as 2/3/5 of 100 the day the other three arrive.
+ * The order is not a convenience. Links run after *every* page, because a link's target may live on
+ * the last one, and the sweep runs after the links, because a stub created for a target this run
+ * could not see is a node the sweep must already know about.
  *
  * ## What this class is not allowed to do
  *
@@ -49,6 +49,8 @@ public class JiraImporter(
         ImportPhase(ISSUE_TYPES, "Importing issue types", weight = 3),
         ImportPhase(FIELDS, "Importing field definitions", weight = 5),
         ImportPhase(ISSUES, "Importing issues", weight = 70),
+        ImportPhase(LINKS, "Linking issues", weight = 12),
+        ImportPhase(SWEEP, "Removing deleted issues", weight = 8),
     )
 
     override suspend fun run(context: ImportContext) {
@@ -58,6 +60,8 @@ public class JiraImporter(
         importIssueTypes(context)
         importFieldDefinitions(context, state)
         importIssues(context, state)
+        importLinks(context, state)
+        sweep(context, state)
     }
 
     /**
@@ -75,6 +79,45 @@ public class JiraImporter(
 
         /** Phase 2's catalogue, kept for phase 3 — see [JiraFieldCatalogue] on why it is advisory. */
         var catalogue: JiraFieldCatalogue = JiraFieldCatalogue.EMPTY
+
+        /** Read once in preflight, used by phases 3 and 5. The sweep's scope *is* this list. */
+        var projectKeys: List<String> = emptyList()
+
+        /** How many stubs stood before this run touched anything — half of `unresolvedResolved`. */
+        var unresolvedAtStart: Int = 0
+
+        /**
+         * Every issue `__id` phase 3 wrote.
+         *
+         * The most consequential value in the run: phase 4 stubs out what is missing from it, and
+         * phase 5 deletes what is missing from it. An incomplete set is indistinguishable from an
+         * emptied project, which is why [issuesComplete] exists beside it.
+         */
+        val seenIds: MutableSet<String> = LinkedHashSet()
+
+        /**
+         * Every link seen this run, keyed by JIRA's link id.
+         *
+         * The key is what collapses the two reports of one link — both ends report it — into one
+         * edge. Accumulated across pages rather than written per page because a link's other end may
+         * be on any page, including a later one (spec §12 phase 4). The reference instance's 784
+         * issues carry ~550 links, so this is tens of kilobytes.
+         */
+        val links: MutableMap<String, IssueLink> = LinkedHashMap()
+
+        /** Issues with a `fields.parent`, by child `__id`. Usually a small fraction of the run. */
+        val parents: MutableMap<String, IssueRef> = LinkedHashMap()
+
+        /**
+         * Whether phase 3 finished every page.
+         *
+         * Read by the sweep, and it is the guard spec §12 calls the highest-consequence one in the
+         * feature: a partial seen set would delete every issue the failed pages would have carried.
+         * Today the control flow in [run] already guarantees it — a failing phase throws and the
+         * sweep is never reached — and it is still stated, because "the sweep is safe as long as
+         * nobody catches an exception" is a guarantee that lasts until somebody does.
+         */
+        var issuesComplete: Boolean = false
     }
 
     /**
@@ -107,9 +150,9 @@ public class JiraImporter(
             ZoneOffset.UTC
         }
 
-        val projectKeys = settingsStore.projectKeys()
-        JiraJql.validate(projectKeys).getOrElse { throw it }
-        context.log("Configured projects: ${projectKeys.joinToString(", ")}")
+        state.projectKeys = settingsStore.projectKeys()
+        JiraJql.validate(state.projectKeys).getOrElse { throw it }
+        context.log("Configured projects: ${state.projectKeys.joinToString(", ")}")
 
         context.params(
             mapOf(
@@ -127,6 +170,12 @@ public class JiraImporter(
         // JIRA indexes (JiraCypher.SCHEMA).
         writer.applySchema()
         context.log("Applied the JIRA graph schema")
+
+        // Counted before anything is written, because "how many stubs did this run resolve" is a
+        // difference and there is no statement that can observe the event itself: a stub is
+        // resolved by phase 3 writing the real issue over it, which looks like an ordinary upsert.
+        state.unresolvedAtStart = writer.placeholderCount()
+
         context.progress(1, 1)
     }
 
@@ -205,8 +254,7 @@ public class JiraImporter(
         context.phase(ISSUES)
         context.ensureActive()
 
-        val projectKeys = settingsStore.projectKeys()
-        val jql = JiraJql.build(projectKeys, Instant.now(), state.zone).getOrElse { throw it }
+        val jql = JiraJql.build(state.projectKeys, Instant.now(), state.zone).getOrElse { throw it }
 
         // On the run record, because when an import returns something unexpected the first question
         // is always what was actually asked for (spec §8).
@@ -225,7 +273,14 @@ public class JiraImporter(
             val mapped = page.issues.map(mapper::map)
             writer.writeIssues(mapped)
 
-            mapped.forEach { unknownFields += it.warnings }
+            mapped.forEach { issue ->
+                unknownFields += issue.warnings
+                state.seenIds += issue.id
+                // Keyed by link id, so the two reports of one link — one from each end — collapse
+                // to a single entry however many pages apart they arrive.
+                issue.links.forEach { link -> state.links[link.linkId] = link }
+                issue.parent?.let { parent -> state.parents[issue.id] = parent }
+            }
             issuesSeen += mapped.size
 
             context.setCount(Counter.ISSUES_SEEN, issuesSeen.toLong())
@@ -251,7 +306,107 @@ public class JiraImporter(
             )
         }
 
+        // Set once rather than only inside the page callback: a search that matched nothing never
+        // reaches the callback, and a run that reports no counter at all reads as a run that failed
+        // to count rather than one that found nothing.
+        context.setCount(Counter.ISSUES_SEEN, issuesSeen.toLong())
+
+        // Set only here, and only after every page has been written. Everything the sweep is
+        // allowed to delete rests on this line being reached.
+        state.issuesComplete = true
+
         context.log("$issuesSeen issues over ${summary.pages} page(s)")
+    }
+
+    /**
+     * Phase 4 — the links, once every page is in (spec §12 phase 4).
+     *
+     * ## Why it cannot be done per page
+     *
+     * A link names an issue that may be on any page, including the last. Writing links as each page
+     * arrives would stub out an issue that was three minutes away from being imported for real, and
+     * every one of those stubs would then have to be un-made. Waiting costs a few hundred kilobytes
+     * of link records and removes the problem entirely.
+     *
+     * ## The two counters
+     *
+     * `unresolvedResolved` and `unresolvedCreated` are differences, not events. A stub is resolved
+     * by phase 3 writing the real issue over it — an ordinary upsert, indistinguishable from any
+     * other from inside the statement — so the only way to count it is to look at how many stubs
+     * stood before the run and how many stand now. Three cheap counts, and they are what let the run
+     * summary say "9 links now resolve, 4 still point outside the configured projects".
+     */
+    private suspend fun importLinks(context: ImportContext, state: RunState) {
+        context.phase(LINKS)
+        context.ensureActive()
+
+        val standing = writer.placeholderCount()
+        val resolved = (state.unresolvedAtStart - standing).coerceAtLeast(0)
+
+        writer.writeLinks(state.links.values, state.parents, state.seenIds)
+
+        val created = (writer.placeholderCount() - standing).coerceAtLeast(0)
+
+        context.setCount(Counter.LINKS_SEEN, state.links.size.toLong())
+        context.setCount(Counter.UNRESOLVED_CREATED, created.toLong())
+        context.setCount(Counter.UNRESOLVED_RESOLVED, resolved.toLong())
+        context.progress(1, 1)
+
+        context.log(
+            "${state.links.size} link(s) and ${state.parents.size} sub-task(s); " +
+                "$created placeholder(s) created, $resolved resolved",
+        )
+    }
+
+    /**
+     * Phase 5 — remove what JIRA no longer has, and what the configuration no longer asks for.
+     *
+     * ## The guard
+     *
+     * This is the one phase that deletes imported data, and the seen set it deletes against is only
+     * complete if phase 3 read every page. A run that failed on page 9 has seen 8 pages, and to this
+     * statement that is indistinguishable from an instance whose issues were deleted. Hence the
+     * check on [RunState.issuesComplete] — belt as well as braces, since a failing phase already
+     * throws before reaching here.
+     *
+     * ## The mass-deletion warning
+     *
+     * Measured after the fact rather than before, and that is a deliberate limitation: refusing
+     * would need a dry-run count of the same statement, and spec §12 asks for a warning rather than
+     * a refusal ("a confirm-before-delete dialog is a natural extension; not required now"). What is
+     * built is the honest version of what it asked for — the run ends `SUCCEEDED_WITH_WARNINGS` and
+     * says how much went.
+     */
+    private suspend fun sweep(context: ImportContext, state: RunState) {
+        context.phase(SWEEP)
+        context.ensureActive()
+
+        if (!state.issuesComplete) {
+            context.warn("Did not remove deleted issues: the issue phase did not finish, so what is missing from this run is unknown.")
+            return
+        }
+
+        val before = writer.issueCounts().issues
+        val counts = writer.sweep(state.projectKeys, state.seenIds)
+
+        context.setCount(Counter.DELETED, counts.deleted.toLong())
+        context.setCount(Counter.DELETED_BY_CONFIG, counts.deletedByConfig.toLong())
+        context.progress(1, 1)
+
+        if (counts.deleted > 0) context.log("${counts.deleted} issue(s) no longer in JIRA were removed")
+        if (counts.deletedByConfig > 0) {
+            context.log(
+                "${counts.deletedByConfig} issue(s) removed because their project is no longer selected",
+            )
+        }
+
+        val removed = counts.deleted + counts.deletedByConfig
+        if (before > 0 && removed * PERCENT > before * MASS_DELETE_PERCENT) {
+            context.warn(
+                "This import removed $removed of $before issues — more than $MASS_DELETE_PERCENT %. " +
+                    "Check that the selected projects and the JIRA instance are the ones you meant.",
+            )
+        }
     }
 
     /**
@@ -288,6 +443,13 @@ public class JiraImporter(
         public const val ISSUE_TYPES_SEEN: String = "issueTypesSeen"
         public const val FIELDS_SEEN: String = "fieldsSeen"
         public const val ISSUES_SEEN: String = "issuesSeen"
+        public const val LINKS_SEEN: String = "linksSeen"
+        public const val UNRESOLVED_CREATED: String = "unresolvedCreated"
+        public const val UNRESOLVED_RESOLVED: String = "unresolvedResolved"
+
+        /** Issues JIRA no longer returns. Kept apart from [DELETED_BY_CONFIG] — different news. */
+        public const val DELETED: String = "deleted"
+        public const val DELETED_BY_CONFIG: String = "deletedByConfig"
     }
 
     public companion object {
@@ -298,8 +460,14 @@ public class JiraImporter(
         public const val ISSUE_TYPES: String = "issuetypes"
         public const val FIELDS: String = "fields"
         public const val ISSUES: String = "issues"
+        public const val LINKS: String = "links"
+        public const val SWEEP: String = "sweep"
 
         /** How many unknown field ids a warning names before it says "and n more". */
         private const val UNKNOWN_FIELDS_LISTED = 10
+
+        /** The share of the existing issues a single import may remove before it says so (spec §12). */
+        private const val MASS_DELETE_PERCENT = 20
+        private const val PERCENT = 100
     }
 }

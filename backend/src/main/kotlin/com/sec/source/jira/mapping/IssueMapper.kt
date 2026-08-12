@@ -27,6 +27,22 @@ public data class PromotedEntity(
 )
 
 /**
+ * The other end of a link, or a parent — as much of an issue as JIRA embeds in a reference.
+ *
+ * Enough to build a placeholder from and nothing more: JIRA embeds `id`, `key`, `self` and a small
+ * `fields` object in every reference, so an issue outside the configured projects can be stood up
+ * as a stub without a second API call (spec §9.4). [self] is its `__id`, exactly the value the node
+ * will carry when the real issue is imported — which is what lets phase 3 fill the stub in rather
+ * than create a duplicate beside it.
+ */
+public data class IssueRef(
+    public val id: String,
+    public val key: String,
+    public val self: String,
+    public val summary: String,
+)
+
+/**
  * One JIRA issue link, normalised to the direction JIRA itself states it in.
  *
  * Both ends of a link report it, with the same [linkId]. Storing it as JIRA's *outward* direction
@@ -44,8 +60,8 @@ public data class IssueLink(
     public val typeName: String,
     public val inward: String,
     public val outward: String,
-    /** The other end's key, so a placeholder can be named `<unresolved SCRUM-7>` rather than by URL. */
-    public val otherKey: String,
+    /** The end that is *not* this issue — what a placeholder is built from when it is unknown. */
+    public val other: IssueRef,
 )
 
 /**
@@ -68,8 +84,8 @@ public data class MappedIssue(
     public val projection: Map<String, Any?>,
     public val entities: List<PromotedEntity>,
     public val links: List<IssueLink>,
-    /** `fields.parent`, when present — the target of a `subTaskOf` edge. */
-    public val parentId: String? = null,
+    /** `fields.parent`, when present — the target of a `subTaskOf` edge (spec §9.5). */
+    public val parent: IssueRef? = null,
     public val warnings: List<String> = emptyList(),
 )
 
@@ -162,7 +178,7 @@ public class IssueMapper(private val catalogue: JiraFieldCatalogue = JiraFieldCa
             projection = projection,
             entities = promotedEntities(fields),
             links = issueLinks(envelope),
-            parentId = fields.objectOrNull(JiraFieldId.PARENT)?.stringOrNull(JiraProp.SELF),
+            parent = fields.objectOrNull(JiraFieldId.PARENT)?.let(::issueRef),
             warnings = warnings,
         )
     }
@@ -293,16 +309,33 @@ public class IssueMapper(private val catalogue: JiraFieldCatalogue = JiraFieldCa
                 typeName = type?.stringOrNull(JiraProp.NAME).orEmpty(),
                 inward = type?.stringOrNull(JiraLinkProp.INWARD).orEmpty(),
                 outward = type?.stringOrNull(JiraLinkProp.OUTWARD).orEmpty(),
-                otherKey = other.stringOrNull(JiraProp.KEY).orEmpty(),
+                other = issueRef(other),
             )
         }
     }
+
+    /**
+     * An embedded issue reference — the shape JIRA uses for a link's other end and for `parent`.
+     *
+     * `summary` lives one level down in the reference's own `fields`, and it is the only thing in
+     * here that makes a placeholder readable: `<unresolved SCRUM-7>` names the issue, the summary
+     * says what it is. Absent values become empty strings rather than nulls, because these go
+     * straight into a property map and `SET n += {summary: null}` *removes* the property, which
+     * would make "JIRA sent no summary" and "the summary was cleared" the same event.
+     */
+    private fun issueRef(value: JsonObject): IssueRef = IssueRef(
+        id = value.stringOrNull(JiraProp.ID).orEmpty(),
+        key = value.stringOrNull(JiraProp.KEY).orEmpty(),
+        self = value.stringOrNull(JiraProp.SELF).orEmpty(),
+        summary = value.objectOrNull(FIELDS)?.stringOrNull(JiraFieldId.SUMMARY).orEmpty(),
+    )
 
     private companion object {
         const val MAX_NAME = 200
         const val UNKNOWN_VERSION = "unknown"
         const val DISPLAY_NAME = "displayName"
         const val TYPE = "type"
+        const val FIELDS = "fields"
         const val OUTWARD_ISSUE = "outwardIssue"
         const val INWARD_ISSUE = "inwardIssue"
     }

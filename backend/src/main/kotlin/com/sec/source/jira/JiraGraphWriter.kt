@@ -6,12 +6,24 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
+import com.sec.source.jira.mapping.IssueLink
+import com.sec.source.jira.mapping.IssueRef
 import com.sec.source.jira.mapping.MappedIssue
 import com.sec.source.jira.mapping.PromotedEntity
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.neo4j.driver.Query
 
 private val logger = KotlinLogging.logger {}
+
+/**
+ * `__version` for a stub.
+ *
+ * A value, not a graph name, which is why it is here rather than in `JiraNames.kt`. It is
+ * deliberately not [ItemVersion.CURRENT]: a stub is not a version of an issue, it is a note that one
+ * exists somewhere this import could not reach, and a reader filtering for `current` should not find
+ * it (spec §9.4).
+ */
+private const val UNRESOLVED_VERSION = "unresolved"
 
 /**
  * The only thing that writes imported JIRA data, and it writes nothing else.
@@ -121,6 +133,103 @@ public class JiraGraphWriter(
         }
     }
 
+    /**
+     * Phase 4 — the links, after every page is in (spec §12).
+     *
+     * After, never per page, and that is the whole reason this is a phase of its own: a link's
+     * target may live on page 16, and a per-page pass would stub out an issue that was three
+     * minutes from being imported for real.
+     *
+     * Five statements in an order that each depends on the one before:
+     *
+     *  1. **stubs**, so both ends of every edge exist;
+     *  2. **link edges**, which `MATCH` both ends;
+     *  3. **sub-task edges**, likewise;
+     *  4. **links this import no longer asserts**;
+     *  5. **sub-task edges likewise**.
+     *
+     * The prunes come last for the same reason phase 3's does: a run that dies here leaves an extra
+     * edge rather than a missing one, and an extra edge is what the next run removes.
+     *
+     * @param links every link seen this run, already deduplicated by link id — both ends of a link
+     *   report it, so the caller collapses the two reports before this sees them.
+     * @param parents the issues that have a `fields.parent`, by child `__id`.
+     * @param seenIds every issue `__id` this run imported. What is *not* in it is what gets a stub.
+     */
+    public suspend fun writeLinks(
+        links: Collection<IssueLink>,
+        parents: Map<String, IssueRef>,
+        seenIds: Set<String>,
+    ) {
+        writeBatched(JiraCypher.MERGE_PLACEHOLDERS, placeholderRows(links, parents, seenIds))
+        writeBatched(JiraCypher.MERGE_LINKS, links.map(::linkRow))
+        writeBatched(JiraCypher.MERGE_SUB_TASKS, parents.map { (childId, parent) -> subTaskRow(childId, parent) })
+
+        graphDriver.executeWrite(
+            Query(
+                JiraCypher.DELETE_STALE_LINKS,
+                mapOf("seenIds" to seenIds.toList(), "seenLinkIds" to links.map { it.linkId }),
+            ),
+        ) { }
+
+        graphDriver.executeWrite(
+            Query(
+                JiraCypher.DELETE_STALE_SUB_TASKS,
+                mapOf("seenIds" to seenIds.toList(), "keep" to subTaskKeepRows(parents)),
+            ),
+        ) { }
+    }
+
+    /**
+     * Phase 5 — the sweep, and the one method in this class that deletes imported issues.
+     *
+     * **It trusts [seenIds] completely.** A set missing the issues of a page that failed is
+     * indistinguishable here from a project somebody emptied in JIRA, so the decision that phase 3
+     * completed is made by the caller and is not second-guessed — the guard lives in
+     * [JiraImporter], where the knowledge is (spec §12 phase 5).
+     *
+     * Two statements rather than one because the run summary has to say *why* something went: an
+     * issue deleted in JIRA is news, and an issue that left with its project's tick box is not.
+     *
+     * Orphan cleanup last, after both deletions, because it is the deletions that create the
+     * orphans.
+     */
+    public suspend fun sweep(configuredKeys: List<String>, seenIds: Set<String>): SweepCounts {
+        val deleted = deleteReturningCount(
+            JiraCypher.SWEEP_DELETED,
+            mapOf("configuredKeys" to configuredKeys, "seenIds" to seenIds.toList()),
+        )
+        val byConfig = deleteReturningCount(
+            JiraCypher.SWEEP_DECONFIGURED,
+            mapOf("configuredKeys" to configuredKeys),
+        )
+        val orphans = deleteReturningCount(
+            JiraCypher.DELETE_ORPHANED_ENTITIES,
+            mapOf("labels" to JiraLabel.orphanable.toList()),
+        ) + deleteReturningCount(JiraCypher.DELETE_ORPHANED_PLACEHOLDERS, emptyMap())
+
+        logger.info { "JIRA sweep: $deleted deleted, $byConfig de-configured, $orphans orphaned nodes" }
+        return SweepCounts(deleted = deleted, deletedByConfig = byConfig, orphansRemoved = orphans)
+    }
+
+    /**
+     * How many stubs are standing right now.
+     *
+     * Read at three points in a run — before it, after phase 3, after phase 4 — because the two
+     * counters the report wants are differences rather than events: a stub is *resolved* by phase 3
+     * writing over it, which no statement is in a position to count, and *created* by phase 4.
+     */
+    public suspend fun placeholderCount(): Int =
+        graphDriver.executeRead(Query(JiraCypher.COUNT_PLACEHOLDERS)) { records ->
+            records.firstOrNull()?.get("placeholders")?.asInt() ?: 0
+        }
+
+    /** A delete that reports what it removed. Every sweep statement returns a `deleted` column. */
+    private suspend fun deleteReturningCount(statement: String, params: Map<String, Any?>): Int =
+        graphDriver.executeWrite(Query(statement, params)) { records ->
+            records.firstOrNull()?.get("deleted")?.asInt() ?: 0
+        }
+
     /** Issue and projection counts, for the run report. */
     public suspend fun issueCounts(): IssueCounts =
         graphDriver.executeRead(Query(JiraCypher.COUNT_ISSUES)) { records ->
@@ -164,6 +273,19 @@ public class JiraGraphWriter(
 
     /** Issues in the graph and how many carry a projection. The two should be equal (spec §12). */
     public data class IssueCounts(public val issues: Int, public val projections: Int)
+
+    /**
+     * What one sweep removed.
+     *
+     * [deleted] and [deletedByConfig] are kept apart all the way to the run report because they are
+     * different news: the first says JIRA lost an issue, the second says a person changed the
+     * configuration and got what they asked for.
+     */
+    public data class SweepCounts(
+        public val deleted: Int,
+        public val deletedByConfig: Int,
+        public val orphansRemoved: Int,
+    )
 
     private companion object {
         /**
@@ -308,3 +430,81 @@ internal fun fieldRow(host: String, field: JiraFieldDefinition): Map<String, Any
         JiraProp.SCHEMA_CUSTOM_ID to field.schema?.customId,
     ),
 )
+
+/**
+ * A stub for every link or parent target this run did not import (spec §9.4).
+ *
+ * Deduplicated by `__id`: fifty issues can all link to the same unimported epic, and fifty rows
+ * merging one node inside one transaction is fifty lock acquisitions for one node.
+ *
+ * A reference with a blank `self` is dropped rather than stubbed. Identity is the resource URL, and
+ * a node keyed on `""` is one every future reference would collide with.
+ */
+internal fun placeholderRows(
+    links: Collection<IssueLink>,
+    parents: Map<String, IssueRef>,
+    seenIds: Set<String>,
+): List<Map<String, Any?>> {
+    val byId = LinkedHashMap<String, IssueRef>()
+
+    fun consider(ref: IssueRef) {
+        if (ref.self.isNotBlank() && ref.self !in seenIds) byId[ref.self] = ref
+    }
+
+    links.forEach { consider(it.other) }
+    parents.values.forEach(::consider)
+
+    return byId.values.map(::placeholderRow)
+}
+
+/**
+ * One stub, from what JIRA embedded in the reference.
+ *
+ * `__name` follows the spec's own wording — `<unresolved SCRUM-7>` — so the key is in the name and
+ * a stub is obvious wherever a name is shown before the read path has a chance to phrase it. The
+ * summary is stored beside it under JIRA's own field id, because that is where the real issue's
+ * summary will land when it is imported: the stub's shape is a subset of the real thing's, never a
+ * parallel one.
+ */
+internal fun placeholderRow(ref: IssueRef): Map<String, Any?> = row(
+    id = ref.self,
+    props = mapOf(
+        Prop.NAME to "<unresolved ${ref.key}>",
+        // Not `current`: this node is not a version of anything, it is a promise that one exists.
+        Prop.VERSION to UNRESOLVED_VERSION,
+        JiraProp.KEY to ref.key,
+        JiraProp.ID to ref.id,
+        JiraProp.SELF to ref.self,
+        JiraFieldId.SUMMARY to ref.summary,
+    ),
+)
+
+/**
+ * One link as a write row.
+ *
+ * `linkId` travels beside the properties rather than inside them for the same reason `__id` does on
+ * a node row: it is the `MERGE` key, and a `SET r += props` that rewrote it would be rewriting the
+ * thing that matched.
+ */
+internal fun linkRow(link: IssueLink): Map<String, Any?> = mapOf(
+    "linkId" to link.linkId,
+    "fromId" to link.fromId,
+    "toId" to link.toId,
+    "props" to mapOf(
+        JiraLinkProp.TYPE_ID to link.typeId,
+        JiraLinkProp.TYPE_NAME to link.typeName,
+        // Both phrases, because `IsRelated` has identical inward and outward text — direction is
+        // not recoverable from the words, so the UI renders the phrase rather than inferring
+        // anything from it (spec §9.4).
+        JiraLinkProp.INWARD to link.inward,
+        JiraLinkProp.OUTWARD to link.outward,
+    ),
+)
+
+/** One `subTaskOf` edge as a write row. */
+internal fun subTaskRow(childId: String, parent: IssueRef): Map<String, Any?> =
+    mapOf("childId" to childId, "parentId" to parent.self)
+
+/** The `(child, parent)` pairs this import still asserts — everything else of that type is pruned. */
+internal fun subTaskKeepRows(parents: Map<String, IssueRef>): List<Map<String, Any?>> =
+    parents.map { (childId, parent) -> mapOf("childId" to childId, "parentId" to parent.self) }

@@ -6,13 +6,13 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–6 of its own build order turned up eleven points where following it literally
+built. Building steps 1–7 of its own build order turned up fourteen points where following it literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all eleven in one place, because the alternative is eleven comments
+then contradicted. This ADR records all fourteen in one place, because the alternative is fourteen comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -31,6 +31,25 @@ Two labels for one idea would mean two placeholder states, two empty-state sente
 component that has to know which source it is looking at to say the same thing. **Reuse the
 existing one.** This is the R3 case exactly: a new source joins the vocabulary, it does not extend
 it.
+
+**Building phase 4 turned up the cost, and it is real but small.** A shared label means the two
+importers can reach each other's placeholders:
+
+- The DOORS importer's own cleanup is `MATCH (n:__UNDEFINED) WHERE COUNT { (n)--() } = 0 DELETE n`,
+  unscoped, so a DOORS import will delete an orphaned JIRA stub. That is exactly what JIRA's own
+  sweep does to it, so the outcome is right and the ownership is untidy.
+- Its validation query reports placeholders grouped by `__moduleUrl`, so JIRA stubs appear in a
+  DOORS import report under a null module.
+
+The direction that would matter — JIRA deleting DOORS data — is closed deliberately: JIRA's own
+placeholder cleanup matches the **pair** `:JiraIssue:__UNDEFINED`, never the shared label alone, and
+that pair is why the label is absent from `JiraLabel.orphanable`. A statement keyed on
+`:__UNDEFINED` by itself in JIRA's sweep would have deleted DOORS placeholders, and it would have
+looked completely reasonable.
+
+This point was re-derived from scratch while building phase 4, reached the opposite conclusion on
+the strength of the first bullet above, and was then put back. Recording the cost here is what
+should stop the third derivation.
 
 ### 2. Four `__`-labelled node kinds are deliberately **not** `:__Meta`
 
@@ -198,6 +217,46 @@ rows, so an issue with nothing stale drops out of the statement at that point. I
 have already committed, which is why this is correct — but it means nothing may ever be appended
 after the `REMOVE`.
 
+### 12. A link is deleted when **either** end was seen, not both
+
+Spec §12 phase 4 step 4 deletes a `linkedTo` edge whose link id was not seen this run **and whose
+endpoints are both in the imported set**, leaving edges that touch a placeholder alone. The caution
+is understandable — do not delete a link asserted by an issue this run never looked at — and it is
+too narrow to do its job: an edge between an imported issue and a placeholder can then never be
+removed, so a link deleted in JIRA whose other end lives outside the configured projects stays in
+the graph for good.
+
+One end is enough, and JIRA's own symmetry is why: **both** issues report a link. If either end was
+imported this run and the link still existed, its id would be in the seen set. It is not, so the
+link is gone. The seen-set condition still does the work it was there for — it is what stops the
+statement deleting links between two issues this run never looked at.
+
+The narrower rule is not merely conservative, it is wrong in a way that accumulates: every link
+deleted across a project boundary is permanent.
+
+### 13. The placeholder label is removed in phase 3, not as step 5 of phase 4
+
+Spec §12 phase 4 step 5 is a pass that carries every id imported this run and removes
+`:__UNDEFINED` from the ones that were placeholders. `REMOVE i:__UNDEFINED` in phase 3's own upsert
+does the same thing for the cost of one clause, needs no list of ids, and is a no-op for an issue
+that was never a stub.
+
+What it buys beyond cheapness: a placeholder cannot outlive its own import even if phase 4 never
+runs — a cancelled run, a link phase that fails. The DOORS importer removes the same label in the
+same place, in the statement that writes the object, for exactly this reason.
+
+### 14. The mass-deletion warning is measured after the sweep, not before
+
+Spec §12 phase 5 says to warn "if the sweep **would** delete more than 20 % of existing issues".
+Measuring that beforehand means running the same match twice — once to count, once to delete —
+which doubles the most expensive statement in the phase to produce a number that changes nothing:
+the spec explicitly defers the confirm-before-delete dialog, so the warning is informational either
+way.
+
+What is built measures the count before, the deletions as they happen, and warns after. The run
+ends `SUCCEEDED_WITH_WARNINGS` and says how much went. If the confirmation dialog is ever built, the
+dry-run count arrives with it and this becomes a check rather than a report.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -209,6 +268,8 @@ after the `REMOVE`.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Eleven departures is a lot for six build steps, and most were found by writing a test rather than
-  by reading. That is the argument for §16.1's insistence that the mapper be pure and
+- Fourteen departures is a lot for seven build steps, and most were found by writing a test rather
+  than by reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
+- Points 12, 13 and 14 are all in the two phases that delete. Anyone changing the sweep should read
+  them together with `JiraImporter.sweep`'s own note on why the guard is stated twice.

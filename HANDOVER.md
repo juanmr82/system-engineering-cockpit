@@ -3,11 +3,11 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-12 (sessions 16–17) — JIRA, build-order steps 1–6
+## State as of 2026-08-12 (sessions 16–18) — JIRA, build-order steps 1–7
 
-One continuous piece of work over two sessions, on branch **`feature/jira-issues-dynamic-view`**,
-two commits so far and everything after them uncommitted. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18
-numbers the steps; **1–6 are done, and step 4's second half is not** (see below).
+One continuous piece of work over three sessions, on branch **`feature/jira-issues-dynamic-view`**.
+`docs/JIRA_ISSUES_FEATURE_SPEC.md` §18 numbers the steps; **1–7 are done, and step 4's second half
+is not** (see below). The importer now runs all six of the spec's phases end to end.
 
 | # | Change | Where |
 |---|---|---|
@@ -15,17 +15,19 @@ numbers the steps; **1–6 are done, and step 4's second half is not** (see belo
 | 2 | **The JIRA importer runs inside the backend** — the only source that does, and why | ADR 0013, `source/jira/` |
 | 3 | **Phases 0–3**: preflight, issue types, field catalogue, and issues with property removal | `JiraImporter.kt`, `JiraCypher.kt` |
 | 4 | **Two search protocols behind one contract** — Data Center pages by offset, Cloud by cursor | `JiraHttpClient.searchAll` |
-| 5 | **Eleven documented departures from the spec** | ADR 0014 — read it before "fixing" an inconsistency |
+| 5 | **Phases 4 and 5**: links, placeholders for targets outside the import, and the sweep | `JiraImporter.importLinks/sweep`, `JiraGraphWriter.writeLinks/sweep` |
+| 6 | **Fourteen documented departures from the spec** | ADR 0014 — read it before "fixing" an inconsistency |
 
 ### What is not done, and would be easy to assume is
 
 - **The import console (§13.6) does not exist.** Step 4 has two halves and only the backend half is
   built, so the SSE endpoint has no consumer outside tests. Nothing later depends on it.
-- **Phases 4 and 5 — links, unresolved placeholders, the sweep — are not written**, and the importer
-  declares only the four phases it has. Deliberate: declaring six would draw a stepper with two
-  steps that flash past. `MappedIssue` already carries `links` and `parentId` for them.
-- **Nothing deletes an issue.** An issue that leaves JIRA stays in the graph until phase 5 exists.
-  There is a test asserting that, so the absence is pinned rather than pending.
+- **Phase 6's post-import validation (§12) is not written.** The counters and the outcome are
+  recorded; the five consistency checks that would turn a bad import into `SUCCEEDED_WITH_WARNINGS`
+  are not. Note that one of the five as written is wrong: "no `JiraIssue` has both `__UNDEFINED` and
+  a `summary`" — a placeholder gets a summary from the link payload, deliberately.
+- **The `deleted` counter is real; `created` / `updated` / `unchanged` are not.** They would need a
+  per-node diff on every write, which nothing yet needs.
 - **There is no authorization anywhere** (ADR 0014 point 9). Not a JIRA gap — a whole-backend one.
 
 ### The traps this work hit, in the order they cost time
@@ -50,18 +52,43 @@ numbers the steps; **1–6 are done, and step 4's second half is not** (see belo
 6. **Cloud refuses unbounded JQL with a 400**, so a hand-run query needs a project clause. Its error
    messages come back **in the instance's own locale** — the test instance answers in Spanish.
 
+### The traps step 7 added to that list
+
+7. **The placeholder label was re-derived, wrongly, and ADR 0014 point 1 is what caught it.** A
+   JIRA-local `:__UNRESOLVED` was built, on the argument that the DOORS importer's unscoped
+   placeholder cleanup would otherwise reach JIRA nodes. The ADR had already settled it the other
+   way — one concept, one name, `Not yet imported` already in `Aliases.kt` — and the ADR wins. The
+   argument that produced the wrong answer is now **recorded in point 1** so the third derivation
+   does not happen. What did survive from it: JIRA's own placeholder cleanup matches the **pair**
+   `:JiraIssue:__UNDEFINED`, never the shared label alone, or a JIRA import would delete DOORS
+   placeholders. The live graph has 318 of them.
+8. **Two pre-existing tests failed the moment the sweep existed, and both were right to.** They
+   imported all 50 fixture issues with one project configured, so 41 of them are now correctly
+   deleted on the way out. Fixed by configuring every project in the export; one test — "phase 3
+   does not delete" — was **removed**, because with phase 5 built its claim is no longer separately
+   observable and test 7 asserts the same thing where it matters.
+9. **The fixture has no sub-tasks and no removable link**, so `MERGE_SUB_TASKS`,
+   `DELETE_STALE_SUB_TASKS` and the delete branch of `DELETE_STALE_LINKS` would have shipped never
+   having run against a database. Three tests now inject them.
+
 ### Verified this session
 
-- `mvn verify` — **BUILD SUCCESS, 299 tests, 0 failures**.
-- `mvn -Pdocker test` — **90 tests, 0 failures**, including the eight new JIRA container tests.
-- **A real import against a live JIRA Cloud instance**: 14 issue types, 59 fields, 9 issues,
-  9 projections, correct SSE framing, `SUCCEEDED` at 100%.
+- `mvn verify` — **BUILD SUCCESS, 307 tests, 0 failures**.
+- `mvn -Pdocker test` — **99 tests, 0 failures**, 17 of them in `JiraIssueImportTest`.
+- **A real import against the live JIRA Cloud instance**, all six phases: 14 issue types, 59 fields,
+  9 issues, 9 projections, 1 link (`OTS-1 -[:linkedTo {typeName:"Relates"}]-> OTS-2`), 0 deletions,
+  `SUCCEEDED` at 100 %. The 318 DOORS placeholders in the same database were untouched.
 
 ### Resume here
 
-Step 7 — phases 4 and 5 (links, unresolved, sweep) with §16.2 integration tests 4–8. The sweep is
-the highest-consequence code in the feature: it must refuse to run if phase 3 failed or was
-cancelled, because a partial `seenIds` set would delete the whole database.
+Step 8 — `GET /api/jira/issues` (§14.4) and the Issues table with the three fixed columns. Two
+things to know before starting it:
+
+- **A placeholder carries `:JiraIssue` and `:__UNDEFINED` and has no `__JiraProjection`.** Every
+  read query has to say which it means; the tests use one shared `REAL_ISSUES` fragment for exactly
+  this reason. R5's wording for it is already in `Aliases.kt` — *Not yet imported*.
+- **`__version` on a placeholder is the string `unresolved`**, which the Version column will render
+  verbatim unless the read path maps it.
 
 ---
 

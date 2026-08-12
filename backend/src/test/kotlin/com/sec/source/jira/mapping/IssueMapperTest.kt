@@ -237,7 +237,41 @@ class IssueMapperTest {
         assertEquals("https://jira/i/1", link.fromId)
         assertEquals("https://jira/i/2", link.toId)
         assertEquals("blocks", link.outward)
-        assertEquals("SCRUM-2", link.otherKey)
+        assertEquals("SCRUM-2", link.other.key)
+    }
+
+    /**
+     * The other end carries enough to stand a placeholder up without a second API call — which is
+     * the whole reason phase 4 can resolve a link into a project it has never imported (spec §9.4).
+     */
+    @Test
+    fun `the other end of a link carries what a placeholder is built from`() {
+        val mapped = mapper.map(issue(self = "https://jira/i/1", fields = LINK_OUTWARD))
+
+        assertEquals(
+            IssueRef(id = "2", key = "SCRUM-2", self = "https://jira/i/2", summary = "The other one"),
+            mapped.links.single().other,
+        )
+    }
+
+    /**
+     * A reference with no embedded `fields` is not a failure: the summary is the readable half of a
+     * placeholder, not its identity, and `""` keeps it out of the property map's null trap.
+     */
+    @Test
+    fun `a reference with no summary yields an empty one, never a null`() {
+        val mapped = mapper.map(
+            issue(
+                self = "https://jira/i/1",
+                fields = """
+                {"issuelinks":[{"id":"1","type":{"id":"10","name":"Blocks",
+                 "inward":"is blocked by","outward":"blocks"},
+                 "outwardIssue":{"id":"2","key":"SCRUM-2","self":"https://jira/i/2"}}]}
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("", mapped.links.single().other.summary)
     }
 
     /** The mirror image, and the only asymmetry in the whole function. */
@@ -277,12 +311,13 @@ class IssueMapperTest {
             issue(fields = """{"parent":{"id":"9","key":"SCRUM-1","self":"https://jira/i/9"}}"""),
         )
 
-        assertEquals("https://jira/i/9", mapped.parentId)
+        assertEquals("https://jira/i/9", mapped.parent?.self)
+        assertEquals("SCRUM-1", mapped.parent?.key)
     }
 
     @Test
     fun `an issue with no parent has none, rather than an empty string`() {
-        assertNull(mapper.map(issue(fields = "{}")).parentId)
+        assertNull(mapper.map(issue(fields = "{}")).parent)
     }
 
     // -- the catalogue is advisory --------------------------------------------------------------------
@@ -447,7 +482,8 @@ class IssueMapperTest {
         const val LINK_OUTWARD = """
             {"issuelinks":[{"id":"2484985","type":{"id":"10","name":"Blocks",
              "inward":"is blocked by","outward":"blocks"},
-             "outwardIssue":{"id":"2","key":"SCRUM-2","self":"https://jira/i/2"}}]}
+             "outwardIssue":{"id":"2","key":"SCRUM-2","self":"https://jira/i/2",
+              "fields":{"summary":"The other one"}}}]}
         """
 
         const val LINK_INWARD = """
