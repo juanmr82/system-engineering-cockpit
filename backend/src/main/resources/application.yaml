@@ -16,6 +16,52 @@ neo4j:
   readTimeoutSeconds: 10
   writeTimeoutSeconds: 30
 
+# JIRA Data Center. The one source whose importer runs in this process (ADR 0013), so its
+# connection details are the service's own rather than a Python program's.
+#
+# Both values default to empty, which is deliberate and is what "not configured" means: the backend
+# starts, every other feature works, and /api/v1/jira/** answers 503 with a reason the settings page
+# shows. That is why the trailing ":" is here and absent from the neo4j credentials above — those
+# fail at startup when unset, because a cockpit without a graph is not a cockpit.
+#
+# The host legitimately carries a context path (https://jira.example.com/jira). A trailing slash is
+# stripped at load; state the scheme.
+jira:
+  host: "$SEC_JIRA_HOST:"
+  token: "$SEC_JIRA_TOKEN:"
+  # Which product this host is, expressed as how it wants the credential. Verified against both:
+  #   bearer  JIRA Data Center / Server — a personal access token. The default and the spec's target.
+  #   basic   JIRA Cloud (*.atlassian.net) — an API token as base64(email:token). Cloud answers a
+  #           Bearer PAT with 403, so this is a configured fact, never a fallback after a rejection.
+  # `email` is required by basic and ignored by bearer.
+  auth: "$SEC_JIRA_AUTH:bearer"
+  email: "$SEC_JIRA_EMAIL:"
+  # Which product this host *is*, which decides how issues are paged and nothing else:
+  #   datacenter  /search, paged by startAt, reports a total. The default and the spec's target.
+  #   cloud       /search/jql, paged by an opaque cursor, reports no total at all. Cloud answers
+  #               /search with 410 Gone, so this is not a preference — it is which endpoint exists.
+  # Deliberately separate from `auth` even though the two usually covary: Data Center accepts basic
+  # auth too, and deriving one from the other would silently pick Cloud's search for a Server host.
+  # Preflight warns when this disagrees with what /myself looked like.
+  deployment: "$SEC_JIRA_DEPLOYMENT:datacenter"
+  # Tuning knobs, none of them user-facing. pageSize is what /search is *asked* for; the server
+  # clamps it and the importer strides by whatever the response reports (spec §3.3).
+  pageSize: 100
+  requestTimeoutMs: 120000
+  socketTimeoutMs: 60000
+  connectTimeoutMs: 15000
+  maxRetries: 5
+
+# The import framework, shared by every source (spec §11). Source-agnostic on purpose: nothing here
+# may ever say "jira" or "doors".
+#
+# One knob, because everything else about a run — the 15 s SSE heartbeat, the four-per-second
+# progress throttle, the 1 000-line log buffer — has one right answer and a knob nobody turns is a
+# knob untested at every value but its default.
+importer:
+  # Finished runs kept per importer. A history, not an audit log.
+  runHistoryLimit: 25
+
 # Sidenav structure — order is config, not graph data (CLAUDE.md §2, "Where a given piece of state lives").
 # Served read-only at GET /api/v1/config/navigation.
 navigation:

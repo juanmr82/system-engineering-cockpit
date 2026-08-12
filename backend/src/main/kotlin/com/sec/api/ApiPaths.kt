@@ -32,6 +32,35 @@ public object ApiPaths {
     public const val STATISTICS: String = "$V1/statistics"
 
     /**
+     * The JIRA integration. Everything under it needs a configured host and token — except
+     * [JIRA_HEALTH], whose entire job is to report whether they are there.
+     */
+    public const val JIRA: String = "$V1/jira"
+
+    public const val JIRA_HEALTH: String = "$JIRA/health"
+
+    /**
+     * The configured project keys (spec §10.1, §14.3).
+     *
+     * Application configuration held in the graph rather than in a file, because a user changes it
+     * during normal work — the middle row of CLAUDE.md's state table. Read and replaced whole; there
+     * is no partial update, because the user's order is part of the value.
+     */
+    public const val JIRA_SETTINGS: String = "$JIRA/settings"
+
+    /**
+     * The import framework, source-agnostic: `{importerId}` is the only place a path says which
+     * source, and it says it as a string the importer chose.
+     *
+     * Deliberately not under [JIRA] — DOORS and Windchill get the same endpoints for free, and a
+     * per-source import API would be three copies of one contract (spec §11.4).
+     */
+    public const val IMPORT: String = "$V1/import"
+
+    /** Run resources, addressed by the `run-<uuid>` this application minted. */
+    public const val IMPORT_RUNS: String = "$IMPORT/runs"
+
+    /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and
      * decoded in exactly one place by the route parameter converter.
      */

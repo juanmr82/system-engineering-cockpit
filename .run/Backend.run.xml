@@ -2,7 +2,24 @@
   <configuration default="false" name="Backend" type="MavenRunConfiguration" factoryName="Maven">
     <MavenSettings>
       <option name="myGeneralSettings" />
-      <option name="myRunnerSettings" />
+      <option name="myRunnerSettings">
+        <MavenRunnerSettings>
+          <option name="delegateBuildToMaven" value="false" />
+          <option name="environmentProperties">
+            <map>
+              <entry key="SEC_NEO4J_PASSWORD" value="admin1234" />
+              <entry key="SEC_NEO4J_USER" value="neo4j" />
+            </map>
+          </option>
+          <option name="jreName" value="#USE_PROJECT_JDK" />
+          <option name="mavenProperties">
+            <map />
+          </option>
+          <option name="passParentEnv" value="true" />
+          <option name="skipTests" value="false" />
+          <option name="vmOptions" value="" />
+        </MavenRunnerSettings>
+      </option>
       <option name="myRunnerParameters">
         <MavenRunnerParameters>
           <option name="cmdOptions" />
@@ -15,6 +32,7 @@
               <option value="exec:java" />
             </list>
           </option>
+          <option name="multimoduleDir" />
           <option name="pomFileName" value="backend/pom.xml" />
           <option name="profilesMap">
             <map />

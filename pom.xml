@@ -125,6 +125,54 @@
         <scope>test</scope>
       </dependency>
 
+      <!--
+        The live progress feed for an import run (docs/JIRA_ISSUES_FEATURE_SPEC.md section 11.4).
+        One-way server-to-client, which is what SSE is for and what makes a WebSocket the heavier
+        answer to a lighter question.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-sse-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+
+      <!--
+        The outbound half of Ktor, for the JIRA REST client. This is the first source whose
+        importer runs inside the backend (ADR 0013), so it is the first time this service is an
+        HTTP *client* as well as a server.
+
+        OkHttp rather than CIO for its connection pool: a `fields=*all` page is multi-megabyte
+        and an import is sixteen of them back to back (spec section 15).
+
+        Deliberately WITHOUT ktor-client-content-negotiation, which the spec assumes. The client
+        reads each body as text and decodes it explicitly, because the failure being guarded
+        against is a host that is not JIRA - an SSO portal answering 200 text/html - and content
+        negotiation reports that as a transformation error about a content type rather than as
+        "this endpoint returned something it does not return". Retry and timeout need no artifact:
+        they live in ktor-client-core, which the engine brings transitively.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-okhttp-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-logging-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <!--
+        Serves the sample exports in docs/ as if they were JIRA, so the client's paging, retry and
+        error handling are tested without a network (spec section 16.1). Test scope: a MockEngine
+        on a production classpath is a way to accidentally ship a stub.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-client-mock-jvm</artifactId>
+        <version>${ktor.version}</version>
+        <scope>test</scope>
+      </dependency>
+
       <!-- Graph -->
       <dependency>
         <groupId>org.neo4j.driver</groupId>
