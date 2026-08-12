@@ -3,6 +3,81 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-12 (session 19) — JIRA build-order step 8, the Issues table
+
+Branch **`feature/jira-issues-table`**, one commit. `docs/JIRA_ISSUES_FEATURE_SPEC.md` §18
+numbers the steps; **1–8 are done**, with step 4's second half (the import console) still not.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`GET /api/v1/jira/issues`** — server-side paging, search and sort, with `ref` and `browseUrl` derived on read | `JiraIssuesProjection.kt`, `JiraCypher` |
+| 2 | **`__sortKey` for issues and placeholders** — nine digits, not DOORS's six | `mapping/IssueMapper.kt`, `JiraGraphWriter.placeholderRow` |
+| 3 | **The Issues table**, three fixed columns: type, key, link out | `features/jira/issues/` |
+| 4 | **`settleGrid`** — waits for the grid's DOM to stop changing, instead of two fixed frames | `core/grid/grid-testing.ts` |
+
+### What is not done, and would be easy to assume is
+
+- **There is still no JIRA settings UI and no import console.** The backend has had both
+  endpoints since step 4 — `GET`/`PUT /api/v1/jira/settings` for the project keys and JQL preview,
+  and `POST /api/v1/import/jira/runs` with its SSE feed — but nothing in the application calls
+  them, so today an import is started with `curl`. That is §13.5 and §13.6, build-order steps 10
+  and 11, and it is the gap a user hits first.
+- **Every configurable column is still empty.** `fieldIds`, `columns` and `values` run end to end
+  and the route never passes any: the picker and `__JiraColumnConfig` are step 9. `SortField`
+  therefore offers exactly one column, `key`.
+- **The issue type is a name, not an icon.** The icon proxy (§9.1) does not exist, and an `<img>`
+  to JIRA's own `iconUrl` would send the browser to a host it cannot authenticate against.
+- **No detail drawer** (§13.2, last bullet) and **no deep link from the empty state** to
+  `/settings/jira`, because that page does not exist yet.
+
+### The traps this step hit, in the order they cost time
+
+1. **`httpResource` drops its value the moment a new request starts.** Reading it directly means
+   the whole view re-renders from nothing on every keystroke — including the search box that
+   started the request, which is destroyed and re-created a quarter of a second after the user
+   typed, taking the focus and the caret with it. This is trap 7 of session 14 ("a component inside
+   an `@if` on a resource unmounts while that resource reloads") arriving through a different door,
+   and it was **reported from the running app, not by the suite**. The fix is a `linkedSignal` that
+   latches the last page; the regression test asserts the input's *identity*, because a re-created
+   input looks identical and behaves nothing like the same one.
+2. **In a spec, a debounced signal's timer does not start until the next change detection.** This
+   TestBed has no auto-detection, so `dispatchEvent` then `await 300ms` measures the wait from
+   whenever the next `detectChanges()` happens — the request is still unsent when the assertion
+   runs, and the spec times out instead of failing. One `fixture.detectChanges()` between the event
+   and the wait is the whole fix.
+3. **`settle()` must never be called while a request is in flight** — the same `whenStable()` trap
+   as session 14's item 15, met twice here: once after the debounce fires and once after a
+   paginator click. Both now call `detectChanges()` and assert the request instead.
+4. **`flushGridFrames()`'s two frames are not enough for a row with a cell renderer.** The fifth
+   row was drawn some runs and not others, so a spec passed alone and failed in the suite.
+   `settleGrid` waits for two consecutive identical readings instead of a fixed duration.
+5. **Data imported before `__sortKey` existed sorts arbitrarily**, because `coalesce(…, '')` makes
+   every row equal. Nothing warns; the table simply comes back in storage order. A re-import fixes
+   it, and this is the general shape of every Tier-1 derivation added after an import has run.
+
+### Verified this session
+
+- `mvn test` green; `mvn -Pdocker test -Dtest=JiraIssuesReadTest` — **14 tests, 0 failures**.
+- `npm run lint` clean, **209 frontend specs**, `npm run build` green.
+- **A real import against the live JIRA Cloud instance** (9 issues, 59 fields, 14 issue types, 1
+  link, 0 deletions, `SUCCEEDED`), then the table **in the browser**: JIRA's own order, reversed on
+  a second header click, `scrum` narrowing to 6, `scrumzzz` giving the no-match sentence with the
+  term kept in the box, and all five characters of a search landing in one box that never lost
+  focus.
+
+### Resume here
+
+**Step 9 — column config**: `__JiraColumnConfig` (§10.2), the picker dialog (§13.3), stale columns
+(§13.4). The read path already takes `fieldIds` and returns `columns`; what is missing is the
+persisted set, the `GET`/`PUT /api/v1/jira/columns` pair, and the dialog.
+
+**But consider steps 10 and 11 first.** Nothing in the UI can configure the JIRA projects or start
+an import, so today a user cannot get data into the table without `curl`, and the picker has
+nothing to pick from until they can. The build order puts columns first; the running application
+argues for settings first.
+
+---
+
 ## State as of 2026-08-12 (sessions 16–18) — JIRA, build-order steps 1–7
 
 One continuous piece of work over three sessions, on branch **`feature/jira-issues-dynamic-view`**.
