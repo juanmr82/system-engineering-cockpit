@@ -77,7 +77,9 @@ export class ReviewSettingsDialog {
   static open(dialog: MatDialog, data: ReviewSettingsDialogData) {
     return dialog.open<ReviewSettingsDialog, ReviewSettingsDialogData, boolean>(ReviewSettingsDialog, {
       ...SEC_MODAL_DIALOG,
-      width: '880px',
+      // Wide enough for four flag columns and still leave the attribute name room to be read: the
+      // flag columns are a fixed width each, so every one added comes straight out of the name.
+      width: '1040px',
       maxWidth: '94vw',
       // Tall on purpose: this dialog's content is a list of up to ~80 rows, and the height is the
       // only thing that decides how much of it a reviewer can see at once.

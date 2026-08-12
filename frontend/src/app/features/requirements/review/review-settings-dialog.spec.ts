@@ -117,6 +117,24 @@ describe('ReviewSettingsDialog', () => {
     expect(element().querySelectorAll('.sec-attr-settings__head').length).toBe(1);
   });
 
+  /**
+   * The header and the rows must be laid out by the same box, which is the only way their columns
+   * are the same width.
+   *
+   * Asserted structurally because it cannot be asserted visually: jsdom has no layout, so the
+   * symptom — every checkbox sitting one scrollbar's width to the left of the words above it, the
+   * header having been measured against the well and the rows against the well minus its scrollbar
+   * — is invisible to this suite and was found by measuring the real page. What a spec *can* hold
+   * is the arrangement that makes the bug impossible.
+   */
+  it('lays the header out inside the scrolling panel, not above it', () => {
+    const scroll = element().querySelector('.sec-attr-settings__scroll');
+    const head = element().querySelector('.sec-attr-settings__head');
+
+    expect(scroll).not.toBeNull();
+    expect(scroll?.contains(head ?? null)).toBe(true);
+  });
+
   it('searches attribute names case- and accent-insensitively', async () => {
     await search('prioritat');
 
