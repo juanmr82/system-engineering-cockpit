@@ -226,7 +226,10 @@ export class JiraColumnsDialog {
     return dialog.open<JiraColumnsDialog, undefined, boolean>(JiraColumnsDialog, {
       ...SEC_MODAL_DIALOG,
       width: '900px',
-      height: '640px',
+      // A viewport unit rather than a fixed height, for the reason the two settings dialogs give:
+      // the left pane is a list of 1 171 rows and the height is the only thing deciding how much
+      // of it a person sees at once.
+      height: '88vh',
     });
   }
 }

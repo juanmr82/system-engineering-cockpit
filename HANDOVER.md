@@ -54,6 +54,11 @@ start an import, a column picker had nothing to pick from. Session 19 started it
 5. **jsdom has no `EventSource`**, so anything touching the store needs a fake — `new EventSource()`
    is a `ReferenceError` otherwise. `import-run-store.spec.ts` carries one, and it is what makes the
    event half of the store testable at all.
+6. **Material caps a dialog at 560px, and that beats the `width` you ask for.** A dialog opened with
+   `width: '900px'` renders at 560 with its content clipped and says nothing. The two settings
+   dialogs escape it with their own `maxWidth: '94vw'`, which is why nobody had met it; the escape
+   is now in `SEC_MODAL_DIALOG` so the next dialog does not rediscover it. Found by looking at the
+   picker on screen — every spec passed, because jsdom has no layout.
 
 ### Verified this session
 

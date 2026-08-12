@@ -346,6 +346,12 @@ value on the projection *alone*, which no import produces, so it passed under ei
 writes the value both ways, as the importer does. This is the fourth departure found by a live run
 rather than by the suite, and every one of them has been a fixture that was simpler than reality.
 
+Two more of this session's defects were found the same way and are not departures from the spec at
+all, so they are recorded here only as a pattern: the console sat on *Running* after an import
+finished, and the picker rendered at Material's default 560px with its content clipped. Neither is
+visible to a test — the first needs a run that ends while being watched, the second needs layout,
+and jsdom has none.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
