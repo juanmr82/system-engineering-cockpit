@@ -1,0 +1,26 @@
+@use 'mixins' as sec;
+
+.sec-jira-value {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  // Values are read down a column, so numbers must not jitter between rows (CLAUDE.md §8).
+  font-variant-numeric: tabular-nums;
+}
+
+// Absence is non-content ink, upright — never italic (§8).
+.sec-jira-value--empty {
+  color: var(--sec-ink-3);
+}
+
+.sec-jira-value__chip {
+  @include sec.outline-chip;
+
+  text-transform: none;
+}
+
+.sec-jira-value__more {
+  font-size: var(--sec-text-label);
+  color: var(--sec-ink-3);
+}

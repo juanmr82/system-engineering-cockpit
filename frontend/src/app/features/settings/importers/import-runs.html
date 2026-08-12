@@ -1,0 +1,164 @@
+<div class="sec-import-runs">
+  <header class="sec-import-runs__header">
+    <p class="sec-import-runs__eyebrow">Settings</p>
+    <h1 class="sec-import-runs__title">Importers and runs</h1>
+  </header>
+
+  @if (error(); as message) {
+    <p class="sec-import-runs__error" role="alert">{{ message }}</p>
+  }
+
+  <!-- Every registered importer. Nothing here is JIRA-specific: the list, the names and the
+       phases all come from whatever the server declared (spec §11). -->
+  <section class="sec-import-runs__sheet">
+    <h2 class="sec-import-runs__section">Importers</h2>
+
+    @if (loading() && importers().length === 0) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (importers().length === 0) {
+      <p class="sec-import-runs__absent">This server has no importers registered.</p>
+    } @else {
+      <ul class="sec-import-runs__importers">
+        @for (importer of importers(); track importer.importerId) {
+          <li class="sec-import-runs__importer">
+            <span class="sec-import-runs__importer-name">{{ importer.name }}</span>
+            <span class="sec-import-runs__phase-count">
+              {{ importer.phases.length }} phases
+            </span>
+            <span class="sec-import-runs__spacer"></span>
+
+            @if (importer.activeRunId) {
+              <button mat-stroked-button type="button" (click)="open(importer.activeRunId)">
+                Running — show
+              </button>
+            } @else {
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="starting() !== null || isRunning()"
+                (click)="start(importer.importerId)"
+              >
+                Run import
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <!-- The run being watched. -->
+  @if (run(); as current) {
+    <section class="sec-import-runs__sheet">
+      <div class="sec-import-runs__run-head">
+        <h2 class="sec-import-runs__section">{{ current.importerId }} — {{ current.status }}</h2>
+        <span class="sec-import-runs__spacer"></span>
+
+        @if (isRunning()) {
+          <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
+        }
+      </div>
+
+      <!-- Running with no stream is the one state worth naming: the numbers below have stopped
+           moving for a reason that is not the import. -->
+      @if (isRunning() && !connected()) {
+        <p class="sec-import-runs__warning" role="status">
+          The live connection dropped. Reconnecting — the import itself is unaffected.
+        </p>
+      }
+
+      <mat-progress-bar
+        [mode]="isRunning() && current.percent === null ? 'indeterminate' : 'determinate'"
+        [value]="current.percent ?? 0"
+      />
+
+      <ol class="sec-import-runs__steps">
+        @for (step of steps(); track step.id) {
+          <li
+            class="sec-import-runs__step"
+            [class.sec-import-runs__step--done]="step.state === 'done'"
+            [class.sec-import-runs__step--current]="step.state === 'current'"
+          >
+            {{ step.label }}
+            @if (step.state === 'current' && current.total > 0) {
+              <span class="sec-import-runs__of">{{ current.current }} / {{ current.total }}</span>
+            }
+          </li>
+        }
+      </ol>
+
+      @if (current.error; as failure) {
+        <p class="sec-import-runs__error" role="alert">{{ failure }}</p>
+      }
+
+      @if (counters().length > 0) {
+        <ul class="sec-import-runs__counters">
+          @for (counter of counters(); track counter.key) {
+            <li><b>{{ counter.value }}</b> {{ counter.label }}</li>
+          }
+        </ul>
+      }
+
+      @if (current.warnings.length > 0) {
+        <h3 class="sec-import-runs__subsection">Warnings</h3>
+        <ul class="sec-import-runs__warnings">
+          @for (warning of current.warnings; track warning) {
+            <li>{{ warning }}</li>
+          }
+        </ul>
+      }
+
+      <h3 class="sec-import-runs__subsection">Log</h3>
+      @if (logs().length === 0) {
+        <!-- The log lives only in the running process, so a finished run's is empty rather than
+             lost. Saying so is what stops it reading as a run that logged nothing. -->
+        <p class="sec-import-runs__absent">
+          No live log. A run's log is kept only while it is running.
+        </p>
+      } @else {
+        <div class="sec-import-runs__log">
+          @for (line of logs(); track $index) {
+            <p class="sec-import-runs__log-line">
+              <span class="sec-import-runs__log-level">{{ line.level }}</span>
+              {{ line.message }}
+            </p>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  <!-- History. -->
+  <section class="sec-import-runs__sheet">
+    <h2 class="sec-import-runs__section">Previous runs</h2>
+
+    @if (history().length === 0) {
+      <p class="sec-import-runs__absent">No import has been run on this server yet.</p>
+    } @else {
+      <table class="sec-import-runs__table">
+        <thead>
+          <tr>
+            <th scope="col">Importer</th>
+            <th scope="col">Outcome</th>
+            <th scope="col">Started</th>
+            <th scope="col">Took</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (previous of history(); track previous.runId) {
+            <tr>
+              <td>{{ previous.importerId }}</td>
+              <td>{{ previous.status }}</td>
+              <td>{{ previous.startedAt }}</td>
+              <td>{{ duration(previous) }}</td>
+              <td>
+                <button mat-button type="button" (click)="open(previous.runId)">Show</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+</div>

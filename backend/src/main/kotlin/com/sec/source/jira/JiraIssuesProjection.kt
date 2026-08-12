@@ -47,9 +47,9 @@ public class JiraIssuesProjection(
     /**
      * One page of the issues table.
      *
-     * [fieldIds] is the configured column set, which is empty until the column picker exists — the
-     * query still asks for it, because "which properties does this row carry" is the one part of
-     * this endpoint that cannot be added later without changing its shape.
+     * [columns] is the configured column set, resolved by the caller from the stored field ids and
+     * the field catalogue. It travels back out with the rows rather than being fetched separately,
+     * which is what stops a table drawing last request's headers over this request's cells.
      *
      * The count runs on its own connection-level read after the page rather than around it. Two
      * reads can disagree if an import commits between them, and the honest handling of that is a
@@ -62,8 +62,13 @@ public class JiraIssuesProjection(
         direction: SortDirection,
         query: String? = null,
         projectKeys: List<String>? = null,
-        fieldIds: List<String> = emptyList(),
+        columns: List<JiraColumnDto> = emptyList(),
     ): JiraIssuesPageDto {
+        // A stale column has no property to read — the field is gone from JIRA, and asking for it
+        // would return nulls that look like empty values rather than like a column that cannot be
+        // filled. It is still returned as a column, with its cells empty, which is the difference
+        // between "we cannot show this" and "this is blank" (spec §13.4).
+        val fieldIds = columns.filterNot { it.stale }.map { it.fieldId }
         val filters = mapOf(
             // Lower-cased once here rather than in the statement: `toLower($q)` on every row is
             // 784 conversions of a value that did not change.
@@ -96,7 +101,7 @@ public class JiraIssuesProjection(
             page = page,
             size = size,
             total = total,
-            columns = fieldIds.map { JiraColumnDto(fieldId = it, name = it, sortable = true) },
+            columns = columns,
             rows = rows,
         )
     }
@@ -134,9 +139,8 @@ public class JiraIssuesProjection(
      * Cypher. Nothing user-supplied is ever put in [property]: the route resolves a query parameter
      * to one of these or answers 400 (spec §14.4, `INVALID_SORT_FIELD`).
      *
-     * The field-id columns join this the moment the column picker does. They will be validated
-     * against the configured set, which is why this is a type with a [property] rather than an enum
-     * of everything sortable.
+     * A type with a [property] rather than an enum, because the sortable set is not known at
+     * compile time: it is the configured columns, which differ per deployment and per user.
      */
     public class SortField private constructor(public val id: String, internal val property: String) {
         public companion object {
@@ -150,11 +154,22 @@ public class JiraIssuesProjection(
              */
             public val KEY: SortField = SortField(id = "key", property = com.sec.domain.Prop.SORT_KEY)
 
-            /** Resolve a client's `sort` parameter, or null if it names nothing this offers. */
-            public fun of(id: String?): SortField? = when (id) {
-                null, "", KEY.id -> KEY
-                else -> null
-            }
+            /**
+             * Resolve a client's `sort` parameter against the columns this request actually has.
+             *
+             * A configured column sorts by its own field id, which reaches Cypher as a dynamic
+             * property key — so the id is only ever one the *server* put in [columns], never the
+             * string that arrived. An unknown, stale or unsortable column is null here and a 400 at
+             * the route, deliberately rather than a silent fall back to the default: a table that
+             * ignored the header a user clicked is a table that looks broken (spec §13.2).
+             */
+            public fun of(id: String?, columns: List<JiraColumnDto> = emptyList()): SortField? =
+                when (id) {
+                    null, "", KEY.id -> KEY
+                    else -> columns
+                        .firstOrNull { it.fieldId == id && it.sortable && !it.stale }
+                        ?.let { SortField(id = it.fieldId, property = it.fieldId) }
+                }
         }
     }
 

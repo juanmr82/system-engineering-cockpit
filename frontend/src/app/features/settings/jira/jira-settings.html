@@ -1,0 +1,180 @@
+<div class="sec-jira-settings">
+  <header class="sec-jira-settings__header">
+    <p class="sec-jira-settings__eyebrow">Settings</p>
+    <h1 class="sec-jira-settings__title">JIRA</h1>
+  </header>
+
+  @if (error(); as message) {
+    <p class="sec-jira-settings__error" role="alert">{{ message }}</p>
+  }
+
+  <!-- 1. Connection. The token is never shown, never editable, and never sent to the browser. -->
+  <section class="sec-jira-settings__sheet">
+    <h2 class="sec-jira-settings__section">Connection</h2>
+
+    @if (health.isLoading()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (health.hasValue()) {
+      <dl class="sec-jira-settings__facts">
+        <dt>Host</dt>
+        <dd>{{ health.value().host || 'Not configured' }}</dd>
+
+        <dt>Status</dt>
+        <dd
+          [class.sec-jira-settings__ok]="health.value().reachable"
+          [class.sec-jira-settings__bad]="!health.value().reachable"
+        >
+          {{ health.value().message }}
+        </dd>
+
+        @if (health.value().user; as user) {
+          <dt>Signed in as</dt>
+          <dd>{{ user }}</dd>
+        }
+      </dl>
+    } @else {
+      <p class="sec-jira-settings__absent">Could not ask the server about JIRA.</p>
+    }
+
+    <button mat-stroked-button type="button" (click)="testConnection()">Test connection</button>
+  </section>
+
+  <!-- 2. Projects in the query. -->
+  <section class="sec-jira-settings__sheet">
+    <h2 class="sec-jira-settings__section">Projects in the query</h2>
+    <p class="sec-jira-settings__hint">
+      An import brings in the issues of these projects, and only these. Every change is saved
+      immediately.
+    </p>
+
+    @if (projectKeys().length === 0) {
+      <p class="sec-jira-settings__absent">
+        No projects chosen yet. An import is never run across a whole JIRA instance, so nothing
+        will be imported until one is added.
+      </p>
+    } @else {
+      <mat-chip-set aria-label="Configured projects">
+        @for (key of projectKeys(); track key) {
+          <mat-chip [disabled]="saving()">
+            {{ key }}
+            <button
+              matChipRemove
+              type="button"
+              [attr.aria-label]="'Remove ' + key"
+              (click)="removeProject(key)"
+            >
+              <mat-icon svgIcon="close" />
+            </button>
+          </mat-chip>
+        }
+      </mat-chip-set>
+    }
+
+    @if (removed(); as key) {
+      <p class="sec-jira-settings__warning" role="status">
+        Issues from {{ key }} will be deleted from the cockpit on the next import. Re-add the key
+        at any time to import them again.
+      </p>
+    }
+
+    @if (projects.hasValue()) {
+      <mat-form-field appearance="outline" class="sec-jira-settings__add" subscriptSizing="dynamic">
+        <mat-label>Add a project</mat-label>
+        <mat-select
+          [disabled]="saving() || addable().length === 0"
+          (selectionChange)="addProject($event.value)"
+        >
+          @for (project of addable(); track project.key) {
+            <mat-option [value]="project.key">{{ project.key }} — {{ project.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    } @else if (projects.isLoading()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else {
+      <!-- A host that cannot be reached cannot list its projects. The configured keys are ours and
+           stay editable, which is what lets an operator fix a key that is wrong. -->
+      <p class="sec-jira-settings__absent">
+        The project list could not be loaded from JIRA, so no new project can be added right now.
+      </p>
+    }
+
+    <h3 class="sec-jira-settings__subsection">The query this produces</h3>
+    @if (jql(); as query) {
+      <p class="sec-jira-settings__jql">{{ query }}</p>
+    } @else {
+      <p class="sec-jira-settings__absent">
+        No query yet — it needs at least one project.
+      </p>
+    }
+  </section>
+
+  <!-- 3. Columns. -->
+  <section class="sec-jira-settings__sheet">
+    <h2 class="sec-jira-settings__section">Columns</h2>
+    <p class="sec-jira-settings__hint">
+      Which fields the Issues table shows, besides the type, the key and the link to JIRA.
+    </p>
+
+    @if (columnSummary().length === 0) {
+      <p class="sec-jira-settings__absent">No fields selected.</p>
+    } @else {
+      <p class="sec-jira-settings__columns">{{ columnSummary().join(', ') }}</p>
+    }
+
+    <button mat-stroked-button type="button" (click)="openColumns()">
+      Select fields to display
+    </button>
+  </section>
+
+  <!-- 4. Import. -->
+  <section class="sec-jira-settings__sheet">
+    <h2 class="sec-jira-settings__section">Import</h2>
+
+    @if (activeRun(); as run) {
+      <p class="sec-jira-settings__running">
+        Importing — {{ run.phase ?? 'starting' }}@if (run.percent !== null) {, {{ run.percent }}%}
+      </p>
+      <mat-progress-bar
+        [mode]="run.percent === null ? 'indeterminate' : 'determinate'"
+        [value]="run.percent ?? 0"
+      />
+    } @else {
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="!canImport()"
+        [matTooltip]="
+          projectKeys().length === 0 ? 'Choose at least one project first' : 'Import JIRA issues'
+        "
+        (click)="runImport()"
+      >
+        Import JIRA issues
+      </button>
+    }
+
+    @if (lastRun(); as run) {
+      <h3 class="sec-jira-settings__subsection">Last run</h3>
+      <dl class="sec-jira-settings__facts">
+        <dt>Outcome</dt>
+        <dd>{{ run.status }}</dd>
+        <dt>Started</dt>
+        <dd>{{ run.startedAt }}</dd>
+        @if (run.finishedAt; as finished) {
+          <dt>Finished</dt>
+          <dd>{{ finished }}</dd>
+        }
+      </dl>
+
+      <ul class="sec-jira-settings__counters">
+        @for (counter of counterEntries(run); track counter.key) {
+          <li><b>{{ counter.value }}</b> {{ counter.label }}</li>
+        }
+      </ul>
+    } @else {
+      <p class="sec-jira-settings__absent">No import has been run on this server yet.</p>
+    }
+
+    <a routerLink="/settings/importers" class="sec-jira-settings__link">View details</a>
+  </section>
+</div>

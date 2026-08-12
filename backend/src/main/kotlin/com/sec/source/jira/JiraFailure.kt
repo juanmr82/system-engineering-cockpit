@@ -74,6 +74,17 @@ public sealed class JiraFailure(
     )
 
     /**
+     * A chosen column names something that is not a JIRA field id.
+     *
+     * The second injection boundary of this feature, and the sharper one: a field id becomes a
+     * Cypher **property key** through dynamic access, where a project key only becomes JQL text.
+     * The bad ones are named, because the picker has to say which entry to drop.
+     */
+    public class InvalidFieldId(public val fieldIds: List<String>) : JiraFailure(
+        "Not valid JIRA field ids: ${fieldIds.joinToString(", ")}",
+    )
+
+    /**
      * The paging loop ran further than any real result set could justify.
      *
      * A server that keeps answering with a full page and a `startAt` it ignores would otherwise

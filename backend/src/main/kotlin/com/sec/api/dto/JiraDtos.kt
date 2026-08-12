@@ -88,9 +88,52 @@ public data class JiraIssuesPageDto(
 public data class JiraColumnDto(
     public val fieldId: String,
     public val name: String,
+    /** JIRA's declared type, for the picker's chip and for the client's rendering choice. */
+    public val schemaType: String? = null,
     public val sortable: Boolean = true,
     /** True when the field is no longer in the catalogue. The column still renders, empty (§13.4). */
     public val stale: Boolean = false,
+)
+
+/**
+ * One offerable field, for the "Select fields to display" dialog (spec §13.3).
+ *
+ * [ambiguousName] is not a property of the field — it is a property of the *catalogue*: fifteen
+ * names cover thirty-three fields on the reference instance, and a dialog listing three rows called
+ * "Classification" is asking a user to choose between things it has not distinguished. The server
+ * computes it because only the server sees the whole list at once; the client appends the id.
+ *
+ * A field with no schema never appears here at all. `issuekey` duplicates the fixed Key column and
+ * `thumbnail` is not a data field, and neither can be rendered as a column.
+ */
+@Serializable
+public data class JiraFieldDto(
+    public val fieldId: String,
+    public val name: String,
+    /** `true` for `customfield_*`. The dialog's System / Custom filter, and nothing more. */
+    public val custom: Boolean = false,
+    public val schemaType: String? = null,
+    /** The element type of an `array` field — `string`, `option`, `user`. */
+    public val schemaItems: String? = null,
+    public val ambiguousName: Boolean = false,
+)
+
+/** What the picker saves: the optional columns, in the order they are to be shown. */
+@Serializable
+public data class JiraColumnsRequest(public val fieldIds: List<String> = emptyList())
+
+/**
+ * A JIRA project as the settings page offers it (spec §13.5).
+ *
+ * Fetched live from JIRA on every read and **never stored** — the configured *keys* are the
+ * application's data, and the list of what exists is JIRA's. A project deleted there simply stops
+ * appearing here, and a configured key that no longer matches one is shown as a stale chip rather
+ * than quietly dropped.
+ */
+@Serializable
+public data class JiraProjectDto(
+    public val key: String,
+    public val name: String,
 )
 
 /**

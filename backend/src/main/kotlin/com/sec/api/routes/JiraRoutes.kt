@@ -2,12 +2,16 @@ package com.sec.api.routes
 
 import com.sec.api.ApiPaths
 import com.sec.api.ProblemType
+import com.sec.api.dto.JiraColumnsRequest
 import com.sec.api.dto.JiraHealthDto
+import com.sec.api.dto.JiraProjectDto
 import com.sec.api.dto.JiraProjectSettingsDto
 import com.sec.api.dto.JiraProjectSettingsRequest
 import com.sec.api.respondProblem
 import com.sec.config.JiraSettings
+import com.sec.source.jira.JiraColumnStore
 import com.sec.source.jira.JiraFailure
+import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraJql
@@ -38,7 +42,22 @@ public fun Route.jiraRoutes(
     client: JiraHttpClient?,
     settingsStore: JiraSettingsStore,
     issuesProjection: JiraIssuesProjection,
+    columnStore: JiraColumnStore,
+    fieldsProjection: JiraFieldsProjection,
 ) {
+    /**
+     * The configured columns, resolved against the catalogue.
+     *
+     * One helper because three routes need the same answer and it has three steps that must stay
+     * in this order: the stored ids, or the defaults when nothing has ever been chosen; then their
+     * names and types; then, for the table, a sort field validated against *those* columns.
+     *
+     * Null from the store and an empty list are different answers and are kept apart all the way
+     * down: nobody has chosen yet, versus somebody chose to show nothing (spec §13.3).
+     */
+    suspend fun configuredColumns() =
+        fieldsProjection.describe(columnStore.fieldIds() ?: JiraColumnStore.DEFAULTS)
+
     /**
      * The Issues table (spec §14.4).
      *
@@ -60,7 +79,9 @@ public fun Route.jiraRoutes(
             ?.coerceAtMost(JiraIssuesProjection.MAX_SIZE)
             ?: return@get call.respondBadPaging()
 
-        val sort = JiraIssuesProjection.SortField.of(call.request.queryParameters["sort"])
+        val columns = configuredColumns()
+
+        val sort = JiraIssuesProjection.SortField.of(call.request.queryParameters["sort"], columns)
             ?: return@get call.respondProblem(
                 HttpStatusCode.BadRequest,
                 "Cannot sort by that",
@@ -85,7 +106,79 @@ public fun Route.jiraRoutes(
                 // Repeatable rather than comma-separated: a project key cannot contain a comma, but
                 // a splitter that assumes so is one more rule the client has to know.
                 projectKeys = call.request.queryParameters.getAll("projectKey"),
+                columns = columns,
             ),
+        )
+    }
+
+    /**
+     * The catalogue the picker chooses from (spec §13.3).
+     *
+     * Not guarded by [requireConfigured], for the same reason the table is not: these field
+     * definitions are in our graph, and a deployment whose token expired can still change which of
+     * them it shows. It is empty until an import has run, which the dialog reports as its own
+     * state rather than as an error.
+     */
+    get(ApiPaths.JIRA_FIELDS) {
+        call.respond(fieldsProjection.list())
+    }
+
+    get(ApiPaths.JIRA_COLUMNS) {
+        call.respond(configuredColumns())
+    }
+
+    /** What *Reset to defaults* resets to, resolved against the catalogue like any other set. */
+    get(ApiPaths.JIRA_COLUMN_DEFAULTS) {
+        call.respond(fieldsProjection.describe(JiraColumnStore.DEFAULTS))
+    }
+
+    /**
+     * Replace the chosen columns.
+     *
+     * The response is the *resolved* set, not the ids that were sent, so the dialog closes on what
+     * the table will actually draw — including a column that is already stale, which a client
+     * cannot know about on its own.
+     */
+    put(ApiPaths.JIRA_COLUMNS) {
+        val request = call.receive<JiraColumnsRequest>()
+
+        columnStore.saveFieldIds(request.fieldIds, updatedBy = CurrentUser.PLACEHOLDER).fold(
+            onSuccess = { saved -> call.respond(fieldsProjection.describe(saved)) },
+            onFailure = { cause ->
+                call.respondProblem(
+                    HttpStatusCode.BadRequest,
+                    "Those columns cannot be used",
+                    humanReason(cause),
+                    ProblemType.VALIDATION,
+                )
+            },
+        )
+    }
+
+    /**
+     * The projects this JIRA offers, for the settings page's picker.
+     *
+     * The one route here that reaches JIRA on every call, so it is the one that needs
+     * [requireConfigured]: without a host there is nothing to ask. Only the key and the name cross
+     * the wire — the rest of `/project` is avatars and URLs the settings page has no use for, and
+     * a proxy that forwards everything is a proxy that forwards whatever JIRA adds next.
+     */
+    get(ApiPaths.JIRA_PROJECTS) {
+        if (!call.requireConfigured(settings, client) || client == null) return@get
+
+        client.projects().fold(
+            onSuccess = { projects ->
+                call.respond(projects.map { JiraProjectDto(key = it.key, name = it.name) })
+            },
+            onFailure = { cause ->
+                logger.warn(cause) { "Could not list JIRA projects" }
+                call.respondProblem(
+                    HttpStatusCode.BadGateway,
+                    "Could not reach JIRA",
+                    humanReason(cause),
+                    ProblemType.JIRA_UNREACHABLE,
+                )
+            },
         )
     }
 
@@ -246,6 +339,10 @@ private fun humanReason(cause: Throwable): String = when (cause) {
     is JiraFailure.InvalidProjectKey ->
         "These are not usable project keys: ${cause.keys.joinToString(", ")}. A key starts with a " +
             "letter and contains only letters, digits and underscores."
+    // The same shape of message, and a stricter boundary: a field id becomes a property key.
+    is JiraFailure.InvalidFieldId ->
+        "These are not JIRA field ids: ${cause.fieldIds.joinToString(", ")}. An id looks like " +
+            "'summary' or 'customfield_18201'."
     else ->
         "JIRA did not answer. Check that the host is reachable from this server."
 }

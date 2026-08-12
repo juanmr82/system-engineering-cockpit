@@ -1,0 +1,151 @@
+<h2 mat-dialog-title>Select fields to display</h2>
+
+<mat-dialog-content class="sec-columns">
+  @if (isLoading()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (error(); as message) {
+    <p class="sec-columns__error" role="alert">{{ message }}</p>
+  }
+
+  @if (!isLoading() && totalFields() === 0) {
+    <p class="sec-columns__empty">
+      No JIRA fields have been imported yet, so there is nothing to choose from. Run an import
+      first.
+    </p>
+  } @else {
+    <div class="sec-columns__panes">
+      <!-- Choosing. -->
+      <section class="sec-columns__pane" aria-labelledby="sec-columns-catalogue">
+        <h3 id="sec-columns-catalogue" class="sec-columns__pane-title">Available fields</h3>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <input
+            matInput
+            type="text"
+            placeholder="Search by name or id"
+            aria-label="Search fields"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+          />
+        </mat-form-field>
+
+        <div class="sec-columns__filters">
+          <mat-chip-listbox aria-label="Filter fields">
+            <mat-chip-option
+              [selected]="sourceFilter() === 'all'"
+              (click)="sourceFilter.set('all')"
+              >All</mat-chip-option
+            >
+            <mat-chip-option
+              [selected]="sourceFilter() === 'system'"
+              (click)="sourceFilter.set('system')"
+              >System</mat-chip-option
+            >
+            <mat-chip-option
+              [selected]="sourceFilter() === 'custom'"
+              (click)="sourceFilter.set('custom')"
+              >Custom</mat-chip-option
+            >
+          </mat-chip-listbox>
+
+          <mat-checkbox [checked]="selectedOnly()" (change)="selectedOnly.set($event.checked)">
+            Selected only
+          </mat-checkbox>
+        </div>
+
+        <p class="sec-columns__count">
+          <b>{{ chosen().length }}</b> of {{ totalFields() }} selected
+        </p>
+
+        <!-- Virtual scroll: the catalogue is over a thousand rows on a real instance, and every
+             one of them carries a checkbox. -->
+        <cdk-virtual-scroll-viewport itemSize="44" class="sec-columns__list">
+          <div class="sec-columns__row" *cdkVirtualFor="let field of visibleFields()">
+            <mat-checkbox
+              [checked]="isChosen(field.fieldId)"
+              (change)="toggle(field.fieldId, $event.checked)"
+            >
+              <span class="sec-columns__name">{{ field.name }}</span>
+              <!-- Fifteen names cover thirty-three fields; without the id these rows are the
+                   same row. -->
+              @if (field.ambiguousName) {
+                <span class="sec-columns__id">{{ field.fieldId }}</span>
+              }
+            </mat-checkbox>
+
+            <span class="sec-columns__meta">
+              @if (field.schemaType; as type) {
+                <span class="sec-columns__type">{{ type }}</span>
+              }
+              <span class="sec-columns__source">{{ field.custom ? 'Custom' : 'System' }}</span>
+            </span>
+          </div>
+        </cdk-virtual-scroll-viewport>
+      </section>
+
+      <!-- Ordering. -->
+      <section class="sec-columns__pane" aria-labelledby="sec-columns-chosen">
+        <h3 id="sec-columns-chosen" class="sec-columns__pane-title">Shown, in this order</h3>
+
+        @if (liveRows().length === 0) {
+          <p class="sec-columns__empty">
+            No fields selected. The table will show only the type, the key and the link to JIRA.
+          </p>
+        }
+
+        <div class="sec-columns__chosen" cdkDropList (cdkDropListDropped)="reorder($event)">
+          @for (row of liveRows(); track row.fieldId) {
+            <div class="sec-columns__chosen-row" cdkDrag>
+              <span class="sec-columns__handle" cdkDragHandle aria-hidden="true">⋮⋮</span>
+              <span class="sec-columns__name">{{ row.name }}</span>
+              @if (row.ambiguousName) {
+                <span class="sec-columns__id">{{ row.fieldId }}</span>
+              }
+              <span class="sec-columns__spacer"></span>
+              <button
+                mat-icon-button
+                type="button"
+                [attr.aria-label]="'Remove ' + row.name"
+                (click)="remove(row.fieldId)"
+              >
+                <mat-icon svgIcon="close" />
+              </button>
+            </div>
+          }
+        </div>
+
+        <!-- §13.4: a chosen field JIRA no longer has. Never removed automatically — the user chose
+             it, and a column that disappeared on its own reads as a bug. -->
+        @if (staleRows().length > 0) {
+          <h4 class="sec-columns__stale-title">No longer in JIRA</h4>
+          <div class="sec-columns__chosen">
+            @for (row of staleRows(); track row.fieldId) {
+              <div class="sec-columns__chosen-row sec-columns__chosen-row--stale">
+                <span class="sec-columns__name">{{ row.fieldId }}</span>
+                <span class="sec-columns__spacer"></span>
+                <button
+                  mat-icon-button
+                  type="button"
+                  [attr.aria-label]="'Remove ' + row.fieldId"
+                  matTooltip="This field no longer exists in JIRA"
+                  (click)="remove(row.fieldId)"
+                >
+                  <mat-icon svgIcon="close" />
+                </button>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    </div>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions class="sec-columns__actions">
+  <button mat-button type="button" (click)="resetToDefaults()">Reset to defaults</button>
+  <span class="sec-columns__spacer"></span>
+  <button mat-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="saving()" (click)="save()">Save</button>
+</mat-dialog-actions>

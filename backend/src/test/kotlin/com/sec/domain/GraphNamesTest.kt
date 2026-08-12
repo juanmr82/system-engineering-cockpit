@@ -133,6 +133,8 @@ class GraphNamesTest {
             JiraCypher.LIST_ISSUES_ASC, JiraCypher.LIST_ISSUES_DESC,
             JiraCypher.COUNT_ISSUES_MATCHING,
             JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
+            JiraCypher.LIST_FIELDS, JiraCypher.FIND_FIELDS,
+            JiraCypher.LOAD_COLUMNS, JiraCypher.SAVE_COLUMNS,
             *JiraCypher.SCHEMA.toTypedArray(),
         )
         add(

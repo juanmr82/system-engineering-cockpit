@@ -12,6 +12,8 @@ import com.sec.config.JiraSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
+import com.sec.source.jira.JiraColumnStore
+import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraSettingsStore
@@ -56,13 +58,24 @@ public fun Application.configureRouting(
     // graph, so the table works on a deployment whose JIRA credentials have expired. A table that
     // went blank because a token did would be reporting a connection problem as an absence of data.
     jiraIssuesProjection: JiraIssuesProjection,
+    // The chosen columns and the catalogue they are chosen from. Neither reaches JIRA, so both
+    // answer on a deployment whose token has expired — a column choice is ours, not JIRA's.
+    jiraColumnStore: JiraColumnStore,
+    jiraFieldsProjection: JiraFieldsProjection,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
 ) {
     routing {
         healthRoutes(graphDriver)
-        jiraRoutes(jiraSettings, jiraClient, jiraSettingsStore, jiraIssuesProjection)
+        jiraRoutes(
+            jiraSettings,
+            jiraClient,
+            jiraSettingsStore,
+            jiraIssuesProjection,
+            jiraColumnStore,
+            jiraFieldsProjection,
+        )
         importRoutes(importRunService)
         moduleRoutes(doorsProjection, metaWriter)
         reviewRoutes(

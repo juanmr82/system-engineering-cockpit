@@ -1,0 +1,22 @@
+@if (view(); as value) {
+  @switch (value.kind) {
+    @case ('empty') {
+      <!-- Not the word "null", and not a blank cell: an em-dash says the issue does not carry
+           this field, which a blank one leaves the reader to guess at. -->
+      <span class="sec-jira-value sec-jira-value--empty" aria-label="No value">&mdash;</span>
+    }
+    @case ('list') {
+      <span class="sec-jira-value" [matTooltip]="value.full ?? ''">
+        @for (chip of value.chips; track chip) {
+          <span class="sec-jira-value__chip">{{ chip }}</span>
+        }
+        @if (value.overflow > 0) {
+          <span class="sec-jira-value__more">+{{ value.overflow }}</span>
+        }
+      </span>
+    }
+    @default {
+      <span class="sec-jira-value" [matTooltip]="value.full ?? ''">{{ value.text }}</span>
+    }
+  }
+}

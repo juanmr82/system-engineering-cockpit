@@ -86,6 +86,12 @@
   block-size: 4px;
 }
 
+// A column whose field JIRA no longer has. In error red, because it is a header naming something
+// that is gone — the cells below it are empty and nothing else would say why.
+.sec-grid .sec-jira-issues__stale-header {
+  color: var(--sec-highlight-error);
+}
+
 .sec-jira-issues__no-match {
   @include sec.absent-text;
 }

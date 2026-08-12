@@ -58,6 +58,37 @@ public object ApiPaths {
     public const val JIRA_ISSUES: String = "$JIRA/issues"
 
     /**
+     * The offerable field catalogue, for the column picker (spec §13.3).
+     *
+     * Read from the graph, not from JIRA: it is what the last import brought in, which is exactly
+     * the set the table can render. Asking JIRA live would offer columns whose values no issue in
+     * this database carries.
+     */
+    public const val JIRA_FIELDS: String = "$JIRA/fields"
+
+    /** The chosen columns and their order (spec §10.2). `GET` is public, `PUT` is the picker's. */
+    public const val JIRA_COLUMNS: String = "$JIRA/columns"
+
+    /**
+     * The columns a deployment starts with, resolved the same way any other set is.
+     *
+     * Its own endpoint because *Reset to defaults* has to mean the server's defaults. A client that
+     * held its own copy of that list would be a second declaration of it, and the two would part
+     * company the first time one was edited — the same argument that keeps every graph name in one
+     * place (ADR 0010).
+     */
+    public const val JIRA_COLUMN_DEFAULTS: String = "$JIRA_COLUMNS/defaults"
+
+    /**
+     * The live project list, proxied from JIRA (spec §13.5).
+     *
+     * The one JIRA route that is a proxy rather than a read of our own graph, and it has to be: the
+     * settings page offers projects that have never been imported, which is the whole point of
+     * choosing one.
+     */
+    public const val JIRA_PROJECTS: String = "$JIRA/projects"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *

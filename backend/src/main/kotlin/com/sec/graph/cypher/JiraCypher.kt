@@ -5,9 +5,11 @@ import com.sec.domain.NodeLabel.UNDEFINED
 import com.sec.domain.Prop.NAME as ITEM_NAME
 import com.sec.domain.Prop.SORT_KEY
 import com.sec.domain.Prop.ID
+import com.sec.source.jira.JiraAppProp.FIELD_IDS
 import com.sec.source.jira.JiraAppProp.PROJECT_KEYS
 import com.sec.source.jira.JiraAppProp.UPDATED_AT
 import com.sec.source.jira.JiraAppProp.UPDATED_BY
+import com.sec.source.jira.JiraLabel.COLUMN_CONFIG as JIRA_COLUMN_CONFIG
 import com.sec.source.jira.JiraLabel.FIELD as JIRA_FIELD
 import com.sec.source.jira.JiraLabel.ISSUE as JIRA_ISSUE
 import com.sec.source.jira.JiraLabel.ISSUE_TYPE as JIRA_ISSUE_TYPE
@@ -15,9 +17,13 @@ import com.sec.source.jira.JiraLabel.PROJECT as JIRA_PROJECT
 import com.sec.source.jira.JiraLabel.PROJECTION as JIRA_PROJECTION
 import com.sec.source.jira.JiraLabel.SETTINGS as JIRA_SETTINGS
 import com.sec.source.jira.JiraLinkProp.LINK_ID
+import com.sec.source.jira.JiraProp.CUSTOM
+import com.sec.source.jira.JiraProp.ID as JIRA_ID
 import com.sec.source.jira.JiraProp.KEY
 import com.sec.source.jira.JiraProp.NAME
 import com.sec.source.jira.JiraProp.PROJECT_KEY
+import com.sec.source.jira.JiraProp.SCHEMA_ITEMS
+import com.sec.source.jira.JiraProp.SCHEMA_TYPE
 import com.sec.source.jira.JiraRel.HAS_ISSUE_TYPE
 import com.sec.source.jira.JiraRel.LINKED_TO
 import com.sec.source.jira.JiraRel.PROJECTION
@@ -670,5 +676,82 @@ public object JiraCypher {
         SET s.$PROJECT_KEYS = ${'$'}projectKeys,
             s.$UPDATED_AT = ${'$'}updatedAt,
             s.$UPDATED_BY = ${'$'}updatedBy
+    """
+
+    // -- the field catalogue and the chosen columns (spec §13.3, §13.4) ----------------------------
+
+    /**
+     * Every field the picker may offer (spec §9.2, §13.3).
+     *
+     * **Fields with no schema are excluded here rather than in Kotlin**, and the two the reference
+     * instance has are the reason: `issuekey` duplicates the fixed Key column and `thumbnail` is
+     * not a data field. Neither can be rendered as a column, so a picker that listed them would be
+     * offering a choice that cannot be honoured — and the filter belongs where the absence is
+     * legible, next to the write that deliberately omits the key (`fieldRow`).
+     *
+     * Ordered by name so the dialog opens on a list a person can scan; the ambiguity marker the
+     * dialog appends comes from the ids, which the API layer resolves, not from this.
+     *
+     * **`fieldId` is JIRA's own `id`, not `__id`.** A field's `__id` is the synthesised resource URL
+     * this application gives every node (§6.2); the thing a column is keyed by, and the thing that
+     * is also the issue's property key, is `summary` or `customfield_18201`. The two are one
+     * character apart in a statement and nothing downstream can tell them apart — a column keyed by
+     * a URL simply reads every cell as null.
+     */
+    public const val LIST_FIELDS: String = """
+        CYPHER 25
+        MATCH (f:$JIRA_FIELD)
+        WHERE f.$SCHEMA_TYPE IS NOT NULL
+        RETURN f.$JIRA_ID AS fieldId,
+               f.$NAME AS name,
+               f.$CUSTOM AS custom,
+               f.$SCHEMA_TYPE AS schemaType,
+               f.$SCHEMA_ITEMS AS schemaItems
+        ORDER BY name ASC, fieldId ASC
+    """
+
+    /**
+     * The catalogue entries for one list of ids — the configured columns' names and types.
+     *
+     * A field the catalogue no longer has simply does not come back, and **that absence is the
+     * whole point**: it is what the API layer turns into `stale: true` rather than into a column
+     * that quietly disappeared (spec §13.4). So this is deliberately not an `IN` list that would
+     * be reported as an error when short — a short answer is the answer.
+     *
+     * Order is not preserved and must not be relied on: the user's column order lives in
+     * `:$JIRA_COLUMN_CONFIG` and the caller re-imposes it.
+     */
+    public const val FIND_FIELDS: String = """
+        CYPHER 25
+        MATCH (f:$JIRA_FIELD)
+        WHERE f.$JIRA_ID IN ${'$'}fieldIds
+        RETURN f.$JIRA_ID AS fieldId,
+               f.$NAME AS name,
+               f.$CUSTOM AS custom,
+               f.$SCHEMA_TYPE AS schemaType,
+               f.$SCHEMA_ITEMS AS schemaItems
+    """
+
+    /** The chosen columns, in the user's order (spec §10.2). Empty until the picker is used. */
+    public const val LOAD_COLUMNS: String = """
+        CYPHER 25
+        MATCH (c:$JIRA_COLUMN_CONFIG {$ID: ${'$'}id})
+        RETURN c.$FIELD_IDS AS fieldIds
+    """
+
+    /**
+     * Replace the chosen columns.
+     *
+     * The whole list, never a merge: the order is part of the value, and a merge would have to
+     * invent a rule for where a newly ticked column goes — the same argument [SAVE_SETTINGS] makes
+     * about project keys. The fixed columns are never in it (spec §10.2); they are a backend
+     * constant precisely so a bad write cannot remove them.
+     */
+    public const val SAVE_COLUMNS: String = """
+        CYPHER 25
+        MERGE (c:$JIRA_COLUMN_CONFIG {$ID: ${'$'}id})
+        SET c.$FIELD_IDS = ${'$'}fieldIds,
+            c.$UPDATED_AT = ${'$'}updatedAt,
+            c.$UPDATED_BY = ${'$'}updatedBy
     """
 }

@@ -6,13 +6,13 @@ Date: 2026-08-11
 ## Context
 
 `docs/JIRA_ISSUES_FEATURE_SPEC.md` is a 1 135-line specification written before any of it was
-built. Building steps 1–7 of its own build order turned up fourteen points where following it literally
+built. Building steps 1–11 of its own build order turned up twenty points where following it literally
 would have produced something wrong, inconsistent with the rest of this repository, or — in two
 cases — impossible.
 
 None of them is a disagreement with the spec's *intent*. Every one is a place where the spec was
 written against a reasonable assumption that the code, the repository, or a real JIRA instance
-then contradicted. This ADR records all fourteen in one place, because the alternative is fourteen comments
+then contradicted. This ADR records all of them in one place, because the alternative is twenty comments
 scattered across the source that each look like an oversight to the next reader.
 
 CLAUDE.md's own conflict rule applies throughout: *the spec wins for its own subject area (importer
@@ -257,6 +257,74 @@ What is built measures the count before, the deletions as they happen, and warns
 ends `SUCCEEDED_WITH_WARNINGS` and says how much went. If the confirmation dialog is ever built, the
 dry-run count arrives with it and this becomes a check rather than a report.
 
+### 15. The column picker is two panes, not one table with drag handles
+
+Spec §13.3 draws one virtual-scrolled table whose rows each carry a checkbox **and** a drag handle.
+That shape does not survive the data. The catalogue is 1 171 rows and the chosen set is a handful,
+so the handles are invisible on almost every row, and the one gesture that matters — putting Status
+before Assignee — means finding two rows hundreds apart in a scrolling list and dragging one past
+the other through a virtual viewport that recycles its DOM as it goes.
+
+Choosing and ordering are two questions, so the dialog asks them in two panes: the catalogue on the
+left with the search box, the two filters and the checkboxes; the chosen columns on the right, in
+order, each draggable and removable. Everything §13.3 asks for is present — search by name *and*
+id, System/Custom/Selected-only filters, the `n of 1 171` counter, Reset to defaults, and the
+stale section at the bottom of the chosen pane. Only the geometry changed.
+
+### 16. `GET /api/v1/jira/columns/defaults` is an endpoint §14.3 does not list
+
+*Reset to defaults* has to reset to the **server's** defaults. The alternative is a copy of that
+list in the browser, and two declarations of one list part company the first time either is edited
+— the same argument ADR 0010 makes about graph names. One route, one line each side, and the
+defaults are resolved against the catalogue exactly like any other column set, so a default naming
+a field this instance never imported renders as stale rather than as a broken column.
+
+### 17. Sortability is decided by the server, from the declared type
+
+§13.2 says columns whose type is not scalar "render with sorting disabled", and that sending an
+unsortable column must be rejected rather than ignored. Both hold, and the decision is made in one
+place: `JiraFieldsProjection.isSortable`. A column is sortable when one row of it is one value — a
+scalar on the issue, or the display string its projection derived (§7.4). An array is not: its
+projection is a *list*, and ordering by one orders by an accident of element order.
+
+Two calls inside that rule are worth naming because they are not derivable from the spec:
+
+- **An unknown type is assumed sortable.** A type nobody has seen is far more likely to be a scalar
+  than not, and the cost of being wrong is a strange order, where the cost of refusing is a column
+  that cannot be sorted for no reason a user can see.
+- **A field with no `schema` is not sortable and not offerable.** It never reaches the picker at
+  all — `issuekey` duplicates the fixed Key column and `thumbnail` is not a data field.
+
+### 18. The project list saves per gesture; there is no Save button on the settings page
+
+R7 says one user gesture, one request, one server-side transaction, and that a view owning an
+editable buffer must guard its own exit. Adding or removing a project key **is** one gesture, so it
+is written immediately and the page owns no buffer, no dirty state and no exit guard. The inline
+warning §13.5 asks for — *Issues from KEY will be deleted from the cockpit on the next import* —
+then describes something that has already been saved and has not yet happened, which is exactly
+what it says.
+
+The column picker is the opposite case and is unchanged: it is a dialog, it owns a buffer, and it
+writes once on Save. Both are R7; the difference is whether the gesture is the decision.
+
+### 19. The import console draws a phase rail, not a `MatStepper`
+
+§13.6 asks for a horizontal, non-linear, **read-only** stepper. A stepper is a control a user clicks
+through, and every one of those three words removes something from it — what is left is a list of
+phases with the current one marked. It is drawn as one, with a rule under each step rather than a
+fill (§8 rule 3), the aggregate progress bar above it and `current / total` on the running phase.
+
+Not built from §13.6, and named here so the gap is not mistaken for an oversight: the log level
+filter, pause-on-scroll-up, and the expandable history rows showing a run's JQL and warnings. The
+log pane itself, the counters row, Cancel and the history table are built.
+
+### 20. Three things §13.2 and §13.5 ask for are still missing
+
+The detail drawer on row click, the issue-type **icon** (which needs the icon proxy of §9.1), and
+the empty state's deep link to `/settings/jira`. The first two are step 11 of the build order. The
+third is now buildable and simply is not built — the empty state says an import is needed and does
+not offer the route that runs one.
+
 ## Consequences
 
 - The `:__Meta` delete-everything query no longer covers all application data. Anyone reasoning
@@ -268,8 +336,11 @@ dry-run count arrives with it and this becomes a check rather than a report.
   choosing between them.
 - The spec stays as written. It is the record of what was intended; this is the record of what met
   reality, and the two are more useful apart than merged.
-- Fourteen departures is a lot for seven build steps, and most were found by writing a test rather
-  than by reading. That is the argument for §16.1's insistence that the mapper be pure and
+- Twenty departures over nine build steps, and most were found by writing a test rather than by
+  reading. That is the argument for §16.1's insistence that the mapper be pure and
   fixture-driven: points 6, 7 and 8 are all things a live-instance smoke test would have passed.
+- Points 15 to 20 are the frontend's, and they share a shape: the spec drew a screen, and building
+  it found that one of its parts was answering two questions at once. Splitting them — choosing
+  from ordering, a control from a report — is the change in every one of them.
 - Points 12, 13 and 14 are all in the two phases that delete. Anyone changing the sweep should read
   them together with `JiraImporter.sweep`'s own note on why the guard is stated twice.

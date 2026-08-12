@@ -5,14 +5,23 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule } from '@angular/material/paginator';
 import type { PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatDialog } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridAngular } from 'ag-grid-angular';
 import type { ColDef, GetRowIdParams, SortChangedEvent } from 'ag-grid-community';
 import { secGridOptions } from '../../../core/grid/sec-grid';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import { JiraIssuesApiService } from './jira-issues-api.service';
+import { JiraColumnsDialog } from '../columns/jira-columns-dialog';
 import { JiraKeyCell } from './cells/jira-key-cell';
 import { JiraLinkCell } from './cells/jira-link-cell';
-import type { JiraIssueRow, JiraIssuesPage, JiraIssuesQuery } from './jira-issues.model';
+import { JiraValueCell } from './cells/jira-value-cell';
+import type {
+  JiraColumn,
+  JiraIssueRow,
+  JiraIssuesPage,
+  JiraIssuesQuery,
+} from './jira-issues.model';
 
 /** Page sizes the paginator offers. The largest is the server's own cap; asking for more is futile. */
 const PAGE_SIZES = [25, 50, 100, 200];
@@ -27,12 +36,13 @@ const PAGE_SIZES = [25, 50, 100, 200];
  * already more than a page, and a real instance is tens of thousands. Everything below follows from
  * that — the query is a signal, the resource re-runs when it changes, and the grid holds one page.
  *
- * ## Three columns, and why there is no summary yet
+ * ## Three fixed columns, and the rest chosen
  *
- * Type, Key and the JIRA link are the *fixed* columns — the ones a user cannot remove. Every other
- * column, summary included, is chosen from the 1 171-field catalogue by the picker, which is the
- * next step. A summary column added here would have to be removed again the moment it becomes
- * selectable, and would be duplicated by the default selection.
+ * Type, Key and the JIRA link are the *fixed* columns — the ones a user cannot remove. They are
+ * declared here and never described by the server, which is what makes them impossible to hide.
+ * Everything between Key and the link is the user's own choice out of the field catalogue, and it
+ * arrives **in the same response as the values** — fetched apart, a table can draw last request's
+ * headers over this request's cells.
  *
  * ## The grid sorts nothing
  *
@@ -51,6 +61,7 @@ const PAGE_SIZES = [25, 50, 100, 200];
     MatInputModule,
     MatPaginatorModule,
     MatProgressBarModule,
+    MatTooltipModule,
   ],
   templateUrl: './jira-issues.html',
   styleUrl: './jira-issues.scss',
@@ -64,6 +75,7 @@ export class JiraIssues {
   protected readonly page = signal(0);
   protected readonly size = signal(PAGE_SIZES[1]);
   protected readonly sort = signal<JiraIssuesQuery['sort']>('key');
+  private readonly dialog = inject(MatDialog);
   protected readonly direction = signal<JiraIssuesQuery['dir']>('asc');
 
   protected readonly pageSizes = PAGE_SIZES;
@@ -116,6 +128,9 @@ export class JiraIssues {
 
   protected readonly total = computed(() => this.lastPage()?.total ?? 0);
 
+  /** The configured columns, as the server resolved them for this page. */
+  protected readonly columns = computed<readonly JiraColumn[]>(() => this.lastPage()?.columns ?? []);
+
   /**
    * Whether the graph holds no issues at all, as opposed to none matching a search.
    *
@@ -133,7 +148,15 @@ export class JiraIssues {
 
   protected readonly gridOptions = secGridOptions<JiraIssueRow>();
 
-  protected readonly columnDefs: ColDef<JiraIssueRow>[] = [
+  /**
+   * The grid's columns: the two fixed ones, the configured ones, then the link.
+   *
+   * A `computed` rather than a constant, because the middle of it is data — it changes when the
+   * picker saves and when a field goes stale. Every column is keyed by `colId` and read with a
+   * `valueGetter`: a `field` is never used in this application, because ag-grid reads a dot in one
+   * as a property path (CLAUDE.md §6).
+   */
+  protected readonly columnDefs = computed<ColDef<JiraIssueRow>[]>(() => [
     {
       colId: 'issueType',
       headerName: 'Type',
@@ -148,9 +171,7 @@ export class JiraIssues {
     {
       colId: 'key',
       headerName: 'Key',
-      // A `field` is never used in this application: ag-grid reads a dot in one as a property path
-      // (CLAUDE.md §6). The value getter is here for sorting and copy-paste; the renderer is what
-      // is seen.
+      // The value getter is here for sorting and copy-paste; the renderer is what is seen.
       valueGetter: (params) => params.data?.key ?? '',
       cellRenderer: JiraKeyCell,
       width: 190,
@@ -159,6 +180,25 @@ export class JiraIssues {
       // correctly and the other seven hundred and thirty-four not at all.
       comparator: () => 0,
     },
+    ...this.columns().map<ColDef<JiraIssueRow>>((column) => ({
+      colId: column.fieldId,
+      // A stale column shows the field id, which is the only name JIRA left it with. That is not
+      // the namespace leaking (R5): a JIRA field id is source data, exactly like an attribute name.
+      headerName: column.name,
+      headerTooltip: column.stale
+        ? 'This field no longer exists in JIRA — it will disappear after the next import.'
+        : undefined,
+      valueGetter: (params) => params.data?.values[column.fieldId] ?? null,
+      cellRenderer: JiraValueCell,
+      // An array has no single value to order by, and a stale column has no values at all.
+      sortable: column.sortable && !column.stale,
+      comparator: () => 0,
+      flex: 1,
+      minWidth: 140,
+      headerClass: column.stale
+        ? 'sec-grid__header-cell sec-jira-issues__stale-header'
+        : 'sec-grid__header-cell',
+    })),
     {
       colId: 'openInJira',
       // Header-less by design (spec §13.2, point 14.6): the column holds one control, the icon says
@@ -172,7 +212,7 @@ export class JiraIssues {
       // last column the leftover width of the table.
       cellClass: 'sec-grid__cell sec-jira-issues__link-cell',
     },
-  ];
+  ]);
 
   /**
    * The row identity ag-grid keys its DOM by.
@@ -197,9 +237,25 @@ export class JiraIssues {
   protected onSortChanged(event: SortChangedEvent<JiraIssueRow>): void {
     const sorted = event.api.getColumnState().find((column) => column.sort);
 
-    this.sort.set('key');
+    // `colId` is the field id for a configured column and `key` for the fixed one, which is what
+    // the server validates against — an id it did not itself put in `columns` is a 400, on purpose.
+    this.sort.set(sorted?.colId ?? 'key');
     this.direction.set(sorted?.sort === 'desc' ? 'desc' : 'asc');
     this.page.set(0);
+  }
+
+  /**
+   * Choose the columns.
+   *
+   * The dialog owns its own buffer and its own save (R7); this view only asks for a fresh page once
+   * it has written, because the columns and the values are one answer to one question.
+   */
+  protected openColumns(): void {
+    JiraColumnsDialog.open(this.dialog)
+      .afterClosed()
+      .subscribe((saved) => {
+        if (saved) this.issues.reload();
+      });
   }
 
   protected onSearch(value: string): void {

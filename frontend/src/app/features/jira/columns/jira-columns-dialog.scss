@@ -1,0 +1,152 @@
+@use 'mixins' as sec;
+
+// Material caps dialog content at 65vh whatever the dialog's own height is, so the two panes need
+// the same three declarations the module settings dialog uses to fill the height they were given.
+.sec-columns {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+// Two questions, two panes: which fields, and in what order. The catalogue is the wider one — it
+// carries a search box, two filters and a thousand rows; the chosen list carries a handful.
+.sec-columns__panes {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 18px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sec-columns__pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.sec-columns__pane-title {
+  @include sec.section-title;
+}
+
+.sec-columns__filters {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.sec-columns__count {
+  @include sec.field-label;
+
+  margin: 0;
+}
+
+// A bounded scroll container, which virtual scrolling requires and `flex: 1` alone does not give
+// (CLAUDE.md §6).
+.sec-columns__list {
+  flex: 1;
+  min-height: 0;
+  block-size: 100%;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+}
+
+.sec-columns__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  block-size: 44px;
+  padding: 0 10px;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+.sec-columns__name {
+  font-size: var(--sec-text-sm);
+}
+
+// The disambiguating id. Muted and monospaced: it is a machine name a person reads only when two
+// rows would otherwise be identical.
+.sec-columns__id {
+  @include sec.mono;
+
+  margin-inline-start: 6px;
+  font-size: var(--sec-text-label);
+  color: var(--sec-ink-3);
+}
+
+.sec-columns__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sec-columns__type,
+.sec-columns__source {
+  @include sec.outline-chip;
+
+  text-transform: none;
+}
+
+.sec-columns__chosen {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+}
+
+.sec-columns__chosen-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+}
+
+// A dragged row keeps its own surface while it moves, so it reads as the row rather than as a
+// shape passing over the list.
+.sec-columns__chosen-row.cdk-drag-preview {
+  box-shadow: var(--sec-shadow-raised);
+}
+
+.sec-columns__chosen-row--stale {
+  border-color: var(--sec-highlight-error);
+  color: var(--sec-ink-2);
+}
+
+.sec-columns__handle {
+  cursor: grab;
+  color: var(--sec-ink-3);
+  letter-spacing: -2px;
+}
+
+.sec-columns__spacer {
+  flex: 1 1 auto;
+}
+
+.sec-columns__stale-title {
+  @include sec.field-label;
+
+  margin: 10px 0 0;
+  color: var(--sec-highlight-error);
+}
+
+.sec-columns__empty {
+  @include sec.absent-text;
+}
+
+.sec-columns__error {
+  @include sec.error-panel;
+}
+
+.sec-columns__actions {
+  display: flex;
+  gap: 8px;
+}

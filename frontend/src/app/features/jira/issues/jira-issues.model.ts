@@ -6,10 +6,18 @@
  * what it is.
  */
 
-/** One configurable column. Empty until the column picker exists — the fixed three are the client's. */
+/**
+ * One configurable column: a field the user chose, in a position.
+ *
+ * The three fixed columns — type, key and the link out — are never in this list. They are the
+ * client's own and the server deliberately does not describe them, so no client can hide one.
+ */
 export interface JiraColumn {
   readonly fieldId: string;
   readonly name: string;
+  /** JIRA's declared type. Null on a stale column, which no longer has one. */
+  readonly schemaType: string | null;
+  /** False for an array or a shape with no single display value — the header shows no sort. */
   readonly sortable: boolean;
   /** The user chose this field and JIRA no longer has it. It still renders, empty. */
   readonly stale: boolean;

@@ -1,0 +1,178 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+}
+
+.sec-import-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
+  max-inline-size: 1080px;
+}
+
+.sec-import-runs__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-import-runs__title {
+  @include sec.view-title;
+}
+
+.sec-import-runs__sheet {
+  @include sec.sheet;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sec-import-runs__section {
+  @include sec.section-title;
+
+  margin: 0;
+}
+
+.sec-import-runs__subsection {
+  @include sec.field-label;
+
+  margin: 6px 0 0;
+}
+
+.sec-import-runs__run-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sec-import-runs__spacer {
+  flex: 1 1 auto;
+}
+
+.sec-import-runs__importers,
+.sec-import-runs__counters,
+.sec-import-runs__warnings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sec-import-runs__importer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+.sec-import-runs__importer-name {
+  font-weight: 600;
+  color: var(--sec-blue);
+}
+
+.sec-import-runs__phase-count {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-3);
+}
+
+// The stepper. A horizontal rail of phases rather than a MatStepper: a stepper is a control a user
+// clicks through, and this is a read-only progress report — spec §13.6 asks for one that is
+// "read-only" and "non-linear", which is a list.
+.sec-import-runs__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-3);
+}
+
+.sec-import-runs__step {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  // A rule marks the state, never a fill (§8 rule 3).
+  border-bottom: var(--sec-rail) solid transparent;
+  padding-bottom: 2px;
+}
+
+.sec-import-runs__step--done {
+  color: var(--sec-ink-2);
+  border-bottom-color: var(--sec-highlight-verified);
+}
+
+.sec-import-runs__step--current {
+  color: var(--sec-blue);
+  font-weight: 600;
+  border-bottom-color: var(--sec-blue-mid);
+}
+
+.sec-import-runs__of {
+  font-variant-numeric: tabular-nums;
+  color: var(--sec-ink-3);
+}
+
+.sec-import-runs__counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-size: var(--sec-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-import-runs__warnings {
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink-2);
+
+  li {
+    padding: 2px 0;
+  }
+}
+
+// A bounded, scrolling pane: a log is unbounded by nature and must not push the history off the
+// page.
+.sec-import-runs__log {
+  @include sec.mono;
+
+  max-block-size: 260px;
+  overflow: auto;
+  padding: 8px 10px;
+  background: var(--sec-wash);
+  border: var(--sec-hairline) solid var(--sec-line-soft);
+  border-radius: var(--sec-radius);
+  font-size: var(--sec-text-sm);
+}
+
+.sec-import-runs__log-line {
+  margin: 0 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.sec-import-runs__log-level {
+  display: inline-block;
+  min-inline-size: 48px;
+  color: var(--sec-ink-3);
+}
+
+.sec-import-runs__table {
+  @include sec.data-table;
+}
+
+.sec-import-runs__warning {
+  @include sec.note-panel;
+}
+
+.sec-import-runs__error {
+  @include sec.error-panel;
+}
+
+.sec-import-runs__absent {
+  @include sec.absent-text;
+}
+
+.sec-import-runs mat-progress-bar {
+  inline-size: 100%;
+}

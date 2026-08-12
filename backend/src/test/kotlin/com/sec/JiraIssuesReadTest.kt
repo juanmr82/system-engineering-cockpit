@@ -1,6 +1,7 @@
 package com.sec
 
 import com.sec.config.Neo4jSettings
+import com.sec.api.dto.JiraColumnDto
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
@@ -259,14 +260,17 @@ class JiraIssuesReadTest {
         query: String? = null,
         projectKeys: List<String>? = null,
         fieldIds: List<String> = emptyList(),
+        sort: SortField = SortField.KEY,
     ) = issues.listIssues(
         page = page,
         size = size,
-        sort = SortField.KEY,
+        sort = sort,
         direction = direction,
         query = query,
         projectKeys = projectKeys,
-        fieldIds = fieldIds,
+        // The route resolves these from the stored choice and the catalogue; here they are stated,
+        // so a failure means the read path is wrong rather than that the catalogue is.
+        columns = fieldIds.map { JiraColumnDto(fieldId = it, name = it) },
     )
 
     private companion object {

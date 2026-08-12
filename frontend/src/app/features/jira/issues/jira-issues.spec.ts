@@ -71,6 +71,35 @@ const PAGE: JiraIssuesPage = {
 
 const EMPTY: JiraIssuesPage = { page: 0, size: 50, total: 0, columns: [], rows: [] };
 
+/**
+ * The same page, with columns configured.
+ *
+ * Four shapes in three columns: a scalar, a list, a value the issue does not carry, and a column
+ * whose field JIRA has dropped. They are one fixture because they are one response — the headers
+ * and the cells arrive together, which is the property the table depends on.
+ */
+const WITH_COLUMNS: JiraIssuesPage = {
+  ...PAGE,
+  columns: [
+    { fieldId: 'summary', name: 'Summary', schemaType: 'string', sortable: true, stale: false },
+    { fieldId: 'labels', name: 'Labels', schemaType: 'array', sortable: false, stale: false },
+    {
+      fieldId: 'customfield_999',
+      name: 'customfield_999',
+      schemaType: null,
+      sortable: false,
+      stale: true,
+    },
+  ],
+  rows: PAGE.rows.map((row, index) => ({
+    ...row,
+    values:
+      index === 0
+        ? { summary: 'A first issue', labels: ['thermal', 'margins', 'v2', 'extra'] }
+        : { summary: null, labels: [] },
+  })),
+};
+
 describe('JiraIssues', () => {
   let fixture: ComponentFixture<JiraIssues>;
   let httpTesting: HttpTestingController;
@@ -265,6 +294,42 @@ describe('JiraIssues', () => {
 
     request.flush({ ...PAGE, total: 120 });
     await settle();
+  });
+
+  /**
+   * The configured columns come from the response and are drawn between Key and the link.
+   *
+   * The fixed three are the client's own and are never described by the server, which is what makes
+   * them impossible to hide; everything else here is the user's choice.
+   */
+  it('draws the columns the server configured, in order', async () => {
+    await answerWith(WITH_COLUMNS);
+
+    const headers = Array.from(
+      fixture.nativeElement.querySelectorAll('.ag-header-cell-text'),
+    ).map((cell) => (cell as HTMLElement).textContent?.trim());
+
+    expect(headers).toEqual(['Type', 'Key', 'Summary', 'Labels', 'customfield_999', '']);
+  });
+
+  /**
+   * Three shapes, three renderings, and none of them is the word "null".
+   *
+   * An em-dash says the issue does not carry the field; a list says its values and how many it did
+   * not show. A cell that printed `null`, or that was simply blank, would leave a reader unable to
+   * tell an absent value from a broken column.
+   */
+  it('renders a value, a list and an absence differently', async () => {
+    await answerWith(WITH_COLUMNS);
+
+    const text = renderedText();
+
+    expect(text).toContain('A first issue');
+    expect(text).toContain('thermal');
+    // Three chips and a count, never four chips.
+    expect(text).toContain('+1');
+    expect(text).not.toContain('null');
+    expect(fixture.nativeElement.querySelector('.sec-jira-value--empty')).toBeTruthy();
   });
 
   it('offers a retry when the request fails, and does not pretend the table is empty', async () => {

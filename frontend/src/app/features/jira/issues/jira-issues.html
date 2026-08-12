@@ -38,6 +38,8 @@
       <p class="sec-jira-issues__stats">
         <span><b>{{ total() }}</b> {{ total() === 1 ? 'issue' : 'issues' }}</span>
       </p>
+
+      <button mat-stroked-button type="button" (click)="openColumns()">Columns</button>
     </div>
 
     <!-- A reserved lane, so a reload does not move the table down four pixels and back. -->
@@ -55,7 +57,7 @@
         <ag-grid-angular
           class="sec-jira-issues__grid"
           [gridOptions]="gridOptions"
-          [columnDefs]="columnDefs"
+          [columnDefs]="columnDefs()"
           [rowData]="rows()"
           [getRowId]="getRowId"
           (sortChanged)="onSortChanged($event)"
