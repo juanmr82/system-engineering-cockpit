@@ -15,6 +15,7 @@ import com.sec.importer.GraphImportRunStore
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.SessionNames
@@ -97,6 +98,16 @@ public fun Application.module() {
         importRunStore.applySchema()
     }
 
+    // access-control.md §8.3, the startup pass: catches a category change made while this process
+    // was down, and — for DOORS and Cameo, which run out-of-process — a run whose own call to
+    // POST /access/reconcile never landed. Best-effort like oidc.warmUp() below: a failure here
+    // leaves objects under-visible rather than over-visible (R8's correct failure direction), so it
+    // must not be allowed to fail the boot a working database and a broken reconcile would both
+    // otherwise still deserve.
+    val accessReconciler = AccessReconciler(graphDriver)
+    runCatching { runBlocking { accessReconciler.reconcileAll() } }
+        .onFailure { logger.warn(it) { "Startup access reconcile failed; retrying at the next import or manual call" } }
+
     // The OIDC client (ADR 0017). Built here, not inside configureApp(), so warmUp() below and
     // the routes configureApp() wires up share the same Oidc instance — a second one constructed
     // from the same settings would warm a discovery document and JWKS cache that routing then
@@ -116,6 +127,7 @@ public fun Application.module() {
         importerSettings = appConfig.importer,
         importRunStore = importRunStore,
         oidc = oidc,
+        accessReconciler = accessReconciler,
     )
 }
 
@@ -149,6 +161,10 @@ internal fun Application.configureApp(
     // test that needs to seed an authenticated request constructs its own and passes it in, the
     // same shape every other collaborator here takes.
     sessionStorage: SessionStorage = SessionStorageMemory(),
+    // §8.3. module() builds its own and runs the startup pass against it before this is called;
+    // defaulted here so a test of the HTTP surface gets one wired to the same driver everything
+    // else in this function is, without needing to run a reconcile pass of its own first.
+    accessReconciler: AccessReconciler = AccessReconciler(graphDriver),
 ) {
     installSecSessions(sessionStorage)
     install(Authentication) {
@@ -232,7 +248,11 @@ internal fun Application.configureApp(
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
     // this JVM at all (ADR 0013).
-    val importRunService = ImportRunService(importRunStore, importerSettings.runHistoryLimit)
+    val importRunService = ImportRunService(
+        importRunStore,
+        importerSettings.runHistoryLimit,
+        accessReconciler = accessReconciler,
+    )
     monitor.subscribe(ApplicationStopping) { importRunService.close() }
 
     if (jiraClient != null) {
@@ -279,5 +299,6 @@ internal fun Application.configureApp(
         importRunService,
         oidc,
         accessResolver,
+        accessReconciler,
     )
 }

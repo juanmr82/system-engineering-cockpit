@@ -1,5 +1,6 @@
 package com.sec.api
 
+import com.sec.api.routes.accessRoutes
 import com.sec.api.routes.authRoutes
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
@@ -15,6 +16,7 @@ import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.requireSecSession
@@ -86,6 +88,9 @@ public fun Application.configureRouting(
     // access-control.md §5/§6.3. One instance for the process, so its cache is actually shared
     // across requests rather than reset per route.
     accessResolver: AccessResolver,
+    // §8.3. The same instance the import-pipeline hook and the startup pass use, so a manual
+    // reconcile and an automatic one are never racing two independent views of "already seeded".
+    accessReconciler: AccessReconciler,
 ) {
     routing {
         // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
@@ -121,6 +126,7 @@ public fun Application.configureRouting(
             statisticsRoutes(statisticsProjection)
             tableRoutes(doorsProjection, tableProjection)
             configRoutes()
+            accessRoutes(accessReconciler)
         }
 
         // Outside the session guard on purpose: an unmatched path is not an object and not a

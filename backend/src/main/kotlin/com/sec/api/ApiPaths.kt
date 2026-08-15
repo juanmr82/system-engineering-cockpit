@@ -144,6 +144,22 @@ public object ApiPaths {
     public const val IMPORT_RUNS: String = "$IMPORT/runs"
 
     /**
+     * The Access views (spec §9). Only [ACCESS_RECONCILE] exists before phase 6 — categories,
+     * grants, containers and defaults have no write path yet (`AccessAdminService`).
+     */
+    public const val ACCESS: String = "$V1/access"
+
+    /**
+     * Runs [com.sec.security.AccessReconciler] (§8.3): `?scope=all` (every registered source) or
+     * `?scope=source&source=<id>` (one — the import-pipeline hook's own scope, exposed here too so
+     * `sec-import-doors.ps1` can ask for exactly what its run touched). Synchronous today — it
+     * returns the counts directly rather than a run id on the SSE stream, unlike the spec's own
+     * sketch, because a reconcile pass is index-driven and batched, not the minutes-long kind of
+     * work `ImportRunService` exists for. Revisit if a deployment's pass is slow enough to want one.
+     */
+    public const val ACCESS_RECONCILE: String = "$ACCESS/reconcile"
+
+    /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and
      * decoded in exactly one place by the route parameter converter.
      */

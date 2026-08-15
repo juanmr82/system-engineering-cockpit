@@ -127,7 +127,16 @@ class AccessGuardTest {
             *ImportRunCypher.SCHEMA.toTypedArray(),
         )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
-        add("AccessCypher", AccessCypher.RESOLVE_GROUPS)
+        // The reconciler's own writes, read straight from AccessContainment.all so a new source's
+        // containment is checked — and, below, exempted with a reason — the moment it is added.
+        add(
+            "AccessCypher",
+            AccessCypher.RESOLVE_GROUPS,
+            *AccessContainment.all.filterNot { it.containerless }
+                .flatMap { listOf(AccessCypher.propagate(it), AccessCypher.retract(it)) }
+                .toTypedArray(),
+            *AccessContainment.all.map { AccessCypher.seed(it) }.toTypedArray(),
+        )
     }
 
     // -- the exemptions: every statement above that touches a type label and is not yet filtered --
@@ -225,6 +234,20 @@ class AccessGuardTest {
         "WindchillCypher[4]" to "schema (index/constraint), not a data read",
         "WindchillCypher[5]" to "schema (index/constraint), not a data read",
         "WindchillCypher[6]" to "schema (index/constraint), not a data read",
+        "AccessCypher[1]" to "AccessReconciler's own write — propagates a DOORS module's direct " +
+            "category to its objects; builds __inAccessCategory itself, not a read subject to it",
+        "AccessCypher[2]" to "AccessReconciler's own write — retracts a DOORS object's inherited " +
+            "category once its module no longer carries it directly",
+        "AccessCypher[3]" to "AccessReconciler's own write — propagates a JIRA project's direct " +
+            "category to its issues",
+        "AccessCypher[4]" to "AccessReconciler's own write — retracts a JIRA issue's inherited " +
+            "category once its project no longer carries it directly",
+        "AccessCypher[5]" to "AccessReconciler's own write — seeds a never-categorised DOORS " +
+            "module from its source default (§8.3)",
+        "AccessCypher[6]" to "AccessReconciler's own write — seeds a never-categorised JIRA " +
+            "project from its source default (§8.3)",
+        "AccessCypher[7]" to "AccessReconciler's own write — seeds an uncategorised " +
+            "WindchillDocument directly from its source default; containerless (§8.2)",
     )
 
     // -- the checks -----------------------------------------------------------------------------

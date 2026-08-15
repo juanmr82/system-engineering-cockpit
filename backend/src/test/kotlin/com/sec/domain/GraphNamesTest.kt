@@ -14,6 +14,7 @@ import com.sec.graph.cypher.SystemCypher
 import com.sec.graph.cypher.TableCypher
 import com.sec.graph.cypher.WindchillCypher
 import com.sec.meta.MetaSchema
+import com.sec.security.AccessContainment
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsProp
 import com.sec.source.doors.DoorsRel
@@ -56,13 +57,15 @@ class GraphNamesTest {
     // Each source contributes its own names file and nothing edits another's (R3), so adding a
     // source is one term in each of these three sets.
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN, NodeLabel.GROUP) +
-            NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
+        setOf(
+            NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN,
+            NodeLabel.GROUP, NodeLabel.ACCESS_DEFAULT,
+        ) + NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
         Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.LINK_FROM, Rel.LINK_TO,
-        Rel.IN_ACCESS_CATEGORY, Rel.MAY_READ,
+        Rel.IN_ACCESS_CATEGORY, Rel.MAY_READ, Rel.ASSIGNS, Rel.ACCESS_SEEDED,
         DoorsRel.REFERS_TO,
     ) + JiraRel.all
 
@@ -157,8 +160,18 @@ class GraphNamesTest {
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
         // visible("o") stands in for every alias the predicate is actually called with — the name
         // extraction below only cares which graph names appear in the produced text, not which
-        // alias they were bound to.
-        add("AccessCypher", AccessCypher.RESOLVE_GROUPS, AccessCypher.visible("o"))
+        // alias they were bound to. propagate/retract/seed are read straight from
+        // AccessContainment.all so a new source's containment is checked the moment it is added,
+        // the same way a new Cypher file is caught by everyCypherFileIsCovered below.
+        add(
+            "AccessCypher",
+            AccessCypher.RESOLVE_GROUPS,
+            AccessCypher.visible("o"),
+            *AccessContainment.all.filterNot { it.containerless }
+                .flatMap { listOf(AccessCypher.propagate(it), AccessCypher.retract(it)) }
+                .toTypedArray(),
+            *AccessContainment.all.map { AccessCypher.seed(it) }.toTypedArray(),
+        )
     }
 
     // -- the checks -------------------------------------------------------------------------

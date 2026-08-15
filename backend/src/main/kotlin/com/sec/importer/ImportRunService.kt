@@ -1,5 +1,7 @@
 package com.sec.importer
 
+import com.sec.security.AccessContainment
+import com.sec.security.AccessReconciler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
@@ -69,6 +71,12 @@ public class ImportRunService(
     private val historyLimit: Int = DEFAULT_HISTORY_LIMIT,
     private val clock: Clock = Clock.systemUTC(),
     dispatcher: CoroutineContext = Dispatchers.IO,
+    // access-control.md §8.3: "a phase of the import pipeline, source-agnostic, running last".
+    // Null for a test that only cares about run mechanics — the same optionality every other
+    // collaborator in this file's constructor list would have if it needed one. Never reads
+    // importerId as anything but a lookup key, so this stays exactly as source-agnostic as the
+    // rest of the framework (see [ImportRequest] on why that matters).
+    private val accessReconciler: AccessReconciler? = null,
 ) : AutoCloseable {
 
     // Every write here is best-effort: an import that succeeded and could not write its own
@@ -257,6 +265,7 @@ public class ImportRunService(
 
             val outcome = try {
                 job.run(context)
+                reconcileAccess(job.importerId, context)
                 if (warnings.isEmpty()) ImportStatus.SUCCEEDED to null
                 else ImportStatus.SUCCEEDED_WITH_WARNINGS to null
             } catch (cause: CancellationException) {
@@ -271,6 +280,34 @@ public class ImportRunService(
             // fail immediately. A cancelled run that cannot record that it was cancelled looks
             // exactly like a run that vanished.
             withContext(NonCancellable) { finish(outcome.first, outcome.second) }
+        }
+
+        /**
+         * The import-pipeline reconcile hook (access-control.md §8.3), run only after [job] itself
+         * returns without throwing — reconciling against data a failed run left half-written would
+         * propagate a category onto members an incomplete import may still remove. A reconcile
+         * failure here fails the run exactly like any other phase's exception would; there is
+         * nothing "best-effort" about it in-process, unlike the out-of-process DOORS/Cameo call
+         * into `POST /access/reconcile`, which is a warning by the spec's own words because it is
+         * reaching a backend that may not even be running.
+         *
+         * Scoped to [importerId]'s own containments, never every registered source — "reconcile
+         * only the containers this run touched" (§8.3 "Scope it"). No-op when nothing in
+         * [AccessContainment.all] names this importer, which is every importer until phase 3 wires
+         * one up and every importer after that whose source contributes no containment at all.
+         */
+        private suspend fun reconcileAccess(importerId: String, context: ImportContext) {
+            val reconciler = accessReconciler ?: return
+            val containments = AccessContainment.all.filter { it.sourceId == importerId }
+            if (containments.isEmpty()) return
+
+            context.log("Applying access categories")
+            containments.forEach { containment ->
+                val result = reconciler.reconcile(containment)
+                context.count("access.propagated", result.propagated)
+                context.count("access.retracted", result.retracted)
+                context.count("access.seeded", result.seeded)
+            }
         }
 
         private suspend fun finish(status: ImportStatus, error: String?) {

@@ -3,6 +3,105 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 26) — access control, phase 3: containment and the reconciler
+
+Branch **`feature/access-control`** — session 25's uncommitted work (phases 1-2, docker-verified)
+was moved off `master` onto this branch at the start of this session and committed there (commit
+`eb16b0a`); `master` was left untouched. This session's phase-3 work is **not yet committed**.
+
+Phase 3 per `docs/features/access-control.md` §15: `AccessContainment`, `AccessReconciler`
+(propagate/retract/seed), `POST /api/v1/access/reconcile`, the startup pass, and the in-process
+import-pipeline hook. Built and docker-verified in this session; `CurrentUser.PLACEHOLDER` (the
+task selected at the end of session 25) was **not** touched — the user redirected to phase 3
+before it was started, and it is still open.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The model's last two names** — `:__AccessDefault`, `__assigns`, `__accessSeeded` | `domain/GraphNames.kt` (new `AccessRelProp`, `AccessOrigin`, `AccessDefaultProp`) |
+| 2 | **`Containment`** — one entry per source (`doors`, `jira`, `windchill`), source-agnostic type, values built from each source's own name constants | `security/AccessContainment.kt` |
+| 3 | **`AccessCypher.propagate/retract/seed`** — three `Containment`-parameterised query builders, each a returning `CALL … IN TRANSACTIONS` so the batched count is exact, not a unit-subquery row count | `graph/cypher/AccessCypher.kt` |
+| 4 | **`executeAutocommit`** — the one narrow addition `CALL … IN TRANSACTIONS` needs, since it cannot run inside `executeWrite`'s explicit transaction | `graph/Write.kt` |
+| 5 | **`AccessReconciler`** — `reconcile(Containment)` and `reconcileAll()`, returning counts | `security/AccessReconciler.kt` |
+| 6 | **`POST /api/v1/access/reconcile?scope=all\|source&source=`** — synchronous, returns counts directly rather than a run id on the SSE stream (a reconcile pass is index-driven and batched, not the minutes-long kind of work `ImportRunService` exists for) | `api/routes/AccessRoutes.kt`, `ApiPaths.kt` |
+| 7 | **The import-pipeline hook** — `ImportRunService` reconciles a job's own `sourceId` after `job.run()` succeeds, fully generically (filters `AccessContainment.all` by `importerId`, no source named in the framework); a reconcile failure fails the run, same as any other phase | `importer/ImportRunService.kt` |
+| 8 | **The startup pass** — `AccessReconciler.reconcileAll()` in `module()`, best-effort (a failure logs and does not fail boot — under-visible is the safe failure direction) | `Application.kt` |
+| 9 | **`sec-import-doors.ps1` calling it** — after a real (non-dry-run) `import` run, `POST …?scope=source&source=doors`; failure is a caught, printed warning, never touches `$LASTEXITCODE` | `scripts/win/sec-import-doors.ps1` |
+| 10 | **`AccessReconcilerTest`** (docker-tagged) — the phase's acceptance test: propagate tags every object and a second pass creates nothing new; untagging retracts everything and a second pass retracts nothing new; an untagged module propagates nothing; seed is a no-op with no default, seeds once with one, and is never re-seeded after a human empties the container | `AccessReconcilerTest.kt` |
+| 11 | `GraphNamesTest` / `AccessGuardTest` extended — both read `AccessContainment.all` directly and generate their statement list from it, so a fourth source's containment is checked and exempted automatically | both test files |
+
+### The one real bug the new test caught
+
+`AccessContainment.doors`'s `memberMatch` first read `{ __moduleUrl: c.__moduleUrl }` — wrong: a
+`:DOORSModule` node does not carry its own `__moduleUrl`; `ModuleCypher.kt`'s own comment says
+objects match against the module's **`__id`**. `AccessReconcilerTest` caught it immediately
+(`expected 10 but was 0` — nothing propagated), which is exactly the kind of mistake a docker
+test against real Cypher execution catches and a unit test of Kotlin string-building would not.
+Fixed to `{ __moduleUrl: c.__id }`; all 5 reconciler tests and the existing 5
+`AccessControlFeatureTest` cases pass after the fix.
+
+### A naming collision worth knowing about before adding a fourth `AccessCypher` query parameter
+
+The first draft named the audit-actor parameter `$createdBy`. `GraphNamesTest`'s inverse check
+failed on it — not because it is wrong Cypher, but because **`JiraRel.CREATED_BY = "createdBy"`**
+is a declared, non-namespaced relationship type, and the test cannot tell a query parameter from a
+graph name written out by hand; both are just the word "createdBy" in the source. Renamed to
+`$user`, matching the parameter name `MetaWriter`'s own statements already use for the same
+concept. Worth remembering: **any bare (non-`__`) word chosen for a parameter name in
+`graph/cypher/` should be checked against `JiraRel`/`JiraProp`/`DoorsModuleAttr`'s un-prefixed
+values first** — the collision surface is bigger than it looks, because most of those values are
+themselves ordinary English words.
+
+### What is still open
+
+- **Not committed.** This session's phase-3 work sits uncommitted on `feature/access-control`,
+  on top of session 25's committed phase 1-2 (`eb16b0a`).
+- **`POST /access/reconcile` has no machine-auth story.** It sits behind the same
+  `requireSecSession {}` every route does, which is correct and not a regression — but
+  `sec-import-doors.ps1`'s own call to it therefore has no session cookie to present and will 401
+  until some future phase gives a script a credential. This is not a bug in what shipped: the
+  call is written exactly per §8.3 ("a failure there is a warning, not an error"), so it already
+  degrades correctly — the startup pass is what actually closes the gap today. Named here, and in
+  `AccessRoutes.kt`'s own doc comment, so it is not mistaken for finished.
+- **`CurrentUser.PLACEHOLDER` still writes `"system"`** on every `:__Meta` write — unchanged from
+  session 25, and not this session's scope (the user redirected to phase 3 before it started).
+  Every write `AccessReconciler` itself makes is correctly `"system"` — that one is not a gap; see
+  the class doc.
+- **Phase 4 (every other read path) has not started.** Only `/modules/{ref}/objects` is filtered,
+  same as since phase 2.
+- **The two design decisions phase 3 was scoped around are implemented, not just decided**: DOORS
+  has no pre-import tree enumeration (a module is tagged only after import, via the existing
+  Unassigned-queue behaviour once phase 6 builds it); JIRA's "RBAC is the gate" project-allow-list
+  removal was **not** done this session — `JiraSettingsStore.projectKeys` and `JiraJql`'s
+  `project IN (...)` clause are untouched, so JIRA's containment (`AccessContainment.jira`) is
+  correct for what is imported today but the importer still gates by project key rather than
+  importing everything unconditionally. Worth flagging clearly: this is a scope gap, not an
+  oversight — the reconciler works correctly either way, since it only ever sees what JIRA's own
+  importer already wrote.
+
+### Verified
+
+- `mvn compile` / `mvn test-compile` — clean.
+- `mvn verify` (non-docker) — **366 tests, 0 failures**, unchanged from session 25 (no new
+  non-docker test methods this session — `AccessReconcilerTest` is docker-tagged).
+- `mvn -Pdocker test` — **526 tests, 0 failures** (521 from session 25 + 5 new
+  `AccessReconcilerTest` cases), including the moduleUrl bug fix above.
+- Not run this session: `npm run lint && npm test && npm run build` — no frontend changed.
+
+### Resume here
+
+Two independent threads, either order:
+
+1. **Wire `CurrentUser.PLACEHOLDER`** — small and mechanical, flagged since session 23, still not
+   done. `MetaWriter.kt` (3 sites) and `JiraRoutes.kt` (2 sites).
+2. **Phase 4** (`docs/features/access-control.md` §15): every remaining read path gets the
+   `/*ACL*/` predicate — item, tree, children, traces, breakdown, dependency graph, modules,
+   objects, tables, JIRA issues and link graph, Windchill documents, statistics, search, and every
+   leak named in §7. The big one, and the spec says explicitly it must not be split across a
+   release.
+
+Before either: **commit this session's work** (`feature/access-control` is uncommitted past
+`eb16b0a`) and decide whether to open a PR now or keep building on the branch.
+
 ## State as of 2026-08-16 (session 25) — the Docker-gated work session 24 left open
 
 Branch **`master`**. Docker became reachable on this machine; this session did exactly the two

@@ -29,3 +29,18 @@ public suspend fun GraphDriver.executeWrite(queries: List<Query>): Unit =
             session.executeWrite({ tx -> queries.forEach { tx.run(it) } }, writeTx)
         }
     }
+
+/**
+ * The one narrow exception to "every write is `session.executeWrite`" (backend/CLAUDE.md §5):
+ * Cypher's `CALL … IN TRANSACTIONS` cannot run inside an explicit transaction, so this runs
+ * [query] autocommit instead — [com.sec.security.AccessReconciler] is the only caller. No
+ * [GraphDriver.writeTx] timeout applies for the same reason a batched statement has its own
+ * `IN TRANSACTIONS OF … ROWS` clause rather than one surrounding transaction: an import-sized
+ * reconcile pass is expected to run longer than an ordinary write.
+ */
+public suspend fun <T> GraphDriver.executeAutocommit(query: Query, transform: (List<Record>) -> T): T =
+    withContext(Dispatchers.IO) {
+        driver.session(SessionConfig.forDatabase(database)).use { session ->
+            transform(session.run(query).list())
+        }
+    }

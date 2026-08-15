@@ -101,6 +101,20 @@ public object Rel {
     // for R2's reification to be buying anything.
     public const val IN_ACCESS_CATEGORY: String = "__inAccessCategory"
     public const val MAY_READ: String = "__mayRead"
+
+    // AccessReconciler's own bookkeeping (access-control.md §8.3), not annotation and not a grant.
+    /** `:__AccessDefault` -> `:__AccessCategory` — which category a never-categorised container
+     *  or, for a containerless source, a never-categorised item gets. */
+    public const val ASSIGNS: String = "__assigns"
+
+    /**
+     * Marks a container (or, containerless, an item) the reconciler has already seeded once, so a
+     * category an access manager deliberately removed is never re-applied by a later import — the
+     * seed step checks for this before checking for a default (§8.3: "seeded once, never re-seeded").
+     * Points at the `:__AccessCategory` it was seeded with, so the fact is also readable, not just
+     * a marker.
+     */
+    public const val ACCESS_SEEDED: String = "__accessSeeded"
 }
 
 /**
@@ -183,6 +197,15 @@ public object NodeLabel {
      * Tier-2 data must leave every grant intact, not silently regrant everyone on the next login.
      */
     public const val GROUP: String = "__Group"
+
+    /**
+     * A source's default category for a container type it has never categorised — one node per
+     * `(sourceId, containerLabel)` (access-control.md §4.1, §8.3).
+     *
+     * Deliberately **not** `:__Meta` either, and for the same reason as [GROUP] (ADR 0016 §6.2): it
+     * anchors to a source, not to the imported graph, so the `:__Meta` wipe must leave it standing.
+     */
+    public const val ACCESS_DEFAULT: String = "__AccessDefault"
 }
 
 /**
@@ -334,6 +357,46 @@ public object MetaProp {
     /** `:__AccessCategory` — granted to every group with no explicit `__mayRead` (R8, §8.4).
      *  Never a bypass: still a category, still granted, just to all of them at once. */
     public const val EVERY_GROUP: String = "everyGroup"
+}
+
+/**
+ * Properties on the [Rel.IN_ACCESS_CATEGORY] relationship itself (access-control.md §4.1, §8.1).
+ *
+ * Not a `:__Meta` payload — membership is a bare relationship (ADR 0016 §6.1), so these ride on
+ * the edge the same way [ImportRunProp] rides on a `:__ImportRun` node: un-prefixed, because the
+ * relationship type already says whose fact this is.
+ */
+public object AccessRelProp {
+    /** [AccessOrigin.DIRECT] or [AccessOrigin.INHERITED] — who may remove this tag. */
+    public const val ORIGIN: String = "origin"
+
+    /** The `__id` of the container an [AccessOrigin.INHERITED] tag came from. Absent when direct. */
+    public const val VIA: String = "via"
+}
+
+/** Values of [AccessRelProp.ORIGIN] (access-control.md §8.1). */
+public object AccessOrigin {
+    /** Written by a human in the Access views, or by the reconciler's seed step — either way, not
+     *  retracted by [AccessOrigin.INHERITED]'s own removal rule (§8.3). */
+    public const val DIRECT: String = "direct"
+
+    /** Written by the reconciler's propagate step; retracted the moment its container's own
+     *  [DIRECT] tag for the same category is gone. */
+    public const val INHERITED: String = "inherited"
+}
+
+/**
+ * Properties of a [NodeLabel.ACCESS_DEFAULT] node — the reconciler's seed source (§8.3).
+ *
+ * Un-prefixed inside a `__`-labelled node, the same convention [GroupProp] and [ImportRunProp]
+ * use.
+ */
+public object AccessDefaultProp {
+    /** The [com.sec.importer.ImportJob.importerId] this default belongs to — `"doors"`, `"jira"`. */
+    public const val SOURCE_ID: String = "sourceId"
+
+    /** The container's [NodeLabel] value — or, for a containerless source, the item's own label. */
+    public const val CONTAINER_LABEL: String = "containerLabel"
 }
 
 /**
