@@ -3,11 +3,63 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 27) — wiring `CurrentUser.PLACEHOLDER` into real routes
+
+Branch **`feature/access-control`**, on top of session 26's committed phase 3 (`cd0ee65`). Closes
+the first of the two "Resume here" items session 26 left open; phase 4 is still next.
+
+Every route that writes Tier-2 data on behalf of a signed-in caller now passes the real principal
+instead of the `"system"` default:
+
+| Route | Writer call | Where |
+|---|---|---|
+| `POST /modules/system-levels`, `POST /modules/{ref}/settings` | `MetaWriter.saveSystemLevels` / `saveModuleSettings` | `ModuleRoutes.kt` |
+| `POST /modules/{ref}/comments` | `MetaWriter.saveComments` | `ReviewRoutes.kt` |
+| `PUT /jira/columns`, `PUT /jira/settings` | `JiraColumnStore.saveFieldIds` / `JiraSettingsStore.saveProjectKeys` | `JiraRoutes.kt` |
+
+Each handler now does `call.principal<SecPrincipal>() ?: error(...)` — the same pattern
+`ReviewRoutes`'s `/objects` route and `AuthRoutes`'s `/auth/me` already used — and passes
+`principal.auditName`, a new extension in `Principal.kt`:
+
+```kotlin
+public val SecPrincipal.auditName: String get() = name.ifBlank { username }
+```
+
+Pulled out because `AuthRoutes`'s `/auth/me` already computed the identical fallback inline for
+`displayName`; both call sites now share it, so `__createdBy` / `__updatedBy` and the identity a
+user sees for themselves can never drift apart.
+
+`CurrentUser.PLACEHOLDER` is not deleted and its default parameters on `MetaWriter`'s three
+methods are untouched — it now correctly means two things, both intentional, and its doc comment
+was rewritten to say so: `AccessReconciler`'s own writes (a machine decision, permanent, explained
+in that class's own doc) and tests that call `MetaWriter` / `JiraColumnStore` / `JiraSettingsStore`
+directly without a session, which is most of the existing test suite (`ModulesFeatureTest`,
+`ReviewFeatureTest`, `JiraColumnsReadTest`, `JiraIssueImportTest`, `StatisticsFeatureTest`,
+`BreakdownFeatureTest`) — none of those needed to change, since they never went through a route.
+
+### Verified
+
+- `mvn compile` / `mvn test-compile` — clean.
+- `mvn clean verify` (non-docker) — **366 tests, 0 failures**, unchanged count from session 26
+  (no new test methods; existing route-level auth tests, e.g. `AuthGuardTest`, already covered the
+  401 path and needed no change).
+- Not run this session: `-Pdocker test`, `npm run lint && npm test && npm run build` — no graph
+  behaviour or frontend changed, only which string a write already made records as the actor.
+- **Not yet committed** — sitting on `feature/access-control` on top of `cd0ee65`.
+
+### Resume here
+
+Phase 4 (`docs/features/access-control.md` §15): every remaining read path gets the `/*ACL*/`
+predicate — item, tree, children, traces, breakdown, dependency graph, modules, objects, tables,
+JIRA issues and link graph, Windchill documents, statistics, search, and every leak named in §7.
+Must not be split across a release (spec's own words). The JIRA "RBAC is the gate" allow-list
+removal and machine-auth for `/access/reconcile` remain deliberately deferred, not part of this.
+
 ## State as of 2026-08-16 (session 26) — access control, phase 3: containment and the reconciler
 
 Branch **`feature/access-control`** — session 25's uncommitted work (phases 1-2, docker-verified)
 was moved off `master` onto this branch at the start of this session and committed there (commit
-`eb16b0a`); `master` was left untouched. This session's phase-3 work is **not yet committed**.
+`eb16b0a`); `master` was left untouched. This session's phase-3 work was committed as `cd0ee65`.
 
 Phase 3 per `docs/features/access-control.md` §15: `AccessContainment`, `AccessReconciler`
 (propagate/retract/seed), `POST /api/v1/access/reconcile`, the startup pass, and the in-process

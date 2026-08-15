@@ -19,10 +19,12 @@ import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraJql
 import com.sec.source.jira.JiraSettingsStore
-import com.sec.security.CurrentUser
+import com.sec.security.SecPrincipal
+import com.sec.security.auditName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -173,9 +175,11 @@ public fun Route.jiraRoutes(
      * cannot know about on its own.
      */
     put(ApiPaths.JIRA_COLUMNS) {
+        val principal = call.principal<SecPrincipal>()
+            ?: error("${ApiPaths.JIRA_COLUMNS} ran without a principal despite the session guard")
         val request = call.receive<JiraColumnsRequest>()
 
-        columnStore.saveFieldIds(request.fieldIds, updatedBy = CurrentUser.PLACEHOLDER).fold(
+        columnStore.saveFieldIds(request.fieldIds, updatedBy = principal.auditName).fold(
             onSuccess = { saved -> call.respond(fieldsProjection.describe(saved)) },
             onFailure = { cause ->
                 call.respondProblem(
@@ -230,11 +234,11 @@ public fun Route.jiraRoutes(
     }
 
     put(ApiPaths.JIRA_SETTINGS) {
+        val principal = call.principal<SecPrincipal>()
+            ?: error("${ApiPaths.JIRA_SETTINGS} ran without a principal despite the session guard")
         val request = call.receive<JiraProjectSettingsRequest>()
 
-        // The same placeholder every other write path uses until the §14.1 authorization seam
-        // exists (ADR 0014). One placeholder, in one place, so there is one thing to replace.
-        settingsStore.saveProjectKeys(request.projectKeys, updatedBy = CurrentUser.PLACEHOLDER).fold(
+        settingsStore.saveProjectKeys(request.projectKeys, updatedBy = principal.auditName).fold(
             onSuccess = { saved ->
                 call.respond(
                     JiraProjectSettingsDto(

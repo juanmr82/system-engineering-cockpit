@@ -30,3 +30,10 @@ public data class SecPrincipal(
 ) {
     public fun hasRole(role: String): Boolean = role in roles
 }
+
+/**
+ * The human-readable identity a route handler passes as `user` into a meta writer, for
+ * `__createdBy` / `__updatedBy` (R2) — resolved once, here, so every write path and
+ * `AuthRoutes`'s own `displayName` agree on the same fallback rather than each re-deriving it.
+ */
+public val SecPrincipal.auditName: String get() = name.ifBlank { username }

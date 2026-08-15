@@ -15,6 +15,7 @@ import com.sec.domain.SaveCommentsOutcome
 import com.sec.meta.MetaWriter
 import com.sec.security.AccessResolver
 import com.sec.security.SecPrincipal
+import com.sec.security.auditName
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -63,6 +64,8 @@ public fun Route.reviewRoutes(
         // The save icon: every dirty comment for this module, one request, one transaction (§5.2).
         post("/comments") {
             val moduleId = call.decodeRef() ?: return@post call.respondInvalidRef()
+            val principal = call.principal<SecPrincipal>()
+                ?: error("$moduleId/comments ran without a principal despite the session guard")
             val body = call.receive<SaveCommentsRequestDto>()
 
             // Refs are decoded here, before the writer sees them, so a malformed handle is a 400
@@ -80,7 +83,7 @@ public fun Route.reviewRoutes(
                 Ref.decodeOrNull(edit.ref)?.let { MetaWriter.CommentEditInput(itemId = it, text = edit.text) }
             }
 
-            when (val outcome = metaWriter.saveComments(moduleId, edits)) {
+            when (val outcome = metaWriter.saveComments(moduleId, edits, user = principal.auditName)) {
                 is SaveCommentsOutcome.ModuleNotFound ->
                     call.respondModuleNotFound()
 

@@ -17,9 +17,12 @@ import com.sec.domain.SaveSystemLevelsOutcome
 import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
 import com.sec.meta.MetaWriter
+import com.sec.security.SecPrincipal
+import com.sec.security.auditName
 import com.sec.source.doors.DoorsProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -58,6 +61,8 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
          * `/{ref}/...` would be ambiguous only if it shared a shape with it; it does not.
          */
         post("/system-levels") {
+            val principal = call.principal<SecPrincipal>()
+                ?: error("${ApiPaths.MODULES}/system-levels ran without a principal despite the session guard")
             val body = call.receive<SaveSystemLevelsRequestDto>()
 
             // Decoded here, before the writer sees them, so a malformed handle is a 400 rather
@@ -77,7 +82,7 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                 }
             }
 
-            when (val outcome = metaWriter.saveSystemLevels(edits)) {
+            when (val outcome = metaWriter.saveSystemLevels(edits, user = principal.auditName)) {
                 is SaveSystemLevelsOutcome.MalformedRefs ->
                     call.respondProblem(
                         HttpStatusCode.BadRequest,
@@ -122,6 +127,8 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
         // mandatory-attribute diff are saved together or not at all.
         post("/{ref}/settings") {
             val moduleId = call.decodeRef() ?: return@post call.respondInvalidRef()
+            val principal = call.principal<SecPrincipal>()
+                ?: error("${ApiPaths.MODULES}/{ref}/settings ran without a principal despite the session guard")
             val body = call.receive<ModuleSettingsRequestDto>()
 
             // A non-string, non-null systemLevel is a malformed request, not a silent no-op.
@@ -147,6 +154,7 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                             excludedFromOpenPoints = it.excludedFromOpenPoints,
                         )
                     },
+                    user = principal.auditName,
                 )
             ) {
                 is SaveModuleSettingsOutcome.ModuleNotFound ->

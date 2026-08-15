@@ -8,6 +8,7 @@ import com.sec.security.Oidc
 import com.sec.security.OidcLoginResult
 import com.sec.security.SecPrincipal
 import com.sec.security.UserSession
+import com.sec.security.auditName
 import com.sec.security.requireSecSession
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.auth.principal
@@ -79,7 +80,7 @@ public fun Route.authRoutes(oidc: Oidc) {
             call.respond(
                 AuthMeDto(
                     userId = principal.sub,
-                    displayName = principal.name.ifBlank { principal.username },
+                    displayName = principal.auditName,
                     email = principal.email,
                     roles = principal.roles.sorted(),
                     groups = principal.groups,
