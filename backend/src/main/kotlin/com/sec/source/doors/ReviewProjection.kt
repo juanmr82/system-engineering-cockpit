@@ -15,6 +15,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -39,11 +40,12 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
     public suspend fun getModuleObjects(
         moduleId: String,
+        access: AccessSet,
         skip: Int = 0,
         limit: Int = DEFAULT_PAGE,
     ): ModuleObjectsResponseDto {
         val total = graphDriver.executeRead(
-            Query(ReviewCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId)),
+            ReviewCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId), access,
         ) { records -> records.firstOrNull()?.get("total")?.asInt() ?: 0 }
 
         // One extra read for the whole page, not one per row: a module carries on the order of ten
@@ -51,10 +53,9 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         val policies = getMandatoryPolicies(moduleId)
 
         val rows = graphDriver.executeRead(
-            Query(
-                ReviewCypher.MODULE_OBJECTS,
-                mapOf("moduleUrl" to moduleId, "skip" to skip, "limit" to limit),
-            ),
+            ReviewCypher.MODULE_OBJECTS,
+            mapOf("moduleUrl" to moduleId, "skip" to skip, "limit" to limit),
+            access,
         ) { records -> records.map { it.toReviewRow(policies) } }
 
         return ModuleObjectsResponseDto(

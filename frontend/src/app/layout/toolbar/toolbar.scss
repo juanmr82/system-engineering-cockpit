@@ -29,3 +29,19 @@
 .sec-toolbar :focus-visible {
   outline-color: var(--sec-blue-pale);
 }
+
+// The user menu's identity rows (CLAUDE.md §9): disabled buttons standing in for plain text, so
+// they inherit mat-menu-item's layout without inviting a click. Overridden with our own tokens
+// rather than the Material disabled default, which reads as too faint for information a reviewer
+// is meant to actually read.
+.sec-toolbar__user-name {
+  --mat-menu-item-label-text-color: var(--sec-ink);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.sec-toolbar__user-detail {
+  --mat-menu-item-label-text-color: var(--sec-ink-2);
+  font-size: var(--sec-text-sm);
+  opacity: 1;
+}

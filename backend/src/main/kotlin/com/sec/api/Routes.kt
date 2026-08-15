@@ -1,5 +1,6 @@
 package com.sec.api
 
+import com.sec.api.routes.authRoutes
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.importRoutes
@@ -14,6 +15,9 @@ import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessResolver
+import com.sec.security.Oidc
+import com.sec.security.requireSecSession
 import com.sec.source.jira.JiraColumnStore
 import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
@@ -76,33 +80,54 @@ public fun Application.configureRouting(
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
+    // ADR 0017. authRoutes() is the one file allowed to register anything unauthenticated besides
+    // health/ready — it draws that line itself, in one place (security/Session.kt's doc comment).
+    oidc: Oidc,
+    // access-control.md §5/§6.3. One instance for the process, so its cache is actually shared
+    // across requests rather than reset per route.
+    accessResolver: AccessResolver,
 ) {
     routing {
+        // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
+        // /health, /ready, and the two of /auth/* that create a session rather than needing one.
         healthRoutes(graphDriver)
-        jiraRoutes(
-            jiraSettings,
-            jiraClient,
-            jiraSettingsStore,
-            jiraIssuesProjection,
-            jiraLinkGraphProjection,
-            jiraColumnStore,
-            jiraFieldsProjection,
-        )
-        windchillRoutes(windchillSettings, windchillProjection, importRunService)
-        importRoutes(importRunService)
-        moduleRoutes(doorsProjection, metaWriter)
-        reviewRoutes(
-            doorsProjection,
-            reviewProjection,
-            breakdownProjection,
-            dependencyGraphProjection,
-            metaWriter,
-        )
-        statisticsRoutes(statisticsProjection)
-        tableRoutes(doorsProjection, tableProjection)
-        configRoutes()
+        authRoutes(oidc)
 
-        // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.
+        // Every other route needs a session (ADR 0017 §5) and the CSRF check on every non-GET
+        // (§11). One wrapper, so a feature route file registered here is guarded whether or not
+        // whoever adds it remembers to ask for that — requireSecSession() is `Session.kt`'s single
+        // declaration of both rules, the same discipline GraphNamesTest holds Cypher names to.
+        requireSecSession {
+            jiraRoutes(
+                jiraSettings,
+                jiraClient,
+                jiraSettingsStore,
+                jiraIssuesProjection,
+                jiraLinkGraphProjection,
+                jiraColumnStore,
+                jiraFieldsProjection,
+            )
+            windchillRoutes(windchillSettings, windchillProjection, importRunService)
+            importRoutes(importRunService)
+            moduleRoutes(doorsProjection, metaWriter)
+            reviewRoutes(
+                doorsProjection,
+                reviewProjection,
+                breakdownProjection,
+                dependencyGraphProjection,
+                metaWriter,
+                accessResolver,
+            )
+            statisticsRoutes(statisticsProjection)
+            tableRoutes(doorsProjection, tableProjection)
+            configRoutes()
+        }
+
+        // Outside the session guard on purpose: an unmatched path is not an object and not a
+        // capability (R8's 404-vs-403 split does not apply to "nothing matched"), and this is also
+        // what serves the packaged Angular shell to a browser that has no session yet — the app
+        // loads, then its first API call gets the 401 that sends it to Keycloak. Registered last so
+        // it reads as the fallback it is; Ktor scores it lowest regardless.
         notFoundFallback()
     }
 }

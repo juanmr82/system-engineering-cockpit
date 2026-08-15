@@ -10,6 +10,7 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import kotlinx.coroutines.runBlocking
@@ -44,6 +45,10 @@ class ReviewFeatureTest {
     private lateinit var metaWriter: MetaWriter
 
     private val moduleId = "review-module"
+
+    // This feature's own tests are not about access control (that is AccessControlFeatureTest) —
+    // every call here stands in for a caller the phase-2 predicate lets straight through.
+    private val seesAll = AccessSet(seesAll = true, categoryIds = emptyList())
 
     @BeforeAll
     fun setUp() {
@@ -134,7 +139,7 @@ class ReviewFeatureTest {
     // Criterion 1: document order comes from __sortKey, not from creation order or objectNumber.
     @Test
     fun `objects load in document order with their attributes and type wording`() = runBlocking {
-        val page = reviewProjection.getModuleObjects(moduleId)
+        val page = reviewProjection.getModuleObjects(moduleId, seesAll)
 
         assertEquals(4, page.total)
         assertFalse(page.truncated)
@@ -154,7 +159,7 @@ class ReviewFeatureTest {
     // "" from DOORS means "attribute exists and is empty", which is not the same as absent.
     @Test
     fun `an empty attribute value survives as empty rather than being dropped`() = runBlocking {
-        val row = reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-2" }
+        val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-2" }
 
         assertTrue(row.attributes.containsKey("REQ. Priorität"))
         assertEquals("", row.attributes.getValue("REQ. Priorität").toString().trim('"'))
@@ -164,7 +169,7 @@ class ReviewFeatureTest {
     // requirement that is also a table cell (attribute-policy-checks.md §1 uses the same scope).
     @Test
     fun `requirementLike excludes headings and table structure`() = runBlocking {
-        val byId = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+        val byId = reviewProjection.getModuleObjects(moduleId, seesAll).rows.associateBy { it.id }
 
         assertTrue(byId.getValue("SRD-1").requirementLike)
         assertFalse(byId.getValue("SRD-3").requirementLike)
@@ -175,7 +180,7 @@ class ReviewFeatureTest {
     // requirement. Incoming links are flagged incomplete because importers ingest out-links only.
     @Test
     fun `references separate resolved from not-yet-imported, and declare incoming incomplete`() = runBlocking {
-        val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+        val rows = reviewProjection.getModuleObjects(moduleId, seesAll).rows.associateBy { it.id }
         val outgoing = rows.getValue("SRD-1").references.outgoing
 
         assertEquals(2, outgoing.size)
@@ -213,7 +218,7 @@ class ReviewFeatureTest {
 
         assertEquals(before, rawProperties("obj-1"))
 
-        val row = reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-1" }
+        val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }
         assertEquals("Needs a rationale", row.comment?.text)
         assertNotNull(row.comment?.metaId)
     }
@@ -222,10 +227,10 @@ class ReviewFeatureTest {
     @Test
     fun `editing a comment updates the same node and keeps its identity`() = runBlocking {
         metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "First")))
-        val original = reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-3" }.comment
+        val original = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
 
         metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "Second")))
-        val edited = reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-3" }.comment
+        val edited = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
 
         assertEquals("Second", edited?.text)
         assertEquals(original?.metaId, edited?.metaId)
@@ -243,12 +248,12 @@ class ReviewFeatureTest {
     @Test
     fun `clearing a comment deletes its node`() = runBlocking {
         metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "Temporary")))
-        assertNotNull(reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-4" }.comment)
+        assertNotNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
 
         val outcome = metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "   ")))
 
         assertNull(assertIs<SaveCommentsOutcome.Saved>(outcome).comments.single().metaId)
-        assertNull(reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-4" }.comment)
+        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
     }
 
     // An arbitrary __id in the body must not be able to attach a note to any node in the graph.
@@ -325,7 +330,7 @@ class ReviewFeatureTest {
             ),
         ) { }
 
-        val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+        val rows = reviewProjection.getModuleObjects(moduleId, seesAll).rows.associateBy { it.id }
         assertEquals(listOf("Object Type shall not be TBD"), rows.getValue("SRD-5").issues)
         assertEquals(emptyList(), rows.getValue("SRD-6").issues)
         assertEquals(emptyList(), rows.getValue("SRD-7").issues)
@@ -362,7 +367,7 @@ class ReviewFeatureTest {
             ),
         )
 
-        val rows = reviewProjection.getModuleObjects(moduleId).rows.associateBy { it.id }
+        val rows = reviewProjection.getModuleObjects(moduleId, seesAll).rows.associateBy { it.id }
 
         // Blank counts as missing: DOORS "" means "exists and is empty", which the table renders
         // as an empty cell but the check treats as a violation.
@@ -388,7 +393,7 @@ class ReviewFeatureTest {
     fun `the verdict changes when the policy changes, with no re-import`() = runBlocking {
         assertEquals(
             emptyList(),
-            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+            reviewProjection.getModuleObjects(moduleId, seesAll).rows.single { it.id == "SRD-2" }.issues,
         )
 
         metaWriter.saveModuleSettings(
@@ -400,7 +405,7 @@ class ReviewFeatureTest {
         )
         assertEquals(
             listOf("REQ. Priorität"),
-            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+            reviewProjection.getModuleObjects(moduleId, seesAll).rows.single { it.id == "SRD-2" }.issues,
         )
 
         metaWriter.saveModuleSettings(
@@ -412,7 +417,7 @@ class ReviewFeatureTest {
         )
         assertEquals(
             emptyList(),
-            reviewProjection.getModuleObjects(moduleId).rows.single { it.id == "SRD-2" }.issues,
+            reviewProjection.getModuleObjects(moduleId, seesAll).rows.single { it.id == "SRD-2" }.issues,
         )
     }
 
@@ -490,8 +495,8 @@ class ReviewFeatureTest {
         graphDriver.executeWrite(Query("CYPHER 25 MATCH (m:__Meta) DETACH DELETE m", emptyMap())) { }
 
         assertEquals(before, rawProperties("obj-1"))
-        assertEquals(4, reviewProjection.getModuleObjects(moduleId).total)
-        assertNull(reviewProjection.getModuleObjects(moduleId).rows.first { it.id == "SRD-1" }.comment)
+        assertEquals(4, reviewProjection.getModuleObjects(moduleId, seesAll).total)
+        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }.comment)
         val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
         assertFalse(attributes.getValue("Object Text").visible)
         assertFalse(attributes.getValue("Object Text").mandatory)

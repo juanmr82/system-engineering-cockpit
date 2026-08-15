@@ -4,6 +4,8 @@ import com.sec.api.respondProblem
 import com.sec.config.Neo4jSettings
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
+import com.sec.security.authenticatedClient
+import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -13,6 +15,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.ktor.server.sessions.SessionStorageMemory
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
@@ -30,6 +33,20 @@ class ApplicationTest {
         application {
             configureApp(GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")))
         }
+    }
+
+    // Two of the routes below sit behind the session guard (ADR 0017) now that it wraps every
+    // feature route. `/api/v1/nope` (the 404 tests) and the ad-hoc /api/v1/probe route both stay
+    // reachable with no session — see Routes.kt and AuthRoutes.kt for exactly which paths do.
+    private fun ApplicationTestBuilder.appWithSession(): HttpClient {
+        val sessionStorage = SessionStorageMemory()
+        application {
+            configureApp(
+                GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                sessionStorage = sessionStorage,
+            )
+        }
+        return authenticatedClient(sessionStorage)
     }
 
     @Test
@@ -57,7 +74,7 @@ class ApplicationTest {
     // Was a 500 with the JDK's "Illegal base64 character 21" in the body (BACKEND_REVIEW §3.1).
     @Test
     fun `a malformed ref is a 400 and leaks nothing`() = testApplication {
-        appWithoutGraph()
+        val client = appWithSession()
 
         val response = client.get("/api/v1/modules/!!!not-base64!!!")
 
@@ -70,7 +87,7 @@ class ApplicationTest {
     // Was a 400 naming the internal DTO class in the body (BACKEND_REVIEW §3.1).
     @Test
     fun `a malformed request body names no internal type`() = testApplication {
-        appWithoutGraph()
+        val client = appWithSession()
 
         val response = client.post("/api/v1/modules/${Ref.encode("module-1")}/settings") {
             contentType(ContentType.Application.Json)

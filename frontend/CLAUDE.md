@@ -41,7 +41,8 @@ Section numbers below are the root file's own and are deliberately unchanged —
 frontend/src/app/
 ├── app.config.ts               ← providers: router, httpClient(withFetch), material
 ├── app.routes.ts
-├── core/                       ← singletons: api client, auth, error handling
+├── core/                       ← singletons: api client, error handling
+│   └── auth/                   ← AuthStore (the /auth/me signal), route guards, CSRF interceptor
 ├── shared/                     ← reusable dumb components, pipes, directives
 ├── layout/
 │   ├── shell/                  ← the skeleton: toolbar + sidenav + router outlet
@@ -53,6 +54,7 @@ frontend/src/app/
 │   └── mbse/{soi-views,functions}/
 └── styles/                     ← theme, tokens, typography
 ```
+core/auth/ holds no token and no OIDC library (ADR 0017). The backend is the OIDC client; the browser makes same-origin requests with credentials and reacts to 401. A pull request adding angular-auth-oidc-client, keycloak-js or a JWT decoder has misread the architecture — and §4 of the root file says the same thing from the dependency side.
 
 ### Component file layout — the project standard
 
@@ -410,6 +412,37 @@ expand/collapse, menu open, route transition. No decorative animation. Respect
 
 ---
 
+### Auth in the browser — three rules
+
+R8 in the root file is enforced in the backend. These three are what the frontend owes it.
+
+- **`401` navigates, `403` renders.** A `401` is a **full browser navigation** to
+  `/api/v1/auth/login?redirect=<route>` — not `router.navigate`, because the browser has to follow
+  a redirect to Keycloak and an Angular route cannot. A `403` renders an in-app refusal naming the
+  capability required. Conflating the two produces a redirect loop, and a redirect loop is close to
+  unreadable from a screenshot.
+- **Route guards are convenience, never enforcement.** Every guard has a matching backend test. A
+  guard that is the only thing between a user and an endpoint is a defect in the backend, not a
+  feature of the frontend.
+- **Hide what the user cannot reach; never disable it.** A disabled sidenav item advertises a
+  feature, and a greyed-out module name in a picker advertises a module. Same reasoning as R8's rule
+  about counts: an absence must be indistinguishable from a nothing.
+
+Two mechanics that follow from ADR 0017 and are easy to get wrong:
+
+- **Credentials, not headers.** One provider change in `app.config.ts`; there is no token
+  interceptor because there is no token. The CSRF token from `/auth/me` is attached to every
+  non-`GET` by **one** interceptor.
+- **`ng serve`'s proxy is load-bearing, not a convenience.** The cookie only travels same-origin, so
+  a hardcoded `http://localhost:8080` anywhere in a service makes that request cross-origin and
+  cookieless. `frontend/proxy.conf.json` is what keeps development and the packaged jar identical.
+
+The Access views (`/access`) are a `sec-access-manager` feature and follow every rule in §6 and §8:
+ag-grid for the grants matrix and the not-yet-assigned queue, Signal Forms for the inputs, and
+**R5 holds without exception** — `sec/no-internal-namespace` will fail the build on a `__` name in
+one of those templates, which is the point. The user-facing words are declared in `Aliases.kt` and
+listed in the root file's R5 table.
+
 ## 9. The UI shell
 
 **Status: built.** The current milestone is the first dynamic-content view,
@@ -438,6 +471,12 @@ section as the contract the shell must continue to satisfy.
 │  CAMEO           │                                                │
 │   · SOI views    │                                                │
 │   · Functions    │                                                │
+│                  │                                                │
+│  Access ⚑       │  ← sec-access-manager only; ⚑ is the count of │
+│   · Categories   │     containers not yet assigned                │
+│   · Grants       │                                                │
+│   · Not assigned │                                                │
+│   · Defaults     │                                                │
 └──────────────────┴────────────────────────────────────────────────┘
 ```
 
@@ -476,8 +515,11 @@ section as the contract the shell must continue to satisfy.
   `corner-full` (a pill); the sidenav overrides it to `0` so hover/focus/active states are
   square, matching this rule.
 - **User icon** (right of toolbar): opens a `mat-menu` with display name, email, roles,
-  connected graph/database name, and a sign-out item. It is the **only** toolbar action —
-  there is no global save (R7).
+  **the groups the user is in**, connected graph/database name, and a sign-out item. It is the
+  **only** toolbar action — there is no global save (R7). All of it comes from `GET /auth/me` and
+  nothing is decoded in the browser (ADR 0017). The groups are shown because "why can I not see
+  this module" is answered by that list nine times out of ten; a user in **no** group sees an
+  application with nothing in it, by design (R8), and the menu is where they find out why.
 - Every route is lazy (`loadComponent`) and renders a titled empty state naming what will
   live there. Empty states are an invitation to act, not an apology.
 - Keyboard: visible focus rings on toolbar buttons and every nav item; the sidenav is a

@@ -3,6 +3,310 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 25) — the Docker-gated work session 24 left open
+
+Branch **`master`**. Docker became reachable on this machine; this session did exactly the two
+things session 24's "Resume here" named as blocked on that, and nothing else — phase 3 has not
+started.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **`mvn -Pdocker test` actually run** — 521 docker-tagged tests, 0 failures, including `AccessControlFeatureTest` (5), and session 24's edits to `ReviewFeatureTest` (17) and `StatisticsFeatureTest` (22) | whole docker-tagged suite |
+| 2 | **The owed `PROFILE` measurement, taken** — form A vs form B on `MODULE_OBJECTS`/`COUNT_MODULE_OBJECTS`, at three `$acl` sizes, against a synthetic 984-object module plus 4 000 decoy objects in 6 other modules (so `__moduleUrl` has real selectivity — see the method note below) | ADR 0016 §8, rewritten with the numbers |
+| 3 | **Decision: form A ships, unchanged** — the a-priori guess in §6.1 (form B wins) was wrong; recorded as such rather than quietly corrected | `AccessCypher.kt` doc comment, `docs/features/access-control.md` §6.1 |
+
+### The measurement, and why the a-priori guess was wrong
+
+No DOORS export or JIRA set was reachable from this machine (DOORS is Windows-only; no JIRA
+credential here either), so "a module shaped like the reference export" was built synthetically
+rather than imported: a disposable `neo4j:2026.06.0-community` container (not Testcontainers — a
+plain `docker run` plus `cypher-shell`, since this was a one-off measurement, not a permanent test),
+seeded with 984 `:DOORSObject:DOORSRequirement:SEItem` nodes on one `__moduleUrl`, one-to-one across
+5 `:__AccessCategory` nodes, **plus 4 000 decoy objects across 6 other module URLs**. That second
+part is load-bearing and was not in the original plan: without decoys, every `:DOORSObject` in the
+database belongs to the one module, `__moduleUrl = $u` has 100% selectivity, and the planner answers
+with a full label scan instead of the `doors_object_module` index seek a real multi-module deployment
+would get — measuring an artifact of the fixture rather than the predicate. Same schema as
+production (`importers/.../doors/schema.py`, `MetaSchema.kt`), `cypher-shell PROFILE`, `$seesAll =
+false` throughout.
+
+**Form A wins, and not narrowly**, except at the smallest `$acl`:
+
+| `$acl` size | form A | form B | delta |
+|---|---|---|---|
+| 1 category | 4 525 | 4 340 | B −4% |
+| 2 categories | 5 116 | 7 098 | A −28% |
+| 4 categories | 6 298 | 10 841 | A −42% |
+
+§6.1's guess was that B wins because it reads no property in the inner loop. It doesn't read one,
+but `any(cat IN acl WHERE EXISTS {...})` opens one relationship-existence subquery **per entry in
+`$acl`**, per row — cost scales with how many categories a caller's groups collectively grant, which
+is realistically more than one. Form A expands each node's own category edges once, regardless of
+`$acl`'s size, and reads a property only on edges that exist. B's single-category win is the narrow
+case, not the common one. **No call site changes** — `AccessCypher.visible()` is untouched, exactly
+because the measurement confirmed what already shipped.
+
+### What is still open, unchanged from session 24
+
+- **`AccessAdminService` and the reconciler do not exist** — phase 3 (`AccessContainment`,
+  `AccessReconciler`, `POST /api/v1/access/reconcile`, the startup pass, the import-pipeline hook).
+  Not started this session; the two design decisions session 24 already settled (DOORS: no
+  pre-import tree enumeration; JIRA: RBAC is the gate, drop the project allow-list) still stand and
+  do not need re-litigating when phase 3 starts.
+- **`CurrentUser.PLACEHOLDER` still writes `"system"`** on every Tier-2 write (`security/CurrentUser.kt`,
+  used from `MetaWriter.kt` and the two JIRA settings routes). Small and mechanical, flagged as
+  low-risk to pick up "once someone is in the neighbourhood of these files" since session 23 —
+  neither session 24 nor this one touched it.
+- Everything else session 24 listed as not done (no frontend Access views, no live sign-in
+  verification beyond what `AccessControlFeatureTest` now exercises against a real database) is
+  unchanged.
+
+### Verified
+
+- `mvn -Pdocker test` — **521 tests, 0 failures**, against `neo4j:2026.06.0-community` via
+  Testcontainers. First time this suite has actually run since access control started.
+- `mvn compile` — clean after the doc-comment edits in `AccessCypher.kt` (no logic changed).
+- Not re-run this session: `mvn verify` (non-docker) and the frontend suite — no frontend or
+  non-docker backend code changed.
+
+### Resume here
+
+**Phase 3** (`docs/features/access-control.md` §15) is next, per session 24's own "Resume here",
+now genuinely unblocked rather than blocked-on-Docker: `AccessContainment`, `AccessReconciler`
+(propagate/retract/seed), `POST /api/v1/access/reconcile`, the startup pass, and the import-pipeline
+hook. It is a multi-file feature spanning all three sources — worth confirming scope/order with
+whoever resumes before diving in, rather than assuming session 24's sketch is still exactly right.
+
+---
+
+## State as of 2026-08-15 (session 24) — access control, phase 2: model, resolver, predicate
+
+Branch **`master`**, continuing directly from session 23 (phase 1) in the same day. Same design
+docs: **ADR 0016** (now with a new §8), **`docs/features/access-control.md`** §15's build order.
+Phase 2's scope exactly: the model, `AccessResolver`, `AccessCypher.visible()`, `AccessGuardTest`,
+applied to **exactly one endpoint** — `/modules/{ref}/objects`. Every other read and write in the
+backend is still unfiltered, each one now named in `AccessGuardTest`'s exemption list with the
+phase that will filter it (4 for reads, 5 for writes) — that list is the honest map of what phase 2
+did *not* do, not an oversight.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **The model** — `:__AccessCategory` (Shape D, carries `:__Meta`), `:__Group` (not `:__Meta`, ADR 0016 §6.2), `__inAccessCategory`, `__mayRead` | `domain/GraphNames.kt` (new `GroupProp` object alongside `MetaProp`) |
+| 2 | **Schema** — `access_category_key`, `group_key` uniqueness constraints, applied at boot alongside `:__Meta`'s | `meta/MetaSchema.kt` |
+| 3 | **`AccessResolver`** — `groups` claim → `AccessSet(seesAll, categoryIds)`, cached on the sorted group-key set, invalidated by a version counter (nothing bumps it yet — `AccessAdminService` is phase 6) | `security/AccessResolver.kt` |
+| 4 | **`AccessCypher`** — `RESOLVE_GROUPS` (the resolver's one query) and `visible(alias)`, the `/*ACL*/`-marked predicate | `graph/cypher/AccessCypher.kt` |
+| 5 | **The `AccessSet`-binding `executeRead` overload** — the one place `$seesAll`/`$acl` are bound, so no call site assembles them by hand | `graph/Read.kt` |
+| 6 | **`/modules/{ref}/objects` filtered** — `ReviewCypher.MODULE_OBJECTS`/`COUNT_MODULE_OBJECTS` now embed the predicate; `ReviewProjection.getModuleObjects` takes an `AccessSet`; the route resolves it from the caller's principal | `graph/cypher/ReviewCypher.kt`, `source/doors/ReviewProjection.kt`, `api/routes/ReviewRoutes.kt` |
+| 7 | **`AccessGuardTest`** — reads every statement in `graph/cypher/` + `MetaSchema`, same premise as `GraphNamesTest`; ~70 statements exempted by name and reason, 2 filtered | `security/AccessGuardTest.kt` |
+| 8 | **`AccessControlFeatureTest`** — the phase's acceptance test, hand-tagging a module via raw Cypher and asserting visible-to-one/invisible-to-another, `seesAll`, `everyGroup`, and untagged-is-invisible-to-everyone | `AccessControlFeatureTest.kt` (docker-tagged) |
+
+### The one design call worth flagging: `const val` → `val`
+
+`ReviewCypher.MODULE_OBJECTS` and `COUNT_MODULE_OBJECTS` changed from `const val` to `val`, the
+only two statements in the codebase that are not compile-time constants. `AccessCypher.visible()`
+is a function (it takes the bound alias as a parameter — `visible("o")`), and a Kotlin `const val`
+cannot embed a function call, only other constants. Every *name* the predicate embeds is still a
+single interpolated constant (ADR 0010 is intact); only the mechanism producing the final string
+differs, and only for statements that call `visible()`. Every other filtered statement phase 4
+adds will need the same change — this is not a one-off.
+
+### `AccessGuardTest` was built statement-first, not audited by eye
+
+Rather than manually classifying ~70 statements across every `graph/cypher/*.kt` file (error-prone
+at that count), the test was written with the enumeration and the label-touch check first and an
+**empty** exemption map, run, and every statement it flagged got a real, specific reason added —
+iterating against the compiler rather than trying to get a from-memory audit right in one pass.
+Verified the way `GraphNamesTest` was: the marker was stripped from both filtered statements by
+hand, the test failed exactly on those two, and the fix was reverted.
+
+### What is not done, and would be easy to assume is
+
+- **The `PROFILE` measurement is still owed.** §6.1 asks for form A vs form B to be measured
+  against the reference module and the JIRA set before the predicate's exact shape is settled.
+  This session had no reachable Docker/Podman daemon (same gap as session 23), so **form A ships
+  provisionally** — correct, but not proven faster or slower than form B. ADR 0016 §8 has the full
+  writeup and what running the measurement later looks like. This matters more than it sounds:
+  phase 4 is about to multiply whichever form is chosen across dozens of call sites.
+- **`AccessControlFeatureTest` has not actually run.** It compiles; `mvn -Pdocker test` is what
+  would execute it, and could not be run this session for the same reason.
+- **`ReviewFeatureTest` and `StatisticsFeatureTest`'s edits (the new `access` parameter, passed as
+  a `seesAll` constant) have not run live either** — same Docker gap. They compile, and the
+  `seesAll` value should make every existing assertion behave exactly as before, but "should" is
+  not "verified" for a docker-tagged suite.
+- **No frontend change at all.** Phase 2 is backend-only by the spec's own build order; nothing in
+  `docs/features/access-control.md` §10 (the Access views) starts before phase 6.
+- **`AccessAdminService` does not exist.** Categories, grants and containers are still hand-written
+  Cypher in a test fixture; there is no write path yet, so `AccessResolver.invalidate()` has no
+  caller. Phase 6.
+- **The reconciler does not exist.** Nothing propagates a container's tag to its members yet —
+  `AccessControlFeatureTest` tags the one object directly. Phase 3.
+- **Everything session 23 left open is still open**: no live sign-in verification, and
+  `CurrentUser.PLACEHOLDER` still writes `"system"`.
+
+### Verified
+
+- `mvn verify` — **366 tests, 0 failures** (was 362 at session 23's close; +4: `AccessGuardTest`).
+  `GraphNamesTest` and `AccessGuardTest` both pass and were both broken deliberately to confirm
+  they catch the regression they exist to catch.
+- **Not verified live, and not verified under `mvn -Pdocker test`.** No Docker/Podman daemon was
+  reachable this session either. `AccessControlFeatureTest` (new), and the two existing
+  docker-tagged suites this session edited (`ReviewFeatureTest`, `StatisticsFeatureTest`), are
+  unrun. Phase 2's own acceptance line — *"One module tagged by hand in Cypher is visible to one
+  group and invisible to another, and the db-hit numbers are in ADR 0016"* — is therefore only
+  half true: the behaviour is implemented and the non-container guard tests hold it in place, but
+  nobody has watched `AccessControlFeatureTest` pass against a real Neo4j, and the db-hit numbers
+  are not in the ADR.
+- No frontend changes this session, so frontend numbers are unchanged from session 23 (272 specs).
+
+### Resume here
+
+**First, before anything else in phase 2 or 3**: get a Docker or Podman daemon reachable and run
+`mvn -Pdocker test`. This clears three things at once — confirms `AccessControlFeatureTest` and the
+edited `ReviewFeatureTest`/`StatisticsFeatureTest` actually pass, and is the environment the
+`PROFILE` measurement needs anyway. Do the measurement in the same sitting: `PROFILE` form A (what
+ships) against form B (`docs/features/access-control.md` §6.1) for `MODULE_OBJECTS` and
+`COUNT_MODULE_OBJECTS`, record db hits in ADR 0016 §8, and change `AccessCypher.visible()` if B
+wins — cheaply, since it is the one function every filtered statement calls through.
+
+**Then phase 3** (`docs/features/access-control.md` §15): `AccessContainment`, `AccessReconciler`
+(propagate/retract/seed), `POST /api/v1/access/reconcile`, the startup pass, and the import-pipeline
+hook. Two design decisions from the prior session's discussion are already settled and do not need
+re-litigating:
+
+- **DOORS**: no pre-import tree enumeration. A module is tagged only on or after it is actually
+  imported, via the existing Unassigned-queue behaviour (§10.2) — unmodified. The DXL for exporting
+  a module tree is explicitly out of scope, to be written in a separate future session.
+- **JIRA**: **"RBAC is the gate."** The importer moves to importing every available project
+  unconditionally — `JiraSettingsStore`'s `projectKeys` allow-list and the project-picker UI in
+  `features/settings/jira/` are dropped, `JiraJql.kt`'s `project IN (...)` clause goes away, and the
+  existing `inProject`/`:JiraProject` relationship `IssueMapper.kt` already writes becomes what the
+  reconciler traverses to gate visibility. `GET /api/v1/jira/projects`'s reason for existing shrinks
+  once every project is always imported — decide then whether to drop it or repoint it at showing
+  project names in the Access views. Not yet implemented; this is a design decision made in
+  conversation, not code written.
+
+## State as of 2026-08-15 (session 23) — access control, phase 1: Keycloak realm + the session
+
+Branch **`master`**. Full design: **ADR 0016** (the authorization model), **ADR 0017** (the
+backend is the OIDC client), **`docs/features/access-control.md`** (the spec, §15 the build
+order). This session is **phase 1 only, by explicit user choice** — the spec's own words are "Build
+it in the order of §15 and nothing else," and phase 1 alone touched every route in the backend.
+**No data filtering exists yet.** Every endpoint now requires a session; nothing yet asks whether
+that session's groups may see the object being requested — that is phase 2 onward.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | **Hand-rolled OIDC Authorization Code flow with PKCE** — discovery, JWKS-validated `id_token`, refresh — not driven through `ktor-server-auth`'s `oauth {}` provider, which fights a per-attempt PKCE verifier | `security/Oidc.kt` |
+| 2 | **The session** — cookie name, CSRF header name, the session-authentication provider, all one declaration | `security/Session.kt` |
+| 3 | **`/auth/login`, `/auth/callback`, `/auth/me`, `/auth/logout`** | `api/routes/AuthRoutes.kt` |
+| 4 | **The route-tree guard** — every feature route file now sits inside `requireSecSession { }`; only `/health`, `/ready`, `/auth/login`, `/auth/callback` are outside it | `api/Routes.kt` |
+| 5 | **`AuthSettings`** — `auth.*` in `application.yaml`; every value but the client secret has a working dev default | `config/AuthSettings.kt` |
+| 6 | **The dev Keycloak** — realm export (client, 4 roles, `/SEC/*` groups, 3 test users) + a compose service | `deploy/keycloak/sec-realm.json`, `deploy/docker-compose.dev.yml` |
+| 7 | **The frontend shell** — `AuthStore` (`/auth/me` as a signal), `authInterceptor` (credentials + CSRF header + 401-navigates), the toolbar's user menu now shows the real name/email/roles/groups and a working sign-out | `core/auth/`, `layout/toolbar/` |
+
+### Why hand-rolled, not the library's `oauth {}` provider
+
+Read `security/Oidc.kt`'s class doc before touching this. The short version: `oauth {}` is shaped
+for "redirect to a third-party login," where `providerLookup` is invoked independently on the
+login request and the callback request with no supported way to carry a per-attempt PKCE
+`code_verifier` between them except abusing `onStateCreated`. Hand-rolling it — plain
+unauthenticated routes, this backend's own `pending` map keyed by `state`, manual JWKS validation
+via the `com.auth0` classes `ktor-server-auth-jwt` brings transitively — is about 350 lines and
+every one of them is inspectable. ADR 0017 anticipated exactly this ("verify PKCE support... pass
+`code_challenge` through `extraAuthParameters` if the provider does not expose it directly") but
+what actually shipped skips the provider's redirect/callback machinery entirely rather than
+fighting it.
+
+### The one thing that is not obvious about `requireSecSession`
+
+`Session.kt`'s `requireSecSession { }` bundles **two** rules in one wrapper — the session guard
+*and* the CSRF double-submit check — because a route registered inside it needs both, always, and
+a route that only got one would be a silent gap. The CSRF intercept has a one-line guard that
+matters: `call.principal<SecPrincipal>() ?: return@intercept`. Without it, a request with no
+session at all reaches the CSRF check too (Ktor's `Call` phase runs after `AuthenticatePhase`
+regardless of what the authentication challenge already sent), and it emits its **own** competing
+`403` response, silently turning "no session" into the wrong status code. `AuthGuardTest` is what
+caught this — first run reported `403` where `401` was expected.
+
+### What is not done, and would be easy to assume is
+
+- **No data filtering, anywhere.** Phase 2 (`AccessResolver`, `AccessCypher.visible()`,
+  `AccessGuardTest`) has not started. Every authenticated user currently sees every object.
+- **`CurrentUser.PLACEHOLDER` still writes `"system"`** as `__createdBy`/`__updatedBy` on every
+  Tier-2 write. A real username is sitting right there in `SecPrincipal` now, and wiring it in
+  would be a small, mechanical change — deliberately not made this session, because it touches
+  every existing meta-writing route and phase 1's stated scope is the session, not that.
+- **`requireRole(Role.X)` does not exist.** `security/Roles.kt` declares the four role strings and
+  says why the plugin waits for phase 5: it has no route to guard yet, and an untested plugin is
+  scaffolding.
+- **No frontend route guards** (`canRead` / `canAdminister` / `canManageAccess` from spec §10.1).
+  Same reasoning as `requireRole` — `/settings/*` and `/access/*` are not gated yet, so there is
+  nothing for a guard to sit in front of. The `authInterceptor`'s 401-navigation already enforces
+  "you need a session" at the HTTP layer regardless.
+- **No `403` in-app refusal panel.** Nothing in phase 1 can produce a `403` (no role-gated route
+  exists), so the frontend has nothing to render one against yet. The interceptor already leaves a
+  `403` alone rather than navigating, which is the half of the split phase 1 could actually build.
+- **"Connected graph/database name"** from `CLAUDE.md` §9's user-menu sketch is still not shown —
+  nothing in the API reports it, before or after this session.
+- **No `toolbar.spec.ts`.** The component never had one; `AuthStore.signOut()`'s real behaviour is
+  covered in `auth-store.spec.ts`, and the toolbar component itself is now a thin pass-through to
+  it. Testing the Material `mat-menu` overlay's rendered content would need a CDK test harness this
+  codebase has never used anywhere else — a reasonable next addition, not done here.
+- **`docs/RUNNING.md` is untouched.** Its Keycloak section is explicitly phase 7 work
+  (`docs/features/access-control.md` §15).
+
+### Verified
+
+- `mvn verify` — **362 tests, 0 failures** (was 349 at session 22's close; +13: `OidcFlowTest` (8,
+  a real embedded fake Keycloak — see below), `AuthGuardTest` (3), plus the two fixed by the trap
+  above staying fixed).
+- `npm run lint` clean, **272 frontend specs** (+15: `auth-store.spec.ts`,
+  `auth.interceptor.spec.ts`), `npm run build` green.
+- **Not verified live.** Docker/podman's daemon was not reachable on this machine this session
+  (client present, socket absent) — the user chose to start it themselves and drive live
+  verification in a follow-up. Phase 1's own acceptance line — *"Signing out and back in as two
+  different users shows two different names and role sets, and every `/api/v1` call without a
+  session is a `401`"* — is therefore unmet in the one sense that matters: nobody has watched it
+  happen in a browser. Everything below **is** verified, short of that.
+
+### `OidcFlowTest` is worth reading before extending `Oidc.kt`
+
+It runs against a **real embedded Netty server** on a loopback port, not a `MockEngine`-backed
+`HttpClient`. The reason is specific and easy to re-break: `jwks-rsa`'s `JwkProviderBuilder` fetches
+the JWKS document with its own `java.net.URL` connection, entirely outside the `HttpClient` `Oidc`
+is handed — a mocked client leaves signature verification, the one part of this flow that is
+actually hard to get right, completely untested. Covers the PKCE challenge (an RFC 7636 test
+vector), redirect-target sanitisation (the open-redirect guard), a full round trip with the nonce
+threaded through correctly, `refresh()` re-reading roles/groups from a freshly issued token, and
+four rejections: unrecognised `state`, untrusted signing key, wrong audience, expired token.
+
+### Resume here
+
+**Phase 2** (`docs/features/access-control.md` §15): the model (`__AccessCategory`, `__Group`,
+`__mayRead`, `__inAccessCategory` — all in `domain/GraphNames.kt`, per ADR 0010, no new names file),
+`MetaSchema` additions, `AccessResolver` (groups → `AccessSet`, cached, version-invalidated),
+`AccessCypher.visible()`, `AccessGuardTest`, and the `PROFILE` measurement against
+`/modules/{ref}/objects` with the db-hit numbers recorded in ADR 0016. Its acceptance line: *"One
+module tagged by hand in Cypher is visible to one group and invisible to another."*
+
+**Before phase 2**, in whichever order the next session finds convenient:
+
+1. **Start Docker/podman and actually sign in.** `docker compose -f deploy/docker-compose.dev.yml
+   up` (needs `SEC_NEO4J_PASSWORD` and `SEC_KEYCLOAK_ADMIN_PASSWORD` set), start the backend with
+   `SEC_OIDC_CLIENT_SECRET=sec-backend-dev-secret` (already in `.run/Backend.run.xml`) and
+   `SEC_AUTH_FRONTEND_URL=http://localhost:4200`, `ng serve`, then sign in as `sec-dev-user` and
+   `sec-dev-admin` (`docs/KEYCLOAK_SETUP.md` §7 has the third, `sec-dev-nogroup`, for the empty
+   application) and confirm the user menu shows two different name/role/group sets. This is the
+   one thing this session could not do.
+2. **`docs/adr/0016-authorization-model.md` §6.1's two candidate predicate forms (A/B) need the
+   `PROFILE` measurement** before phase 2 writes `AccessCypher.visible()` — that decision was
+   deferred to phase 2 on purpose (the spec table says so), but do it early in that phase rather
+   than late, since every phase-2 read path is threaded through whichever form wins.
+3. **Wire `CurrentUser.PLACEHOLDER` to the real principal** (see "what is not done" above) — cheap,
+   mechanical, and removes a lie that exists only because auth did not used to. Not required for
+   phase 2, but there is no reason to keep deferring it once someone is in the neighbourhood of
+   these files.
+
 ## State as of 2026-08-12 (session 22) — the Windchill importer, fed by an uploaded export
 
 Branch **`master`** (session 21 was merged as PR #5 before this started). The whole design is in

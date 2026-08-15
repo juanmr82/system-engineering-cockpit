@@ -8,6 +8,7 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
@@ -50,6 +51,9 @@ class StatisticsFeatureTest {
     private val levelledModule = "module-l1"
     private val topModule = "module-l0"
     private val unlevelledModule = "module-none"
+
+    // Cross-checked against the review table below, which is not itself under test here.
+    private val seesAll = AccessSet(seesAll = true, categoryIds = emptyList())
 
     @BeforeAll
     fun setUp() {
@@ -255,7 +259,7 @@ class StatisticsFeatureTest {
     fun `mandatory violations match what the review table reports for the same module`() =
         runBlocking {
             val fromStatistics = moduleOf(levelledModule).completeness.itemsMissingMandatory
-            val fromReviewTable = reviewProjection.getModuleObjects(levelledModule).rows
+            val fromReviewTable = reviewProjection.getModuleObjects(levelledModule, seesAll).rows
                 .count { row -> row.issues.any { it.startsWith("Rationale") || it == "Rationale" } }
 
             assertEquals(1, fromStatistics)
@@ -266,7 +270,7 @@ class StatisticsFeatureTest {
     @Test
     fun `the item count equals the review table's own total for the same module`() = runBlocking {
         assertEquals(
-            reviewProjection.getModuleObjects(levelledModule).total,
+            reviewProjection.getModuleObjects(levelledModule, seesAll).total,
             moduleOf(levelledModule).completeness.items,
         )
     }

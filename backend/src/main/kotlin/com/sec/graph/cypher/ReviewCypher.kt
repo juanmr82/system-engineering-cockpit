@@ -69,10 +69,15 @@ public object ReviewCypher {
     // a module listing that still contained it would be showing a document DOORS does not have.
     // It stays in the graph only as the far end of the links DOORS left behind, and it is reached
     // from those links -- never by listing the module (ADR 0012).
-    public const val MODULE_OBJECTS: String = """
+    //
+    // `val`, not `const val`: the ACL clause below is a function call (AccessCypher.visible), not
+    // a compile-time constant, so this statement can only be computed once at object-init time
+    // rather than at compile time. Every name in it — including the ones the predicate embeds —
+    // is still a single interpolated constant (ADR 0010); only the *mechanism* differs.
+    public val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         WITH o
         ORDER BY o.$SORT_KEY
         SKIP ${'$'}skip
@@ -137,10 +142,11 @@ public object ReviewCypher {
     """
 
     // Counted separately from the page so the client can show "n of m" without holding every row.
-    public const val COUNT_MODULE_OBJECTS: String = """
+    // `val`, not `const val` — same reason as MODULE_OBJECTS above.
+    public val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         RETURN count(o) AS total
     """
 

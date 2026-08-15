@@ -13,12 +13,15 @@ import com.sec.domain.GraphLevelStrategy
 import com.sec.domain.Ref
 import com.sec.domain.SaveCommentsOutcome
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessResolver
+import com.sec.security.SecPrincipal
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -35,8 +38,11 @@ public fun Route.reviewRoutes(
     breakdownProjection: BreakdownProjection,
     dependencyGraphProjection: DependencyGraphProjection,
     metaWriter: MetaWriter,
+    accessResolver: AccessResolver,
 ) {
     route("${ApiPaths.MODULES}/${ApiPaths.REF}") {
+        // The one endpoint access-control.md's phase 2 filters (§15); every other read in this
+        // file is unfiltered until phase 4 and is named, with that reason, in AccessGuardTest.
         get("/objects") {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
             if (!doorsProjection.moduleExists(moduleId)) {
@@ -47,7 +53,11 @@ public fun Route.reviewRoutes(
             val limit = call.intParam("limit", default = DEFAULT_LIMIT, min = 1, max = MAX_LIMIT)
                 ?: return@get call.respondBadPaging()
 
-            call.respond(reviewProjection.getModuleObjects(moduleId, skip = skip, limit = limit))
+            val principal = call.principal<SecPrincipal>()
+                ?: error("$moduleId/objects ran without a principal despite the session guard")
+            val access = accessResolver.resolve(principal.groups)
+
+            call.respond(reviewProjection.getModuleObjects(moduleId, access, skip = skip, limit = limit))
         }
 
         // The save icon: every dirty comment for this module, one request, one transaction (§5.2).

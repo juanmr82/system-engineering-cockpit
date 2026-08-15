@@ -16,6 +16,24 @@ neo4j:
   readTimeoutSeconds: 10
   writeTimeoutSeconds: 30
 
+# ADR 0017: the backend is the OIDC client. docs/KEYCLOAK_SETUP.md is the realm this expects.
+# Every value here except the secret has a working dev default, so a fresh clone boots against
+# that documented realm with nothing set but SEC_OIDC_CLIENT_SECRET. The secret itself follows the
+# neo4j credentials' rule above, not jira's/windchill's below: authorization is infrastructure
+# every deployment needs, not an optional source, so an unset secret fails startup rather than
+# quietly leaving the whole application unreachable.
+auth:
+  issuer: "$SEC_OIDC_ISSUER:http://localhost:8081/realms/sec"
+  clientId: "$SEC_OIDC_CLIENT_ID:sec-backend"
+  clientSecret: "$SEC_OIDC_CLIENT_SECRET"
+  # Must equal a "Valid redirect URI" on the sec-backend client exactly (KEYCLOAK_SETUP.md §2).
+  callbackUrl: "$SEC_OIDC_CALLBACK_URL:http://localhost:8080/api/v1/auth/callback"
+  # Where the browser lands after the callback and after logout, when that is a different origin
+  # than this backend's own. Empty = same origin (the packaged deployment, CLAUDE.md §5). In
+  # development set this to ng serve's origin — Keycloak only ever redirects to [callbackUrl]
+  # above, so this backend has to hand the browser onward itself; see .run/Backend.run.xml.
+  frontendBaseUrl: "$SEC_AUTH_FRONTEND_URL:"
+
 # JIRA Data Center. The one source whose importer runs in this process (ADR 0013), so its
 # connection details are the service's own rather than a Python program's.
 #

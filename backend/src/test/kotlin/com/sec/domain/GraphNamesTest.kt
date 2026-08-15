@@ -1,5 +1,6 @@
 package com.sec.domain
 
+import com.sec.graph.cypher.AccessCypher
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
 import com.sec.graph.cypher.ImportRunCypher
@@ -55,12 +56,13 @@ class GraphNamesTest {
     // Each source contributes its own names file and nothing edits another's (R3), so adding a
     // source is one term in each of these three sets.
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN) +
+        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN, NodeLabel.GROUP) +
             NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
         Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.LINK_FROM, Rel.LINK_TO,
+        Rel.IN_ACCESS_CATEGORY, Rel.MAY_READ,
         DoorsRel.REFERS_TO,
     ) + JiraRel.all
 
@@ -153,6 +155,10 @@ class GraphNamesTest {
             *ImportRunCypher.SCHEMA.toTypedArray(),
         )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
+        // visible("o") stands in for every alias the predicate is actually called with — the name
+        // extraction below only cares which graph names appear in the produced text, not which
+        // alias they were bound to.
+        add("AccessCypher", AccessCypher.RESOLVE_GROUPS, AccessCypher.visible("o"))
     }
 
     // -- the checks -------------------------------------------------------------------------

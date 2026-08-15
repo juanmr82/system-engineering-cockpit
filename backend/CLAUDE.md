@@ -36,8 +36,17 @@ com.sec
 │   ├── routes/                 ← one file per feature — ModuleRoutes.kt, ConfigRoutes.kt, ...
 │   ├── ProblemPages.kt         ← StatusPages → RFC 9457, the only error-to-wire mapping
 │   └── dto/                    ← @Serializable wire types
-└── security/                   ← auth, the ad-hoc Cypher guard
+└── security/                   ← auth, authorization, the ad-hoc Cypher guard
+    ├── Oidc.kt                 ← the OIDC client: discovery, PKCE, JWKS validation (ADR 0017)
+    ├── Session.kt              ← the cookie, the store, the CSRF token. Names declared once
+    ├── Roles.kt                ← the four realm roles, as constants
+    ├── Principal.kt            ← the authenticated caller: sub, name, roles, groups
+    ├── AccessResolver.kt       ← groups → AccessSet, cached, version-invalidated
+    ├── AccessContainment.kt    ← per-source container→member declarations, source-agnostic
+    ├── AccessReconciler.kt     ← propagate / retract / seed, batched, idempotent
+    └── AccessAdminService.kt   ← the write path for categories, grants and defaults
 ```
+Graph names for all of it live in domain/GraphNames.kt like every other source-agnostic name (ADR 0010). There is no AccessNames.kt — a second declaration is exactly what that rule exists to prevent, and GraphNamesTest's inverse check would fail on the literals anyway.
 
 ### Names: one declaration each (ADR 0010)
 
@@ -84,6 +93,38 @@ completeness check fails if you forget.
 **Test fixtures deliberately keep the literals.** A fixture that writes `"Object Text"` and asserts
 the projection read it independently pins the constant's value; building the fixture from the
 constant too would let a wrong constant pass.
+
+### Authorization: one predicate, and `Read.kt` binds it
+
+R8 in the root file is the rule; this is where it lands in the code. The model is ADR 0016, the
+session is ADR 0017, and `docs/features/access-control.md` is the specification — read it before
+touching a read path.
+
+**`AccessCypher.visible(alias)` is the only way authorization reaches a query.** `graph/Read.kt` —
+already the only place a session is opened — binds `$seesAll` and `$acl` from the call's principal.
+A route handler never assembles them, and a projection never writes its own predicate.
+
+**`AccessGuardTest` is what makes that stick**, and it is the same instrument as `GraphNamesTest`,
+in the same spirit: it reads every statement in `graph/cypher/` and every projection under
+`source/`, and fails on one that matches `:SEItem` or a type label without the `/*ACL*/` marker the
+predicate emits. Statements that legitimately must not filter — the importers' writes,
+`MetaSchema`, the health checks, the access-administration reads themselves — are named in **one**
+exemption list, each with a reason string. Verify it by breaking it deliberately once, and record
+that it failed, exactly as ADR 0010's guard was verified.
+
+**Authentication is installed on the route tree, not per route**, so a route added tomorrow is
+guarded before anyone remembers to guard it. `/health`, `/ready` and `/auth/login|callback` are the
+declared exceptions and they live in `ApiPaths.kt` next to the paths themselves — the same
+single-declaration rule the API prefixes already follow.
+
+`requireRole(Role.ADMIN)` is one plugin applied to route groups, never an `if` in a handler.
+**`403` for a capability, `404` for an object** — a `403` on an object confirms it exists. The tests
+for both are parameterised over the route table, so a new route is covered when it is added rather
+than when someone remembers.
+
+**The reconciler needs an implicit transaction.** `CALL … IN TRANSACTIONS` cannot run inside an
+explicit one, so `Read.kt`/`Write.kt` take one narrow addition for it — in those two files, not as
+a new session-opening site. That exception is the only one; do not widen it.
 
 ### Non-negotiables
 
@@ -143,6 +184,21 @@ GET  /api/v1/windchill/documents        ← every imported document, unpaged and
 POST /api/v1/windchill/import           ← upload an OData export and import it, one request (ADR 0015)
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
 GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
+GET  /api/v1/auth/login                 ← 302 to Keycloak. The only route reachable with no session
+GET  /api/v1/auth/callback              ← sets the session cookie, 302 back into the app
+POST /api/v1/auth/logout                ← clears the session, returns the RP-initiated logout URL
+GET  /api/v1/auth/me                    ← identity, roles, groups, CSRF token. Never browser-cached
+GET  /api/v1/access/categories          ← sec-access-manager from here down
+POST /api/v1/access/categories
+PATCH/DELETE /api/v1/access/categories/{ref}    ← 409 while any object or grant references it
+GET  /api/v1/access/groups              ← every :__Group ever seen, with grants and seesAll
+PUT  /api/v1/access/groups/{ref}/grants ← the WHOLE grant set for one group, one txn (R7)
+GET  /api/v1/access/containers?state=unassigned  ← the not-yet-assigned queue
+PUT  /api/v1/access/containers/{ref}/categories  ← the WHOLE set for one container, one txn (R7)
+PUT  /api/v1/access/items/{ref}/categories       ← the single-item exception, survives reconcile
+GET/PUT /api/v1/access/defaults         ← per (sourceId, containerLabel)
+POST /api/v1/access/reconcile           ← returns a run id; progress on the existing SSE stream
+GET  /api/v1/access/summary             ← counts for the Access dashboard, computed on read (R2)
 POST /api/v1/cypher/explain             ← see docs/CYPHER_API_DESIGN.md
 POST /api/v1/cypher/run
 ```

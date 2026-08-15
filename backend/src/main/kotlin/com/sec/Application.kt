@@ -2,16 +2,24 @@ package com.sec
 
 import com.sec.api.configureProblemDetails
 import com.sec.api.configureRouting
+import com.sec.api.respondProblem
+import com.sec.config.AuthSettings
 import com.sec.config.ConfigArgs
 import com.sec.config.ImporterSettings
 import com.sec.config.JiraSettings
 import com.sec.config.WindchillSettings
 import com.sec.config.loadAppConfig
+import com.sec.config.loadAuthSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.GraphImportRunStore
 import com.sec.importer.ImportRunService
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessResolver
+import com.sec.security.Oidc
+import com.sec.security.SessionNames
+import com.sec.security.UserSession
+import com.sec.security.installSecSessions
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -31,21 +39,36 @@ import com.sec.source.windchill.WindchillGraphWriter
 import com.sec.source.windchill.WindchillImporter
 import com.sec.source.windchill.WindchillProjection
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.session
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.sessions.SessionStorage
+import io.ktor.server.sessions.SessionStorageMemory
+import io.ktor.server.sessions.clear
+import io.ktor.server.sessions.sessions
+import io.ktor.server.sessions.set
 import io.ktor.server.sse.SSE
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import java.util.UUID
 
 private val logger = KotlinLogging.logger {}
+
+// ADR 0017 §11: token refresh happens server-side, on use, with a small skew, so a request does
+// not race an access token that expires mid-flight. 30s comfortably covers one request's latency
+// against Keycloak's 5-minute default access-token lifespan without refreshing needlessly often.
+private const val ACCESS_TOKEN_REFRESH_SKEW_MILLIS = 30_000L
 
 // EngineMain reads ktor.application.modules / ktor.deployment.* from application.yaml,
 // which is what makes environment.config see neo4j.* and navigation.* below.
@@ -74,12 +97,25 @@ public fun Application.module() {
         importRunStore.applySchema()
     }
 
+    // The OIDC client (ADR 0017). Built here, not inside configureApp(), so warmUp() below and
+    // the routes configureApp() wires up share the same Oidc instance — a second one constructed
+    // from the same settings would warm a discovery document and JWKS cache that routing then
+    // never sees.
+    val authSettings = loadAuthSettings(environment.config)
+    val oidcClient = HttpClient(OkHttp)
+    monitor.subscribe(ApplicationStopping) { oidcClient.close() }
+    val oidc = Oidc(authSettings, oidcClient)
+    // Best-effort: Keycloak being unreachable must not fail this service's own startup
+    // (docs/KEYCLOAK_SETUP.md §7 — /ready deliberately does not depend on it either).
+    runBlocking { oidc.warmUp() }
+
     configureApp(
         graphDriver,
         appConfig.jira,
         windchillSettings = appConfig.windchill,
         importerSettings = appConfig.importer,
         importRunStore = importRunStore,
+        oidc = oidc,
     )
 }
 
@@ -105,7 +141,43 @@ internal fun Application.configureApp(
     // Defaulted so a test of the HTTP surface gets a store that talks to the same driver every
     // other collaborator here does, and a test with no database can pass its own.
     importRunStore: com.sec.importer.ImportRunStore = GraphImportRunStore(graphDriver),
+    // ADR 0017. Defaulted to an unconfigured instance (blank issuer, so discovery simply fails
+    // and is retried, never crashes) plus a throwaway OkHttp client — fine for a test that never
+    // exercises /auth/login or /auth/callback. module() always passes its own, warmed instance.
+    oidc: Oidc = Oidc(AuthSettings(issuer = "", clientId = "", clientSecret = "", callbackUrl = ""), HttpClient(OkHttp)),
+    // The session store (ADR 0017 §3: one process, in memory, a restart signs everyone out). A
+    // test that needs to seed an authenticated request constructs its own and passes it in, the
+    // same shape every other collaborator here takes.
+    sessionStorage: SessionStorage = SessionStorageMemory(),
 ) {
+    installSecSessions(sessionStorage)
+    install(Authentication) {
+        session<UserSession>(SessionNames.PROVIDER) {
+            // Refreshed server-side, on use, with a small skew (spec §11) — never a silent
+            // widening: a refresh failure clears the session and this returns null, which is a
+            // 401 on this and every subsequent request until the user signs in again.
+            validate { session ->
+                if (System.currentTimeMillis() < session.accessTokenExpiresAtEpochMs - ACCESS_TOKEN_REFRESH_SKEW_MILLIS) {
+                    return@validate session.toPrincipal()
+                }
+                val refreshed = oidc.refresh(session)
+                if (refreshed == null) {
+                    sessions.clear<UserSession>()
+                    return@validate null
+                }
+                sessions.set(refreshed)
+                refreshed.toPrincipal()
+            }
+            challenge {
+                call.respondProblem(
+                    HttpStatusCode.Unauthorized,
+                    "Sign-in required",
+                    "Your session has ended. Sign in again to continue.",
+                )
+            }
+        }
+    }
+
     install(ContentNegotiation) {
         // encodeDefaults: a field whose value equals its declared default is still part of the
         // contract, and kotlinx omits it unless told otherwise. That silently dropped
@@ -154,6 +226,8 @@ internal fun Application.configureApp(
     // Takes the settings because a row's link into Windchill is derived from the host on every read
     // — the export's own URL is an OData resource, and opening one shows raw JSON.
     val windchillProjection = WindchillProjection(graphDriver, windchillSettings)
+    // access-control.md §5. One instance for the process so its cache is actually shared.
+    val accessResolver = AccessResolver(graphDriver)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -203,5 +277,7 @@ internal fun Application.configureApp(
         windchillSettings,
         windchillProjection,
         importRunService,
+        oidc,
+        accessResolver,
     )
 }

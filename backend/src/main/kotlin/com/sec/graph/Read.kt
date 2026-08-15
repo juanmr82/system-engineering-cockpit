@@ -1,5 +1,6 @@
 package com.sec.graph
 
+import com.sec.security.AccessSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.neo4j.driver.Query
@@ -22,3 +23,19 @@ public suspend fun <T> GraphDriver.executeRead(query: Query, transform: (List<Re
             session.executeRead({ tx -> transform(tx.run(query).list()) }, readTx)
         }
     }
+
+/**
+ * The one place `$seesAll`/`$acl` are bound (`docs/features/access-control.md` §6.3). A statement
+ * built with [com.sec.graph.cypher.AccessCypher.visible] takes these two parameters and no others
+ * for authorization, so every caller goes through this overload instead of assembling them by
+ * hand — a route handler that did so by itself is exactly the drift §6.3 rules out.
+ */
+public suspend fun <T> GraphDriver.executeRead(
+    statement: String,
+    params: Map<String, Any?>,
+    access: AccessSet,
+    transform: (List<Record>) -> T,
+): T = executeRead(
+    Query(statement, params + mapOf("seesAll" to access.seesAll, "acl" to access.categoryIds)),
+    transform,
+)

@@ -26,6 +26,18 @@ public object ApiPaths {
 
     public const val HEALTH: String = "$V1/health"
     public const val READY: String = "$V1/ready"
+
+    /**
+     * The session (ADR 0017). [AUTH_LOGIN] and [AUTH_CALLBACK] are the only two routes reachable
+     * with no session — declared here, beside the paths themselves, for the same reason every
+     * other fixed segment is (CLAUDE.md §5, ADR 0010). [AUTH_ME] and [AUTH_LOGOUT] require one.
+     */
+    public const val AUTH: String = "$V1/auth"
+    public const val AUTH_LOGIN: String = "$AUTH/login"
+    public const val AUTH_CALLBACK: String = "$AUTH/callback"
+    public const val AUTH_LOGOUT: String = "$AUTH/logout"
+    public const val AUTH_ME: String = "$AUTH/me"
+
     public const val CONFIG: String = "$V1/config"
     public const val MODULES: String = "$V1/modules"
     public const val ITEMS: String = "$V1/items"

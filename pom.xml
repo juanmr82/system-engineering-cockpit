@@ -126,6 +126,37 @@
       </dependency>
 
       <!--
+        ADR 0017 (the backend is the OIDC client) and docs/features/access-control.md. `auth` is
+        the session-authentication plugin (io.ktor.server.auth.session); the login/callback
+        exchange itself is hand-rolled in security/Oidc.kt rather than driven through the
+        library's `oauth {}` provider (that provider is shaped for a static per-provider settings
+        object and fights a per-attempt PKCE verifier). `auth-jwt` is pulled in for the JWKS
+        machinery it brings transitively (com.auth0:java-jwt, com.auth0:jwks-rsa) - CLAUDE.md §4:
+        "do not add a separate JWT or OIDC library" - used directly against the ID token rather
+        than through its `jwt {}` route-authentication DSL, which is shaped for bearer tokens on
+        every request rather than a one-time id_token at the callback.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-auth-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-auth-jwt-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+      <!--
+        SessionStorageMemory - server-side session state, one instance, restart signs everyone out
+        (ADR 0017 §3, deliberate). The cookie carries only an opaque id.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-sessions-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
+
+      <!--
         The live progress feed for an import run (docs/JIRA_ISSUES_FEATURE_SPEC.md section 11.4).
         One-way server-to-client, which is what SSE is for and what makes a WebSocket the heavier
         answer to a lighter question.
@@ -306,6 +337,14 @@
             <environmentVariables>
               <SEC_NEO4J_USER>test-user</SEC_NEO4J_USER>
               <SEC_NEO4J_PASSWORD>test-password</SEC_NEO4J_PASSWORD>
+              <!--
+                application.yaml's auth.clientSecret resolves "$SEC_OIDC_CLIENT_SECRET" with no
+                default, same deliberate behaviour as the neo4j credentials above (ADR 0017) - and
+                Ktor's yaml loader resolves every "$VAR" in the file eagerly at load time, not
+                lazily per property read, so this is required for ConfigArgsTest to load the real
+                packaged application.yaml at all, not only for tests that read auth.* themselves.
+              -->
+              <SEC_OIDC_CLIENT_SECRET>test-oidc-secret</SEC_OIDC_CLIENT_SECRET>
             </environmentVariables>
           </configuration>
         </plugin>
