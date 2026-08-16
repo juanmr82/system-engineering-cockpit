@@ -315,8 +315,51 @@ class GraphNamesTest {
             .map { it.fileName.toString() to it.readText() }
     }
 
-    private fun stripComments(source: String): String =
-        source.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, " ")
+    /**
+     * Comments out, code in — and **block comments nest**, which a regex cannot express.
+     *
+     * Kotlin nests block comments, so a KDoc paragraph that quotes the ACL marker — which
+     * `AccessCypher.visible`'s own doc does, and every comment explaining that marker will — is a
+     * single comment to the compiler. The non-greedy regex this replaced closed it at the marker's
+     * own closing delimiter instead, and everything after that point in the same KDoc was then
+     * scanned as if it were code. It failed on a sentence naming a `:__`-prefixed label in prose,
+     * which is exactly where this file's own doc says such names belong.
+     *
+     * A false positive here is worse than it looks: the cheapest way to silence it is to stop
+     * naming graph names in comments, which is the opposite of what ADR 0010 asks for.
+     *
+     * (Writing this very paragraph is how the nesting was confirmed: an earlier draft spelled the
+     * delimiters out, closed its own KDoc early, and would not compile.)
+     */
+    private fun stripComments(source: String): String {
+        val out = StringBuilder(source.length)
+        var depth = 0
+        var i = 0
+        while (i < source.length) {
+            when {
+                source.startsWith("/*", i) -> {
+                    depth++
+                    i += 2
+                }
+
+                depth > 0 && source.startsWith("*/", i) -> {
+                    depth--
+                    out.append(' ')
+                    i += 2
+                }
+
+                depth > 0 -> i++
+
+                source.startsWith("//", i) -> {
+                    out.append(' ')
+                    while (i < source.length && source[i] != '\n') i++
+                }
+
+                else -> out.append(source[i++])
+            }
+        }
+        return out.toString()
+    }
 
     private companion object {
         /**
@@ -325,10 +368,6 @@ class GraphNamesTest {
          * colon is what tells the two apart.
          */
         val LABEL_OR_TYPE = Regex(""":([A-Za-z_][A-Za-z0-9_]*)""")
-
-        /** KDoc and block comments — where these names are explained, and belong. */
-        val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
-        val LINE_COMMENT = Regex("""//[^\n]*""")
 
         /** Any `__` name, wherever it appears: property access, map key, label or type. */
         val NAMESPACE_NAME = Regex("""__[A-Za-z][A-Za-z0-9_]*""")

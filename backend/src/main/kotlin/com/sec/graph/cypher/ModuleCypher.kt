@@ -50,9 +50,10 @@ public object ModuleCypher {
     // The Word-export title and number are read from the module node by name rather than being
     // discovered: they are :DOORSModule properties, not object attributes, so they never come back
     // from DISCOVER_ATTRIBUTES and the Modules table has to ask for them.
-    public const val LIST_MODULES: String = """
+    public val LIST_MODULES: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE)
+        WHERE ${AccessCypher.visible("m")}
         OPTIONAL MATCH (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
         RETURN m.$ID                  AS id,
                m.$NAME                AS name,
@@ -65,9 +66,10 @@ public object ModuleCypher {
         LIMIT ${'$'}limit
     """
 
-    public const val MODULE_DETAIL: String = """
+    public val MODULE_DETAIL: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         OPTIONAL MATCH (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
         RETURN m AS module, c.$CODE AS levelCode
         LIMIT 1
@@ -87,10 +89,10 @@ public object ModuleCypher {
     //
     // The LIMIT is on the distinct attribute names rather than on the objects scanned, which is
     // what makes it a safety net (CLAUDE.md §7, no query governor) instead of a correctness hole.
-    public const val DISCOVER_ATTRIBUTES: String = """
+    public val DISCOVER_ATTRIBUTES: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DELETED
+        WHERE NOT o:$DELETED AND ${AccessCypher.visible("o")}
         UNWIND keys(o) AS k
         WITH DISTINCT k
         WHERE NOT k STARTS WITH '$NAMESPACE'
@@ -100,26 +102,27 @@ public object ModuleCypher {
         LIMIT ${'$'}limit
     """
 
-    public const val EXISTING_MANDATORY_POLICIES: String = """
+    public val EXISTING_MANDATORY_POLICIES: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
-        WHERE p.$RULE = '$MANDATORY_RULE'
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
+        WHERE p.$RULE = '$MANDATORY_RULE' AND ${AccessCypher.visible("m")}
         RETURN p.$ATTRIBUTE_NAME AS name
     """
 
     // Which of these ids are actually objects of this module. The comment write path uses it to
     // refuse an arbitrary __id in a request body — without it, a crafted payload could attach a
     // note to any node in the graph, which is not what "comment on a row you loaded" means.
-    public const val MODULE_OBJECT_IDS: String = """
+    public val MODULE_OBJECT_IDS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE o.$ID IN ${'$'}itemIds AND NOT o:$DOORS_MODULE
+        WHERE o.$ID IN ${'$'}itemIds AND NOT o:$DOORS_MODULE AND ${AccessCypher.visible("o")}
         RETURN o.$ID AS id
     """
 
-    public const val MODULE_EXISTS: String = """
+    public val MODULE_EXISTS: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         RETURN m.$ID AS id
         LIMIT 1
     """

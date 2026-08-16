@@ -42,10 +42,11 @@ public object DependencyGraphCypher {
      * `resolved` is false for a placeholder the importer created for an object no import has
      * reached. Those are drawn, as ghost cards, and they are the reason §1.1's banner exists.
      */
-    public const val OUT_NEIGHBOURS: String = """
+    public val OUT_NEIGHBOURS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
-        MATCH (:$SE_ITEM {$ID: id})-[:$REFERS_TO]->(t:$SE_ITEM)
+        MATCH (s:$SE_ITEM {$ID: id})-[:$REFERS_TO]->(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("s")} AND ${AccessCypher.visible("t")}
         RETURN id                 AS fromId,
                t.$ID              AS toId,
                t.$SORT_KEY        AS sortKey,
@@ -55,10 +56,11 @@ public object DependencyGraphCypher {
     """
 
     /** Everything that refers to these items — what refines them. The mirror of [OUT_NEIGHBOURS]. */
-    public const val IN_NEIGHBOURS: String = """
+    public val IN_NEIGHBOURS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
-        MATCH (:$SE_ITEM {$ID: id})<-[:$REFERS_TO]-(s:$SE_ITEM)
+        MATCH (t:$SE_ITEM {$ID: id})<-[:$REFERS_TO]-(s:$SE_ITEM)
+        WHERE ${AccessCypher.visible("t")} AND ${AccessCypher.visible("s")}
         RETURN id                 AS toId,
                s.$ID              AS fromId,
                s.$SORT_KEY        AS sortKey,
@@ -73,10 +75,11 @@ public object DependencyGraphCypher {
      * A seed that carries no node is simply absent, which is what turns a hand-edited ref into a
      * 404 rather than an empty picture presented as an answer.
      */
-    public const val SEEDS: String = """
+    public val SEEDS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (n:$SE_ITEM {$ID: id})
+        WHERE ${AccessCypher.visible("n")}
         RETURN n.$ID       AS id,
                n.$SORT_KEY AS sortKey
         ORDER BY sortKey, id

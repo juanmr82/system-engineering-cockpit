@@ -66,10 +66,23 @@ public object AccessCypher {
      * its cost scales with the number of categories a caller's groups collectively grant, not just
      * with module size; form A's cost does not. B only wins at a single granted category, which is
      * the narrow case rather than the common one. Form A ships for every filtered statement.
+     *
+     * Being an expression rather than a clause is what lets it go anywhere a predicate can — a
+     * `WHERE` on the primary `MATCH`, both ends of an edge statement, an `OPTIONAL MATCH`, and the
+     * `WHERE` of a pattern comprehension, which is the one place a filter is easiest to forget
+     * (`ReviewCypher.MODULE_OBJECTS`'s reference lists are built that way).
+     *
+     * The subquery's own variable is **`aclCat`, not `c`**, and the name is load-bearing. An
+     * `EXISTS { }` imports every variable bound outside it, so declaring one that shadows an outer
+     * binding is a Cypher error rather than a shadowing warning — and `c` is exactly what several
+     * statements already bind for the system-level `:__Classification` (`RequirementCardCypher`,
+     * `ModuleCypher`, `StatisticsCypher`). A predicate that cannot be dropped into an arbitrary
+     * statement is a predicate that will be reproduced by hand at the one call site it does not fit.
      */
     public fun visible(alias: String): String =
         "/*ACL*/ (${'$'}seesAll OR EXISTS { " +
-            "($alias)-[:$IN_ACCESS_CATEGORY]->(c:$ACCESS_CATEGORY) WHERE c.$META_ID IN ${'$'}acl" +
+            "($alias)-[:$IN_ACCESS_CATEGORY]->(aclCat:$ACCESS_CATEGORY) " +
+            "WHERE aclCat.$META_ID IN ${'$'}acl" +
             " })"
 
     /**

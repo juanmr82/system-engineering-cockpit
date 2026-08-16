@@ -35,10 +35,11 @@ public object BreakdownCypher {
      * object no import has reached, so it has no ancestry to climb: it is a legitimate leaf and its
      * further ancestry is *unknown*, not empty (§7).
      */
-    public const val EDGES_UP: String = """
+    public val EDGES_UP: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
-        MATCH (:$SE_ITEM {$ID: id})-[:$REFERS_TO]->(t:$SE_ITEM)
+        MATCH (s:$SE_ITEM {$ID: id})-[:$REFERS_TO]->(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("s")} AND ${AccessCypher.visible("t")}
         RETURN id            AS fromId,
                t.$ID         AS toId,
                t.$ID         AS nextId,
@@ -55,10 +56,11 @@ public object BreakdownCypher {
      * an unordered result makes that order a property of the planner rather than of the data —
      * the same tree would then draw differently between two identical requests.
      */
-    public const val EDGES_DOWN: String = """
+    public val EDGES_DOWN: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
-        MATCH (:$SE_ITEM {$ID: id})<-[:$REFERS_TO]-(s:$SE_ITEM)
+        MATCH (t:$SE_ITEM {$ID: id})<-[:$REFERS_TO]-(s:$SE_ITEM)
+        WHERE ${AccessCypher.visible("t")} AND ${AccessCypher.visible("s")}
         RETURN s.$ID         AS fromId,
                id            AS toId,
                s.$ID         AS nextId,

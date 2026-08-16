@@ -36,11 +36,13 @@ public object RequirementCardCypher {
      * classification is anchored on the module node (CLAUDE.md §2, Shape A). A module with no
      * classification yields a null code and the card simply renders an empty outlined badge.
      */
-    public const val NODES: String = """
+    public val NODES: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (n:$SE_ITEM {$ID: id})
+        WHERE ${AccessCypher.visible("n")}
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: n.$MODULE_URL})
+          WHERE ${AccessCypher.visible("m")}
         OPTIONAL MATCH (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
         RETURN n            AS node,
                labels(n)    AS labels,
@@ -57,11 +59,11 @@ public object RequirementCardCypher {
      * correctly on the second click with no migration. Scoped to the modules the set actually
      * touches, which is a handful even for a wide graph.
      */
-    public const val VERIFICATION_ATTRIBUTES: String = """
+    public val VERIFICATION_ATTRIBUTES: String = """
         CYPHER 25
         UNWIND ${'$'}moduleIds AS moduleId
-        MATCH (:$DOORS_MODULE {$ID: moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
-        WHERE s.$VERIFICATION = true
+        MATCH (m:$DOORS_MODULE {$ID: moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE s.$VERIFICATION = true AND ${AccessCypher.visible("m")}
         RETURN moduleId          AS moduleId,
                s.$ATTRIBUTE_NAME AS name
         ORDER BY name

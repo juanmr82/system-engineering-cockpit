@@ -65,6 +65,12 @@ public object ReviewCypher {
     // module stopped containing. DOORS deleted it and left this link behind. So `resolved` stays
     // true and the row still shows what it points at — what changes is that the link itself is the
     // defect, and the only fix is in DOORS (ADR 0012).
+    // Every reference is filtered at *both* ends (spec §7): a link whose far end this caller may
+    // not see is absent from the row entirely — not struck through, not "unresolved", not counted
+    // among the row's Issues. The predicate therefore sits inside each pattern comprehension's own
+    // WHERE, which is the easiest place in this file to forget it: filtering only the outer MATCH
+    // would still disclose a hidden object's DOORS id and the url of the module it belongs to.
+    //
     // NOT o:$DELETED throughout: an object DOORS deleted is not part of the module any more, and
     // a module listing that still contained it would be showing a document DOORS does not have.
     // It stays in the graph only as the far end of the links DOORS left behind, and it is reached
@@ -83,14 +89,14 @@ public object ReviewCypher {
         SKIP ${'$'}skip
         LIMIT ${'$'}limit
         WITH o,
-             [(o)-[:$REFERS_TO]->(out:$SE_ITEM) | {
+             [(o)-[:$REFERS_TO]->(out:$SE_ITEM) WHERE ${AccessCypher.visible("out")} | {
                  ref: out.$ID,
                  id: CASE WHEN out:$UNDEFINED THEN null ELSE coalesce(out.$DOORS_ID, out.$NAME) END,
                  resolved: NOT out:$UNDEFINED,
                  deleted: out:$DELETED,
                  moduleUrl: out.$MODULE_URL
              }] AS outgoing,
-             [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) | {
+             [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) WHERE ${AccessCypher.visible("inc")} | {
                  ref: inc.$ID,
                  id: CASE WHEN inc:$UNDEFINED THEN null ELSE coalesce(inc.$DOORS_ID, inc.$NAME) END,
                  resolved: NOT inc:$UNDEFINED,
@@ -122,10 +128,10 @@ public object ReviewCypher {
      * `appliesToLabels` is read, never assumed: a policy that applies to everything is a policy
      * nobody can reason about (CLAUDE.md R2). The default matches the one the write path stores.
      */
-    public const val MANDATORY_POLICIES: String = """
+    public val MANDATORY_POLICIES: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
-        WHERE p.$RULE = '$MANDATORY_RULE'
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
+        WHERE p.$RULE = '$MANDATORY_RULE' AND ${AccessCypher.visible("m")}
         RETURN p.$ATTRIBUTE_NAME                                    AS attributeName,
                coalesce(p.$APPLIES_TO_LABELS, ['$DOORS_REQUIREMENT']) AS appliesToLabels
     """
@@ -134,10 +140,11 @@ public object ReviewCypher {
     // than joined per reference. An unresolved target names a module that has usually *not* been
     // imported, in which case there is no name to find and the UI says "Not yet imported" without
     // one — but when the module is present, naming it is what makes the message actionable (§5.1).
-    public const val MODULE_NAMES: String = """
+    public val MODULE_NAMES: String = """
         CYPHER 25
         UNWIND ${'$'}moduleIds AS moduleId
         MATCH (m:$DOORS_MODULE {$ID: moduleId})
+        WHERE ${AccessCypher.visible("m")}
         RETURN m.$ID AS id, m.$NAME AS name
     """
 
@@ -152,10 +159,12 @@ public object ReviewCypher {
 
     // One item for the detail panel (§7). The module is returned as its __name so the panel can
     // render __moduleUrl as a link labelled with the module's name, per the R5 alias map.
-    public const val ITEM_DETAIL: String = """
+    public val ITEM_DETAIL: String = """
         CYPHER 25
         MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
+        WHERE ${AccessCypher.visible("i")}
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: i.$MODULE_URL})
+          WHERE ${AccessCypher.visible("m")}
         RETURN i          AS item,
                labels(i)  AS labels,
                m.$NAME    AS moduleName,
@@ -163,9 +172,10 @@ public object ReviewCypher {
         LIMIT 1
     """
 
-    public const val ITEM_TRACES_OUT: String = """
+    public val ITEM_TRACES_OUT: String = """
         CYPHER 25
-        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})-[:$REFERS_TO]->(t:$SE_ITEM)
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})-[:$REFERS_TO]->(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("i")} AND ${AccessCypher.visible("t")}
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
@@ -175,9 +185,10 @@ public object ReviewCypher {
         LIMIT ${'$'}limit
     """
 
-    public const val ITEM_TRACES_IN: String = """
+    public val ITEM_TRACES_IN: String = """
         CYPHER 25
-        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})<-[:$REFERS_TO]-(t:$SE_ITEM)
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})<-[:$REFERS_TO]-(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("i")} AND ${AccessCypher.visible("t")}
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
@@ -232,9 +243,10 @@ public object ReviewCypher {
 
     // --- Attribute settings (Tier 2, Shape B) ---------------------------------------------------
 
-    public const val EXISTING_ATTRIBUTE_SETTINGS: String = """
+    public val EXISTING_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE ${AccessCypher.visible("m")}
         RETURN s.$ATTRIBUTE_NAME AS name,
                coalesce(s.$VISIBLE, false)      AS visible,
                coalesce(s.$VERIFICATION, false) AS verification,

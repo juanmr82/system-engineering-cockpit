@@ -583,9 +583,10 @@ public object JiraCypher {
      *    list, so `labels` — the field a person is most likely to search — is exactly the value that
      *    would fail the whole statement at runtime rather than at parse time.
      */
-    private const val ISSUE_FILTER: String = """
+    private val ISSUE_FILTER: String = """
         WHERE (${'$'}q IS NULL OR $MATCHES_ANY_FIELD)
           AND (${'$'}projectKeys IS NULL OR i.$PROJECT_KEY IN ${'$'}projectKeys)
+          AND ${AccessCypher.visible("i")}
     """
 
 
@@ -631,7 +632,7 @@ public object JiraCypher {
      * proxy, which does not exist yet, and returning `__id` under the name `issueTypeId` would hand
      * whoever builds it the resource URL where JIRA's own numeric id was meant to be.
      */
-    public const val LIST_ISSUES_ASC: String = """
+    public val LIST_ISSUES_ASC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
@@ -646,12 +647,13 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(n:$JIRA_ISSUE)
+                       WHERE ${AccessCypher.visible("n")} } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
     /** [LIST_ISSUES_ASC] with the direction reversed — see its note on why this is two statements. */
-    public const val LIST_ISSUES_DESC: String = """
+    public val LIST_ISSUES_DESC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
@@ -666,7 +668,8 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(n:$JIRA_ISSUE)
+                       WHERE ${AccessCypher.visible("n")} } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
@@ -676,7 +679,7 @@ public object JiraCypher {
      * A separate cheap count rather than `collect()`-ing the rows to size them, which would read
      * every issue in the database to tell a user there are 784 of them.
      */
-    public const val COUNT_ISSUES_MATCHING: String = """
+    public val COUNT_ISSUES_MATCHING: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
@@ -783,10 +786,11 @@ public object JiraCypher {
      * Ordered by `__sortKey` before the `LIMIT`, so the same issue always produces the same picture
      * — an unordered cap makes the diagram a property of the planner rather than of the data.
      */
-    public const val LINK_NEIGHBOURS: String = """
+    public val LINK_NEIGHBOURS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (a:$JIRA_ISSUE {$ID: id})-[r:$LINKED_TO|$SUB_TASK_OF]-(b:$JIRA_ISSUE)
+        WHERE ${AccessCypher.visible("a")} AND ${AccessCypher.visible("b")}
         RETURN id                    AS fromId,
                b.$ID                 AS otherId,
                b.$SORT_KEY           AS sortKey,
@@ -810,10 +814,11 @@ public object JiraCypher {
      * projects is a fact about this issue, and hiding it would make the picture claim there is
      * nothing there.
      */
-    public const val GRAPH_NODES: String = """
+    public val GRAPH_NODES: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (i:$JIRA_ISSUE {$ID: id})
+        WHERE ${AccessCypher.visible("i")}
         OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
         OPTIONAL MATCH (i)-[:$HAS_STATUS]->(s:$JIRA_STATUS)
         RETURN i.$ID          AS id,
