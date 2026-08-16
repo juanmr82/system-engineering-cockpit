@@ -20,6 +20,8 @@ import com.sec.meta.MetaWriter
 import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
+import com.sec.security.Role
+import com.sec.security.requireRole
 import com.sec.security.requireSecSession
 import com.sec.source.jira.JiraColumnStore
 import com.sec.source.jira.JiraFieldsProjection
@@ -112,7 +114,6 @@ public fun Application.configureRouting(
                 accessResolver,
             )
             windchillRoutes(windchillSettings, windchillProjection, importRunService, accessResolver)
-            importRoutes(importRunService, importSchedulers)
             moduleRoutes(doorsProjection, metaWriter, accessResolver)
             reviewRoutes(
                 doorsProjection,
@@ -125,7 +126,21 @@ public fun Application.configureRouting(
             statisticsRoutes(statisticsProjection, accessResolver)
             tableRoutes(doorsProjection, tableProjection, accessResolver)
             configRoutes()
-            accessRoutes(accessReconciler)
+
+            // Two whole subtrees, guarded here rather than inside their own files, because every
+            // route in each needs the same role — the import console is `/settings`-shaped in the
+            // UI (spec §3) and the Access views are `sec-access-manager` by definition. The mixed
+            // files guard their own administrative halves, since a wrapper here would take their
+            // reads with them.
+            //
+            // A route added to either file tomorrow is guarded before anyone remembers to guard
+            // it, which is the property `requireSecSession` gives the tree above.
+            requireRole(Role.ADMIN) {
+                importRoutes(importRunService, importSchedulers)
+            }
+            requireRole(Role.ACCESS_MANAGER) {
+                accessRoutes(accessReconciler)
+            }
         }
 
         // Outside the session guard on purpose: an unmatched path is not an object and not a

@@ -16,8 +16,10 @@ import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.security.AccessResolver
+import com.sec.security.Role
 import com.sec.security.SecPrincipal
 import com.sec.security.accessSet
+import com.sec.security.requireRole
 import com.sec.security.auditName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
@@ -156,72 +158,83 @@ public fun Route.jiraRoutes(
      * them it shows. It is empty until an import has run, which the dialog reports as its own
      * state rather than as an error.
      */
-    get(ApiPaths.JIRA_FIELDS) {
-        call.respond(fieldsProjection.list())
-    }
-
-    get(ApiPaths.JIRA_COLUMNS) {
-        call.respond(configuredColumns())
-    }
-
-    /** What *Reset to defaults* resets to, resolved against the catalogue like any other set. */
-    get(ApiPaths.JIRA_COLUMN_DEFAULTS) {
-        call.respond(fieldsProjection.describe(JiraColumnStore.DEFAULTS))
-    }
-
     /**
-     * Replace the chosen columns.
+     * The column picker and the connection diagnostic — the JIRA half of `/settings` (spec §3,
+     * "`sec-admin` … column sets").
      *
-     * The response is the *resolved* set, not the ids that were sent, so the dialog closes on what
-     * the table will actually draw — including a column that is already stale, which a client
-     * cannot know about on its own.
+     * Guarded as a group rather than per route, and the boundary is where it is for a specific
+     * reason: `GET /jira/columns` is the *dialog's* read, not the table's. The Issues table gets the
+     * columns it draws from the `/jira/issues` response itself, so gating this group leaves the
+     * table working for every user while the picker becomes administrative.
      */
-    put(ApiPaths.JIRA_COLUMNS) {
-        val principal = call.principal<SecPrincipal>()
-            ?: error("${ApiPaths.JIRA_COLUMNS} ran without a principal despite the session guard")
-        val request = call.receive<JiraColumnsRequest>()
+    requireRole(Role.ADMIN) {
+        get(ApiPaths.JIRA_FIELDS) {
+            call.respond(fieldsProjection.list())
+        }
 
-        columnStore.saveFieldIds(request.fieldIds, updatedBy = principal.auditName).fold(
-            onSuccess = { saved -> call.respond(fieldsProjection.describe(saved)) },
-            onFailure = { cause ->
-                call.respondProblem(
-                    HttpStatusCode.BadRequest,
-                    "Those columns cannot be used",
-                    humanReason(cause),
-                    ProblemType.VALIDATION,
-                )
-            },
-        )
-    }
+        get(ApiPaths.JIRA_COLUMNS) {
+            call.respond(configuredColumns())
+        }
 
-    /**
-     * A read-only diagnostic: the projects the configured token can currently see (ADR 0018).
-     *
-     * There is no picker any more — the importer brings in everything this token can reach, and
-     * access categories decide who may read it (R8). This route exists so the settings page can
-     * still answer "what will an import actually bring in", without maintaining a second copy of
-     * that answer anywhere. The one route here that reaches JIRA on every call, so it is the one
-     * that needs [requireConfigured]: without a host there is nothing to ask. Only the key and the
-     * name cross the wire — the rest of `/project` is avatars and URLs this page has no use for,
-     * and a proxy that forwarded everything would be a proxy that forwarded whatever JIRA adds next.
-     */
-    get(ApiPaths.JIRA_PROJECTS) {
-        if (!call.requireConfigured(settings, client) || client == null) return@get
+        /** What *Reset to defaults* resets to, resolved against the catalogue like any other set. */
+        get(ApiPaths.JIRA_COLUMN_DEFAULTS) {
+            call.respond(fieldsProjection.describe(JiraColumnStore.DEFAULTS))
+        }
 
-        client.projects().fold(
-            onSuccess = { projects ->
-                call.respond(projects.map { JiraProjectDto(key = it.key, name = it.name) })
-            },
-            onFailure = { cause ->
-                logger.warn(cause) { "Could not list JIRA projects" }
-                call.respondProblem(
-                    HttpStatusCode.BadGateway,
-                    "Could not reach JIRA",
-                    humanReason(cause),
-                    ProblemType.JIRA_UNREACHABLE,
-                )
-            },
-        )
+        /**
+         * Replace the chosen columns.
+         *
+         * The response is the *resolved* set, not the ids that were sent, so the dialog closes on what
+         * the table will actually draw — including a column that is already stale, which a client
+         * cannot know about on its own.
+         */
+        put(ApiPaths.JIRA_COLUMNS) {
+            val principal = call.principal<SecPrincipal>()
+                ?: error("${ApiPaths.JIRA_COLUMNS} ran without a principal despite the session guard")
+            val request = call.receive<JiraColumnsRequest>()
+
+            columnStore.saveFieldIds(request.fieldIds, updatedBy = principal.auditName).fold(
+                onSuccess = { saved -> call.respond(fieldsProjection.describe(saved)) },
+                onFailure = { cause ->
+                    call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Those columns cannot be used",
+                        humanReason(cause),
+                        ProblemType.VALIDATION,
+                    )
+                },
+            )
+        }
+
+        /**
+         * A read-only diagnostic: the projects the configured token can currently see (ADR 0018).
+         *
+         * There is no picker any more — the importer brings in everything this token can reach, and
+         * access categories decide who may read it (R8). This route exists so the settings page can
+         * still answer "what will an import actually bring in", without maintaining a second copy of
+         * that answer anywhere. The one route here that reaches JIRA on every call, so it is the one
+         * that needs [requireConfigured]: without a host there is nothing to ask. Only the key and the
+         * name cross the wire — the rest of `/project` is avatars and URLs this page has no use for,
+         * and a proxy that forwarded everything would be a proxy that forwarded whatever JIRA adds next.
+         */
+        get(ApiPaths.JIRA_PROJECTS) {
+            if (!call.requireConfigured(settings, client) || client == null) return@get
+
+            client.projects().fold(
+                onSuccess = { projects ->
+                    call.respond(projects.map { JiraProjectDto(key = it.key, name = it.name) })
+                },
+                onFailure = { cause ->
+                    logger.warn(cause) { "Could not list JIRA projects" }
+                    call.respondProblem(
+                        HttpStatusCode.BadGateway,
+                        "Could not reach JIRA",
+                        humanReason(cause),
+                        ProblemType.JIRA_UNREACHABLE,
+                    )
+                },
+            )
+        }
     }
 
     get(ApiPaths.JIRA_HEALTH) {
