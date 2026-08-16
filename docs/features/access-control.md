@@ -624,6 +624,40 @@ left. Four things learned in the building that are not re-derivable from the cod
   granted, and `seesAll` is a group granted all of it — which is why §10.2 puts it behind a
   confirmation and calls it the one control that turns the feature off for a group.
 
+### 15.2 Answering phase 4's acceptance question on screen
+
+Nothing in the product can seed access yet — `AccessAdminService` is phase 6 — so the graph side is
+`deploy/dev-access-seed.cypher`, committed for this. It pairs with the dev realm's three users, which
+are already exactly the three callers `VisibilityMatrixTest` asserts over:
+
+| User | Group | Sees |
+|---|---|---|
+| `sec-dev-user` | `/SEC/Thermal` | one category — about half of everything |
+| `sec-dev-admin` | `/SEC/All-Read` | `seesAll` — all of it, uncategorised objects included |
+| `sec-dev-nogroup` | none | nothing, and the empty states have to say so in words |
+
+```
+docker compose -f deploy/docker-compose.dev.yml up
+# import something first — the seed tags what is there, and tags nothing if nothing is
+docker compose -f deploy/docker-compose.dev.yml exec -T neo4j \
+  cypher-shell -u neo4j -p "$SEC_NEO4J_PASSWORD" < deploy/dev-access-seed.cypher
+# then restart the backend — see below, it is not optional
+```
+
+**The restart is load-bearing, for two independent reasons**, and skipping it looks exactly like the
+seed having failed:
+
+- The seed tags **containers only**, which is all a human is ever meant to tag (§8.1). Propagation to
+  the objects inside is the reconciler's, and its startup pass is the only trigger reachable without
+  a session — `POST /access/reconcile` sits behind the session guard and a script has no cookie.
+- The resolver caches on the sorted group-key set and nothing invalidates it until phase 6 (§5), so
+  a grant on an already-resolved group does not take effect. Signing out and back in does not help.
+
+What to look at, hardest first: the **`+n` badge** on the dependency graph, the
+**unresolved-modules banner**, and the **statistics** page — read each as `sec-dev-user` and then as
+`sec-dev-admin`. The badge is the value most likely to be quietly wrong, because it is the one
+computed from what was left *out*.
+
 **Not done: the on-screen half of the acceptance question.** Nobody has read the `+n` badge, the
 unresolved-modules banner and the statistics in a browser as two different users. The matrix test
 asserts all three at the projection layer, against a real Neo4j; what it cannot prove is that the
