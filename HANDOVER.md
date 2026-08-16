@@ -38,11 +38,24 @@ reasoning is **ADR 0018**.
 
 Phase 4 (`docs/features/access-control.md` §15) is next, same as session 27 left it: every remaining
 read path gets the `/*ACL*/` predicate — 37 statements are named in `AccessGuardTest`'s exemption
-list with a `phase 4 read path` reason, and they are the checklist. Two things to settle **before**
-starting it, both listed under "What is open" below: spec §16 question 1 (are `:__UNDEFINED`
-placeholders visible?) and §16 question 2 (is the unassigned queue exempt?) — both change what
-phase 4 builds. Machine-auth for `POST /access/reconcile` remains a separately deferred, still-open
-gap (unaffected by this session).
+list with a `phase 4 read path` reason, and they are the checklist.
+
+**§16 question 1 is now answered — see the new §16.1a**, which phase 4 implements: a node is visible
+only through a container that resolves, and where none does it is invisible to everyone (fail-closed,
+R8). Three consequences for the build:
+
+- `:__DELETED` DOORS objects are **already correct** — they keep `:DOORSObject` + `__moduleUrl`, so
+  the existing `AccessContainment.doors` pattern matches them. Needs a test, not code.
+- `:__UNDEFINED` placeholders need a **containment change** to inherit their module's categories:
+  they carry `:SEItem:__UNDEFINED` and *not* `:DOORSObject`, so today's pattern misses them.
+  `__moduleUrl` is stored on them at import (`importer.py:181,209`) — a lookup, not URL parsing.
+- A standing placeholder's module is usually **not** imported, so most of them stay invisible, and
+  the incoming-arrow "refined by a module not yet imported" evidence goes with them. That is the
+  accepted cost of fail-closed, written up in §16.1a so it is not re-litigated as a bug.
+
+Still open, and worth settling before phase 6 rather than phase 4: §16 question 2 (is the unassigned
+queue exempt from filtering, so an access manager can see what they are assigning?). Machine-auth for
+`POST /access/reconcile` remains a separately deferred, still-open gap (unaffected by this session).
 
 ## State as of 2026-08-16 (session 27) — wiring `CurrentUser.PLACEHOLDER` into real routes
 

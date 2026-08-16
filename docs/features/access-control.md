@@ -574,9 +574,10 @@ release**, because a half-filtered API is worse than an unfiltered one: it looks
 
 ## 16. Open questions — answer before phase 3, they change the model
 
-1. **`:__UNDEFINED` placeholders.** A link target outside the import has no container and can never be
-   tagged, so under this spec it is invisible to everyone and every link to it disappears — including
-   the incoming-arrow behaviour R5 deliberately preserved. The alternative is to let a placeholder
+1. ~~**`:__UNDEFINED` placeholders.**~~ **ANSWERED 2026-08-16 — see §16.1a below.** The original
+   question read: a link target outside the import has no container and can never be tagged, so
+   under this spec it is invisible to everyone and every link to it disappears — including the
+   incoming-arrow behaviour R5 deliberately preserved. The alternative is to let a placeholder
    inherit the categories of whatever referenced it, which makes it visible to anyone who can see any
    referrer. **Recommended: invisible** (fail-closed), with the dependency-graph copy adjusted.
    This one is a real product decision, not a technical one.
@@ -597,3 +598,29 @@ release**, because a half-filtered API is worse than an unfiltered one: it looks
    UUID instead? Doing so costs the one thing this design otherwise avoids — an Admin API call, since
    the Group Membership mapper emits paths and not ids. Recommended: keep paths, and write the
    naming rule into `docs/KEYCLOAK_SETUP.md` §4 where it already is.
+
+### 16.1a `:__UNDEFINED` and `:__DELETED` visibility — answered, 2026-08-16
+
+**A node is visible only through a container that actually resolves. Where none does, it is invisible
+to everyone.** Fail-closed, per R8: *"the correct state after any failure. No code path may widen
+visibility on error."* Three cases, in the order they should be implemented:
+
+| Node | Container | Outcome |
+|---|---|---|
+| `:DOORSObject:__DELETED` — an object a later export no longer contains (ADR 0012) | Keeps `:DOORSObject` **and** `__moduleUrl`, so `AccessContainment.doors`'s existing `(o:DOORSObject { __moduleUrl: c.__id })` already matches it | **Already correct today.** No code change; add a test asserting it, because nothing currently proves it |
+| `:SEItem:__UNDEFINED` whose `__moduleUrl` names an **imported** `:DOORSModule` | That module | Inherits its categories. **Needs a containment change**: a placeholder carries `:SEItem:__UNDEFINED` and *not* `:DOORSObject`, so today's pattern misses it |
+| Anything else — a placeholder whose module is not imported, a JIRA placeholder, any node with no resolvable container | none | **Invisible to everyone**, administrators included |
+
+**The third row is the common case, and that is the cost being accepted.** A DOORS placeholder exists
+*because* its module was not imported — once it is, `importer.py`'s `REMOVE n:__UNDEFINED` resolves
+the placeholder into a real object — so a *standing* placeholder almost always names a module with no
+`:DOORSModule` node to inherit from. The consequence, stated plainly so nobody reads it as a bug:
+
+> The incoming-arrow evidence R5 preserved — *something refines this requirement, from a module this
+> cockpit has not imported yet* — **is not shown to anyone** until that module is imported and
+> categorised. An unimported module's object names and ids are that module's content, and a
+> placeholder carries both.
+
+The `__moduleUrl` on a placeholder is a **stored property, not a derivation**: `importer.py` sets
+`t.__moduleUrl = row.target_module_url` when it creates one (and the mirror for `__inputLinks`). So
+"compute the container from the URL" is a lookup, not URL parsing — do not write a parser for it.
