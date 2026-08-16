@@ -597,6 +597,13 @@ left. Four things learned in the building that are not re-derivable from the cod
   `truncated`, `cyclic`, `module.truncated`, `edgesExamined`, `modulesWithoutSystemLevel`. That is
   the payoff of the lockstep grouping rather than a happy accident: each of them compares two numbers
   that now carry the identical filter.
+- **A `:ref` is not opaque enough to be a hiding place.** It is base64url of `__id`, reversible
+  without server state, so a reference carrying its module's ref hands over that module's DOORS url
+  to anyone reading the response — no view had to render it. R8 draws no line between what is shown
+  and what is sent, so both reference paths now drop the handle wherever the module's name did not
+  resolve, and they do not distinguish "invisible" from "never imported", because distinguishing
+  them is the disclosure. Reachable only through §8.1's escape hatch, which is why it survived the
+  §7 list.
 - **`seesAll` sees uncategorised objects**, and that is what the words *Sees everything* mean. R8's
   "invisible to everyone, administrators included" is about the *other* axis: `sec-admin` and
   `sec-access-manager` are capabilities and grant no visibility. A group is how visibility is

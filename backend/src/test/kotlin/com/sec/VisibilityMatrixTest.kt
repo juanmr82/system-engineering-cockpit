@@ -144,16 +144,19 @@ class VisibilityMatrixTest {
     fun `module rows and their total move with the caller`() = runBlocking {
         // Module A lists a1 and a2. The ghost belongs to an *unimported* module, so it was never
         // part of A's listing; the deleted object is out of every listing by ADR 0012.
-        assertEquals(2, review.getModuleObjects(MODULE_A, onlyA).total)
-        assertEquals(2, review.getModuleObjects(MODULE_A, bothAB).total)
-        assertEquals(2, review.getModuleObjects(MODULE_A, everything).total)
+        assertEquals(3, review.getModuleObjects(MODULE_A, onlyA).total)
+        assertEquals(3, review.getModuleObjects(MODULE_A, bothAB).total)
+        assertEquals(3, review.getModuleObjects(MODULE_A, everything).total)
         assertEquals(0, review.getModuleObjects(MODULE_A, noGroup).total)
 
-        // Module B lists five: b1, b2 and the table's three objects. A DOORS table is made of
-        // ordinary objects, which is exactly why it needs no visibility rule of its own.
-        assertEquals(0, review.getModuleObjects(MODULE_B, onlyA).total)
-        assertEquals(5, review.getModuleObjects(MODULE_B, bothAB).total)
-        assertEquals(5, review.getModuleObjects(MODULE_B, everything).total)
+        // Module B lists six: b1, b2, the table's three objects, and the hand-granted exception.
+        // A DOORS table is made of ordinary objects, which is why it needs no rule of its own.
+        //
+        // The A-only caller sees exactly one of them, and that is §8.1 working: an object granted
+        // category A directly is visible through that grant even though its module is not.
+        assertEquals(1, review.getModuleObjects(MODULE_B, onlyA).total)
+        assertEquals(6, review.getModuleObjects(MODULE_B, bothAB).total)
+        assertEquals(6, review.getModuleObjects(MODULE_B, everything).total)
         assertEquals(0, review.getModuleObjects(MODULE_B, noGroup).total)
     }
 
@@ -223,6 +226,40 @@ class VisibilityMatrixTest {
         assertEquals(1, review.getTraces(ITEM_B1, incoming = true, access = bothAB).references.size)
         assertEquals(0, review.getTraces(ITEM_B1, incoming = true, access = onlyA).references.size)
         assertEquals(0, review.getTraces(ITEM_B1, incoming = true, access = noGroup).references.size)
+    }
+
+    /**
+     * `:ref` is base64url of `__id` and reversible without server state (R5), so a handle is not
+     * "opaque" in the sense that would make this safe: a reference carrying its module's ref hands
+     * over that module's DOORS url to anyone who reads the response, rendered or not.
+     *
+     * The case needs the per-item escape hatch of §8.1 to arise at all — an object visible through
+     * a direct grant its module does not carry — which is why it is easy to miss and worth pinning.
+     * `a-deleted` is that shape here: it sits in category B and points at a1 in category A, so an
+     * A-only caller reaches it from a1's incoming references while module B stays unreadable.
+     */
+    @Test
+    fun `a reference never carries a handle to a module the caller may not read`() = runBlocking {
+        // a3 points at the hand-granted object in module B. The A-only caller may read the object
+        // and may not read its module, so the target is named and the module is not — no handle,
+        // no name, nothing to decode.
+        val forA = review.getModuleObjects(MODULE_A, onlyA).rows.single { it.id == "A-3" }
+        val referenceForA = forA.references.outgoing.single()
+        assertEquals("C-1", referenceForA.id, "the object itself is visible and stays")
+        assertTrue(referenceForA.resolved)
+        assertNull(referenceForA.moduleRef, "a handle to module B is module B's DOORS url on the wire")
+        assertNull(referenceForA.moduleName)
+
+        // The same reference for a caller who may read that module keeps both.
+        val forAB = review.getModuleObjects(MODULE_A, bothAB).rows.single { it.id == "A-3" }
+        val referenceForAB = forAB.references.outgoing.single()
+        assertNotNull(referenceForAB.moduleRef)
+        assertEquals(MODULE_B, referenceForAB.moduleName)
+
+        // And the traces endpoint, which has no consumer today — which is exactly why it is
+        // asserted here: the handle would have gone on being sent with nobody looking at it.
+        val traces = review.getTraces(ITEM_A3, incoming = false, access = onlyA).references
+        assertNull(traces.single().moduleRef, "the traces endpoint leaked what the table does not")
     }
 
     @Test
@@ -347,18 +384,20 @@ class VisibilityMatrixTest {
     @Test
     fun `every statistic is computed over the graph the caller can see`() = runBlocking {
         val forA = assertNotNull(statistics.getStatistics(null, onlyA))
+        // Module B is not in scope for this caller, so its objects are not scanned — including the
+        // one object of it they can see. A census is per module, and the module is what is hidden.
         assertEquals(1, forA.census.modules)
-        assertEquals(2, forA.census.items)
-        // a1's only outgoing link points into module B, so for this caller it is not a link.
-        assertEquals(1, forA.census.links, "only the a2 -> a1 link is inside A")
+        assertEquals(3, forA.census.items)
+        // a2 -> a1 and a3 -> the granted exception. a1 -> b1 is not a link this caller has.
+        assertEquals(2, forA.census.links)
 
         val forAB = assertNotNull(statistics.getStatistics(null, bothAB))
         assertEquals(2, forAB.census.modules)
-        // Seven: a1, a2 and module B's five, the table's three objects included.
-        assertEquals(7, forAB.census.items)
-        // a2 -> a1, a1 -> b1 and b1 -> b2. a1 -> ghost is not a link this caller has, because the
-        // ghost has no container that resolves and is invisible to every group (§16.1a).
-        assertEquals(3, forAB.census.links)
+        // Nine: module A's three and module B's six, the table's three objects included.
+        assertEquals(9, forAB.census.items)
+        // a2 -> a1, a1 -> b1, b1 -> b2 and a3 -> the exception. a1 -> ghost is not a link this
+        // caller has: the ghost has no container that resolves, so it is invisible (§16.1a).
+        assertEquals(4, forAB.census.links)
 
         val forNobody = assertNotNull(statistics.getStatistics(null, noGroup))
         assertEquals(0, forNobody.census.modules)
@@ -385,10 +424,11 @@ class VisibilityMatrixTest {
 
     @Test
     fun `the cycle scan examines only edges the caller can see`() = runBlocking {
-        // A alone sees one edge, a2 -> a1. A+B sees four: that one, a1 -> b1, b1 -> b2, and the
-        // deleted object's leftover link into a1. a1 -> ghost is in nobody's scan.
-        assertEquals(1, statistics.getCycles(null, onlyA).edgesExamined)
-        assertEquals(4, statistics.getCycles(null, bothAB).edgesExamined)
+        // A alone sees two edges: a2 -> a1, and a3 -> the granted exception. A+B sees those plus
+        // a1 -> b1, b1 -> b2 and the deleted object's leftover link into a1. a1 -> ghost is in
+        // nobody's scan, because the ghost is in nobody's graph.
+        assertEquals(2, statistics.getCycles(null, onlyA).edgesExamined)
+        assertEquals(5, statistics.getCycles(null, bothAB).edgesExamined)
         assertEquals(0, statistics.getCycles(null, noGroup).edgesExamined)
     }
 
@@ -479,6 +519,7 @@ class VisibilityMatrixTest {
         const val MODULE_B = "module-b"
         const val ITEM_A1 = "item-a1"
         const val ITEM_A2 = "item-a2"
+        const val ITEM_A3 = "item-a3"
         const val ITEM_B1 = "item-b1"
         const val ITEM_B_CELL = "item-b-cell"
         const val ITEM_GHOST = "item-a-ghost"
@@ -538,6 +579,13 @@ class VisibilityMatrixTest {
               __sortKey: '000002', id: 'B-2', objectNumber: '2', objectLevel: 1,
               `Object Text`: 'The second B requirement' })
 
+            CREATE (a3:DOORSObject:DOORSRequirement:SEItem {
+              __id: 'item-a3', __moduleUrl: 'module-a', __name: 'A-3', __version: 'current',
+              __sortKey: '000003', id: 'A-3', objectNumber: '3', objectLevel: 1 })
+            CREATE (bExc:DOORSObject:DOORSRequirement:SEItem {
+              __id: 'item-b-exception', __moduleUrl: 'module-b', __name: 'C-1', __version: 'current',
+              __sortKey: '000006', id: 'C-1', objectNumber: '6', objectLevel: 1 })
+
             CREATE (aDel:DOORSObject:DOORSRequirement:SEItem:`__DELETED` {
               __id: 'item-a-deleted', __moduleUrl: 'module-b', __name: 'B-GONE', __version: 'current',
               __sortKey: '000009', id: 'B-GONE', objectNumber: '9', objectLevel: 1 })
@@ -550,6 +598,7 @@ class VisibilityMatrixTest {
             CREATE (b1)-[:refersTo]->(b2)
             CREATE (aDel)-[:refersTo]->(a1)
             CREATE (a1)-[:refersTo]->(ghost)
+            CREATE (a3)-[:refersTo]->(bExc)
 
             CREATE (tb:DOORSObject:DOORSTable:SEItem {
               __id: 'item-b-table', __moduleUrl: 'module-b', __name: 'B-T', __version: 'current',
@@ -583,9 +632,15 @@ class VisibilityMatrixTest {
               key: 'BBB-1', id: '2', summary: 'In B' })
             CREATE (jA)-[:linkedTo {linkId: 'l1', typeName: 'Relates'}]->(jB)
 
-            WITH catA, catB, mA, mB, a1, a2, b1, b2, aDel, tb, trow, tcell, dA, dB, jA, jB
+            WITH catA, catB, mA, mB, a1, a2, a3, b1, b2, bExc, aDel, tb, trow, tcell, dA, dB, jA, jB
             UNWIND [
-              {n: mA, c: catA}, {n: a1, c: catA}, {n: a2, c: catA}, {n: dA, c: catA}, {n: jA, c: catA},
+              {n: mA, c: catA}, {n: a1, c: catA}, {n: a2, c: catA}, {n: a3, c: catA},
+              {n: dA, c: catA}, {n: jA, c: catA},
+              // §8.1's escape hatch: an object of module B granted category A by hand. It is the
+              // only shape in which a caller sees an object whose *module* they may not read, and
+              // therefore the only one in which a module handle could leak. Kept clear of a1 and
+              // a2 so the badge cases above stay readable.
+              {n: bExc, c: catA},
               {n: mB, c: catB}, {n: b1, c: catB}, {n: b2, c: catB}, {n: aDel, c: catB},
               {n: tb, c: catB}, {n: trow, c: catB}, {n: tcell, c: catB},
               {n: dB, c: catB}, {n: jB, c: catB}

@@ -71,19 +71,8 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * would otherwise join the module node once per reference to fetch the same handful of names.
      */
     private suspend fun withModuleNames(rows: List<ReviewRowDto>, access: AccessSet): List<ReviewRowDto> {
-        val moduleIds = rows
-            .flatMap { it.references.outgoing + it.references.incoming }
-            .mapNotNull { it.moduleRef }
-            .distinct()
-            .mapNotNull(Ref::decodeOrNull)
-        if (moduleIds.isEmpty()) {
-            return rows
-        }
-
-        val namesById = lookupModuleNames(moduleIds, access)
-        if (namesById.isEmpty()) {
-            return rows
-        }
+        val references = rows.flatMap { it.references.outgoing + it.references.incoming }
+        val namesById = resolveModuleNames(references, access)
 
         return rows.map { row ->
             row.copy(
@@ -95,6 +84,22 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         }
     }
 
+    /**
+     * The visible module behind each reference, by `__id`.
+     *
+     * `MODULE_NAMES` carries the predicate, so an entry here means *this caller may read that
+     * module* — which is what makes it safe for [named] to use its absence as the signal to drop
+     * the handle. Always runs, even for an empty result: the early return it used to take on one
+     * would have left every handle in place, which is the case that matters.
+     */
+    private suspend fun resolveModuleNames(
+        references: List<ReferenceDto>,
+        access: AccessSet,
+    ): Map<String, String> {
+        val moduleIds = references.mapNotNull { it.moduleRef }.distinct().mapNotNull(Ref::decodeOrNull)
+        return if (moduleIds.isEmpty()) emptyMap() else lookupModuleNames(moduleIds, access)
+    }
+
     private suspend fun lookupModuleNames(
         moduleIds: List<String>,
         access: AccessSet,
@@ -103,9 +108,26 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             ReviewCypher.MODULE_NAMES, mapOf("moduleIds" to moduleIds), access,
         ) { records -> records.associate { it.get("id").asString() to it.get("name").asString("") } }
 
+    /**
+     * Names a reference's module — **and drops the handle when it cannot**.
+     *
+     * `:ref` is base64url of `__id` and is reversible without server state (R5), so a handle to a
+     * module this caller may not read is that module's DOORS url on the wire, whether or not any
+     * view renders it. R8 admits no distinction between what is shown and what is sent: *nothing
+     * leaves the backend that the caller may not see*.
+     *
+     * The two cases it collapses — a module that is invisible and one that was never imported —
+     * are deliberately not told apart, because telling them apart is itself the disclosure. Neither
+     * loses anything: an unimported module has no node to link to, and `resolved` already carries
+     * the *Not yet imported* state the UI renders from.
+     *
+     * Only reachable at all through §8.1's escape hatch — an object granted a category its module
+     * does not carry — which is why `VisibilityMatrixTest` builds that shape explicitly.
+     */
     private fun ReferenceDto.named(namesById: Map<String, String>): ReferenceDto {
         val moduleId = moduleRef?.let(Ref::decodeOrNull) ?: return this
-        return copy(moduleName = namesById[moduleId])
+        val name = namesById[moduleId] ?: return copy(moduleRef = null, moduleName = null)
+        return copy(moduleName = name)
     }
 
     /**
@@ -133,10 +155,17 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             statement, mapOf("itemId" to itemId, "limit" to limit), access,
         ) { records -> records.map { it.toReference() } }
 
+        // Named through the same helper the table uses, for the same reason: without it every
+        // reference would carry a decodable handle to its module whether or not this caller may
+        // read that module. This endpoint has no consumer today, which is exactly why it would
+        // have been the one to go unnoticed.
+        val namesById = resolveModuleNames(references, access)
+        val named = references.map { it.named(namesById) }
+
         // Out-links are everything the source asserted. In-links are only those whose referencing
         // module has itself been imported, which is a property of what has been imported so far,
         // not of the data — so it is stated rather than left for the caller to infer.
-        return TracesResponseDto(references = references, complete = !incoming)
+        return TracesResponseDto(references = named, complete = !incoming)
     }
 
     // --- Mapping ---------------------------------------------------------------------------------

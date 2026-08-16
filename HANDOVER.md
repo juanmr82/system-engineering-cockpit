@@ -64,6 +64,22 @@ was needed.
 - **`AccessCypher[8]`**, the placeholder containment's redundant seed pass, is unchanged — still a
   no-op, still exempted and explained. Not worth collapsing until a third DOORS containment exists.
 
+### One leak found after the plan's list was exhausted
+
+A `ReferenceDto` carried `moduleRef` — base64url of the module's `__id`, which for DOORS is its
+export URL and is reversible without server state (R5). No view renders it without a name, and the
+name was already filtered, so nothing was *displayed*; it was on the wire regardless, and R8 draws no
+line between shown and sent. Both reference paths now drop the handle wherever the name did not
+resolve (`ReviewProjection.named`), and the two cases that produces — a module that is invisible and
+one that was never imported — are deliberately not told apart, because telling them apart is the
+disclosure.
+
+Reachable only through §8.1's escape hatch, an object granted a category its module does not carry,
+which is why `VisibilityMatrixTest`'s fixture now builds that shape explicitly (`item-b-exception`,
+an object of module B granted category A, kept clear of a1/a2 so the badge cases stay readable). It
+is also the first test of the escape hatch itself. Verified by reverting the fix: the assertion
+failed naming the leaked handle itself — `bW9kdWxlLWI`, which decodes to `module-b`.
+
 ### One correction found while filtering
 
 `WindchillCypher.COUNT_DOCUMENTS` was exempted as "Windchill Documents view, count". It is not: it is
@@ -75,7 +91,7 @@ exemption with the real reason.
 
 - `mvn -pl backend -am test` — **362/362**, unchanged from the baseline all the way through, which is
   what made step 2 reviewable as plumbing.
-- `mvn -pl backend -am -Pdocker test` — **180/180** (159 + the 21 new matrix cases), against
+- `mvn -pl backend -am -Pdocker test` — **181/181** (159 + the 22 new matrix cases), against
   `neo4j:2026.06.0-community`.
 - From `frontend/`: lint clean, **273/273**, build green. No frontend file changed this session.
 
