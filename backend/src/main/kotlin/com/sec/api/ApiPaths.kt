@@ -52,15 +52,6 @@ public object ApiPaths {
     public const val JIRA_HEALTH: String = "$JIRA/health"
 
     /**
-     * The configured project keys (spec §10.1, §14.3).
-     *
-     * Application configuration held in the graph rather than in a file, because a user changes it
-     * during normal work — the middle row of CLAUDE.md's state table. Read and replaced whole; there
-     * is no partial update, because the user's order is part of the value.
-     */
-    public const val JIRA_SETTINGS: String = "$JIRA/settings"
-
-    /**
      * The Issues table's rows (spec §14.4).
      *
      * Paged, filtered and sorted **server-side**, because the set is 784 issues on the reference
@@ -93,11 +84,11 @@ public object ApiPaths {
     public const val JIRA_COLUMN_DEFAULTS: String = "$JIRA_COLUMNS/defaults"
 
     /**
-     * The live project list, proxied from JIRA (spec §13.5).
+     * The live project list, proxied from JIRA — a read-only diagnostic (ADR 0018).
      *
-     * The one JIRA route that is a proxy rather than a read of our own graph, and it has to be: the
-     * settings page offers projects that have never been imported, which is the whole point of
-     * choosing one.
+     * The one JIRA route that is a proxy rather than a read of our own graph. There is no picker
+     * behind it any more: the importer brings in everything the token can see, and this is how the
+     * settings page still answers "what will that actually be" without a second copy of the answer.
      */
     public const val JIRA_PROJECTS: String = "$JIRA/projects"
 

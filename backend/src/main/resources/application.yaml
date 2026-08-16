@@ -69,6 +69,9 @@ jira:
   socketTimeoutMs: 60000
   connectTimeoutMs: 15000
   maxRetries: 5
+  # ADR 0018: there is no project picker any more, so this is the only thing that ever re-imports
+  # data short of a manual "run now". On by default; set to 0 to disable.
+  scheduleMinutes: 60
 
 # PTC Windchill. Fed by an uploaded OData export rather than connected to, so there is deliberately
 # no credential here: the backend never authenticates against Windchill and has nothing to hold.

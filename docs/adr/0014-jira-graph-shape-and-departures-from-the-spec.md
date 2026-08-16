@@ -80,6 +80,10 @@ protecting is *"nothing a user typed is lost"*, and it is intact.
 The wording in CLAUDE.md R2 should be read as scoped to Tier 2 accordingly. A future clean-slate
 query is two statements, not one, and both are safe.
 
+> **Superseded 2026-08-16 by ADR 0018** for `__JiraSettings` specifically: it is deleted outright,
+> not merely exempted from `:__Meta`. RBAC is the sole visibility gate now, so there is no project
+> allow-list left for it to hold. The reasoning above stands unchanged for the other three kinds.
+
 ### 3. ag-grid, not the spec's MatTable
 
 Spec §13.2 sketches the Issues table as `MatTable` with `MatPaginator`. ADR 0006 already decided
@@ -108,7 +112,9 @@ credential Cloud will accept.
 Also verified live. `GET /rest/api/2/search` answers **410 Gone** on Cloud, pointing at
 `/rest/api/2/search/jql`, which differs in ways that reach the design:
 
-- it **refuses unbounded JQL** with a 400 — harmless, since spec §8 already requires project keys;
+- it **refuses unbounded JQL** with a 400 — harmless at the time, since spec §8 then required
+  project keys; **ADR 0018 (2026-08-16) removes that requirement**, so the query is deliberately
+  unbounded now and this refusal no longer applies;
 - it paginates by **cursor** (`nextPageToken`, `isLast`), not by `startAt`/`total`;
 - it reports **no total at all**, so a progress bar needs `POST /search/approximate-count` — fetched
   once, best-effort, and never used as a termination condition.
@@ -307,6 +313,10 @@ what it says.
 
 The column picker is the opposite case and is unchanged: it is a dialog, it owns a buffer, and it
 writes once on Save. Both are R7; the difference is whether the gesture is the decision.
+
+> **Superseded 2026-08-16 by ADR 0018.** There is no project list on the settings page any more — no
+> chips, no add/remove gesture, no save. The R7 point this decision made is moot rather than wrong:
+> a page with nothing to save trivially has no buffer and needs no exit guard.
 
 ### 19. The import console draws a phase rail, not a `MatStepper`
 

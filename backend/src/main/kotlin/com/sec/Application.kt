@@ -13,6 +13,7 @@ import com.sec.config.loadAuthSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.GraphImportRunStore
 import com.sec.importer.ImportRunService
+import com.sec.importer.ImportScheduler
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
 import com.sec.security.AccessReconciler
@@ -35,7 +36,6 @@ import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
-import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.windchill.WindchillGraphWriter
 import com.sec.source.windchill.WindchillImporter
 import com.sec.source.windchill.WindchillProjection
@@ -62,6 +62,7 @@ import io.ktor.server.sessions.set
 import io.ktor.server.sse.SSE
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import java.time.Duration
 import java.util.UUID
 
 private val logger = KotlinLogging.logger {}
@@ -227,10 +228,6 @@ internal fun Application.configureApp(
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
-    // Built whether or not JIRA is configured: the project list lives in the graph, so it is
-    // readable and editable before a host exists, which lets an operator set the two up in either
-    // order.
-    val jiraSettingsStore = JiraSettingsStore(graphDriver)
     // Takes the host because a row's `browseUrl` is derived from it on every read — JIRA's stored
     // `self` is an API URL, and opening one shows raw JSON (spec §13.2).
     val jiraIssuesProjection = JiraIssuesProjection(graphDriver, jiraSettings.host)
@@ -255,23 +252,31 @@ internal fun Application.configureApp(
     )
     monitor.subscribe(ApplicationStopping) { importRunService.close() }
 
+    // ADR 0018: keyed by importerId so ImportRoutes stays source-agnostic. Empty when JIRA is not
+    // configured, or its schedule is off (jira.scheduleMinutes: 0).
+    var jiraScheduler: ImportScheduler? = null
+
     if (jiraClient != null) {
         logger.info { "JIRA integration enabled for ${jiraSettings.host}" }
         monitor.subscribe(ApplicationStopping) { jiraClient.close() }
         importRunService.register(
-            JiraImporter(
-                jiraSettings,
-                jiraClient,
-                JiraGraphWriter(graphDriver, jiraSettings.host),
-                // Its own collaborator rather than part of the writer: the writer is *only* allowed
-                // to write imported JIRA data, and the configured project list is the one thing here
-                // that no import could ever reproduce (ADR 0013, ADR 0014).
-                jiraSettingsStore,
-            ),
+            JiraImporter(jiraSettings, jiraClient, JiraGraphWriter(graphDriver, jiraSettings.host)),
         )
+
+        if (jiraSettings.scheduleMinutes > 0) {
+            jiraScheduler = ImportScheduler(
+                JiraImporter.ID,
+                Duration.ofMinutes(jiraSettings.scheduleMinutes.toLong()),
+                importRunService,
+            ).also { it.start() }
+            monitor.subscribe(ApplicationStopping) { jiraScheduler?.close() }
+            logger.info { "JIRA re-imports every ${jiraSettings.scheduleMinutes} minute(s)" }
+        }
     } else {
         logger.info { "JIRA integration is not configured; /api/v1/jira routes will report so" }
     }
+    val importSchedulers: Map<String, ImportScheduler> =
+        listOfNotNull(jiraScheduler).associateBy { it.importerId }
 
     // Registered unconditionally, and that is the difference between a fed importer and a connected
     // one: there is no host to be missing and no credential to be absent, so there is no state in
@@ -289,7 +294,6 @@ internal fun Application.configureApp(
         tableProjection,
         jiraSettings,
         jiraClient,
-        jiraSettingsStore,
         jiraIssuesProjection,
         jiraLinkGraphProjection,
         jiraColumnStore,
@@ -300,5 +304,6 @@ internal fun Application.configureApp(
         oidc,
         accessResolver,
         accessReconciler,
+        importSchedulers,
     )
 }

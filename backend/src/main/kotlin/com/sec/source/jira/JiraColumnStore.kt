@@ -11,8 +11,7 @@ import java.time.Instant
  * The chosen columns and their order (spec §10.2), read by the Issues table and written by the
  * picker dialog.
  *
- * The sibling of [JiraSettingsStore] in every respect, including the reasons: it is application
- * configuration a user edits during normal work, so it lives in the graph under its own
+ * Application configuration a user edits during normal work, so it lives in the graph under its own
  * `__`-prefixed label rather than in `:__Meta` — nothing here annotates an imported node, and
  * `MATCH (m:__Meta) DETACH DELETE m` does not remove it (ADR 0014).
  *
@@ -41,11 +40,10 @@ public class JiraColumnStore(private val graphDriver: GraphDriver) {
     /**
      * Replace the chosen columns.
      *
-     * Validated before it is stored, for the reason [JiraSettingsStore.saveProjectKeys] gives about
-     * project keys: a field id reaches Cypher as a *dynamic property key*, so one carrying a
-     * backtick or a space is the one shape of input this design cannot treat as opaque. JIRA's own
-     * ids are `summary` or `customfield_18201` and nothing else, which is what makes the check a
-     * cheap statement of an existing fact rather than a guess at a format.
+     * Validated before it is stored: a field id reaches Cypher as a *dynamic property key*, so one
+     * carrying a backtick or a space is the one shape of input this design cannot treat as opaque.
+     * JIRA's own ids are `summary` or `customfield_18201` and nothing else, which is what makes the
+     * check a cheap statement of an existing fact rather than a guess at a format.
      *
      * Duplicates are removed rather than rejected: two of one column is a client bug, the user's
      * intent is unambiguous, and a 400 would strand a dialog whose visible state is already correct.

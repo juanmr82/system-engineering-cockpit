@@ -7,8 +7,6 @@ import com.sec.api.ProblemType
 import com.sec.api.dto.JiraColumnsRequest
 import com.sec.api.dto.JiraHealthDto
 import com.sec.api.dto.JiraProjectDto
-import com.sec.api.dto.JiraProjectSettingsDto
-import com.sec.api.dto.JiraProjectSettingsRequest
 import com.sec.api.respondProblem
 import com.sec.config.JiraSettings
 import com.sec.source.jira.JiraColumnStore
@@ -17,8 +15,6 @@ import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraLinkGraphProjection
-import com.sec.source.jira.JiraJql
-import com.sec.source.jira.JiraSettingsStore
 import com.sec.security.SecPrincipal
 import com.sec.security.auditName
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -45,7 +41,6 @@ private val logger = KotlinLogging.logger {}
 public fun Route.jiraRoutes(
     settings: JiraSettings,
     client: JiraHttpClient?,
-    settingsStore: JiraSettingsStore,
     issuesProjection: JiraIssuesProjection,
     linkGraphProjection: JiraLinkGraphProjection,
     columnStore: JiraColumnStore,
@@ -193,12 +188,15 @@ public fun Route.jiraRoutes(
     }
 
     /**
-     * The projects this JIRA offers, for the settings page's picker.
+     * A read-only diagnostic: the projects the configured token can currently see (ADR 0018).
      *
-     * The one route here that reaches JIRA on every call, so it is the one that needs
-     * [requireConfigured]: without a host there is nothing to ask. Only the key and the name cross
-     * the wire — the rest of `/project` is avatars and URLs the settings page has no use for, and
-     * a proxy that forwards everything is a proxy that forwards whatever JIRA adds next.
+     * There is no picker any more — the importer brings in everything this token can reach, and
+     * access categories decide who may read it (R8). This route exists so the settings page can
+     * still answer "what will an import actually bring in", without maintaining a second copy of
+     * that answer anywhere. The one route here that reaches JIRA on every call, so it is the one
+     * that needs [requireConfigured]: without a host there is nothing to ask. Only the key and the
+     * name cross the wire — the rest of `/project` is avatars and URLs this page has no use for,
+     * and a proxy that forwarded everything would be a proxy that forwarded whatever JIRA adds next.
      */
     get(ApiPaths.JIRA_PROJECTS) {
         if (!call.requireConfigured(settings, client) || client == null) return@get
@@ -214,47 +212,6 @@ public fun Route.jiraRoutes(
                     "Could not reach JIRA",
                     humanReason(cause),
                     ProblemType.JIRA_UNREACHABLE,
-                )
-            },
-        )
-    }
-
-    /**
-     * The configured projects, with the query they produce.
-     *
-     * Not guarded by [requireConfigured]: the project list lives in the graph and is readable and
-     * editable whether or not this deployment has a JIRA host, which is what lets an operator set
-     * it up in either order. What needs a host is *running* an import, and that is where the 503 is.
-     */
-    get(ApiPaths.JIRA_SETTINGS) {
-        val keys = settingsStore.projectKeys()
-        call.respond(
-            JiraProjectSettingsDto(projectKeys = keys, jql = JiraJql.preview(keys).getOrNull()),
-        )
-    }
-
-    put(ApiPaths.JIRA_SETTINGS) {
-        val principal = call.principal<SecPrincipal>()
-            ?: error("${ApiPaths.JIRA_SETTINGS} ran without a principal despite the session guard")
-        val request = call.receive<JiraProjectSettingsRequest>()
-
-        settingsStore.saveProjectKeys(request.projectKeys, updatedBy = principal.auditName).fold(
-            onSuccess = { saved ->
-                call.respond(
-                    JiraProjectSettingsDto(
-                        projectKeys = saved,
-                        jql = JiraJql.preview(saved).getOrNull(),
-                    ),
-                )
-            },
-            onFailure = { cause ->
-                // A 400 and not a 500: every failure this can produce is the caller's, and both
-                // carry a sentence naming what was wrong with which key.
-                call.respondProblem(
-                    HttpStatusCode.BadRequest,
-                    "Those project keys cannot be used",
-                    humanReason(cause),
-                    ProblemType.VALIDATION,
                 )
             },
         )
@@ -369,13 +326,6 @@ private fun humanReason(cause: Throwable): String = when (cause) {
         ?: "JIRA rejected the request."
     is JiraFailure.NotConfigured ->
         "JIRA is not configured on this server."
-    is JiraFailure.NoProjectsConfigured ->
-        "Choose at least one project. An import is never run across a whole JIRA instance."
-    // JIRA's own rule is stricter than this one; the job here is to exclude quotes, spaces and JQL
-    // operators, so the message names the keys rather than restating a rule we do not enforce.
-    is JiraFailure.InvalidProjectKey ->
-        "These are not usable project keys: ${cause.keys.joinToString(", ")}. A key starts with a " +
-            "letter and contains only letters, digits and underscores."
     // The same shape of message, and a stricter boundary: a field id becomes a property key.
     is JiraFailure.InvalidFieldId ->
         "These are not JIRA field ids: ${cause.fieldIds.joinToString(", ")}. An id looks like " +

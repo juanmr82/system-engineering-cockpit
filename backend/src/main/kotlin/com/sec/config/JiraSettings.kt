@@ -106,6 +106,15 @@ public data class JiraSettings(
     public val socketTimeout: Duration = DEFAULT_SOCKET_TIMEOUT,
     public val connectTimeout: Duration = DEFAULT_CONNECT_TIMEOUT,
     public val maxRetries: Int = DEFAULT_MAX_RETRIES,
+    /**
+     * How often [com.sec.importer.ImportScheduler] re-runs the importer, in minutes (ADR 0018).
+     *
+     * On by default at [DEFAULT_SCHEDULE_MINUTES]: with no project picker left, periodic import is
+     * now the only thing that ever notices new data short of a manual "run now". `0` disables it —
+     * deliberately reachable, unlike every other tuning knob in this class, which is why it is not
+     * read with [loadJiraSettings]'s shared `intOr` helper (see there).
+     */
+    public val scheduleMinutes: Int = DEFAULT_SCHEDULE_MINUTES,
 ) {
     /**
      * Whether the integration can be used at all. Blank host or blank token means "not configured
@@ -138,11 +147,12 @@ public data class JiraSettings(
     override fun toString(): String =
         "JiraSettings(host=$host, deployment=$deployment, auth=$authScheme, email=$email, " +
             "token=${if (token.isBlank()) "<unset>" else "<redacted>"}, " +
-            "pageSize=$pageSize, maxRetries=$maxRetries)"
+            "pageSize=$pageSize, maxRetries=$maxRetries, scheduleMinutes=$scheduleMinutes)"
 
     public companion object {
         public const val DEFAULT_PAGE_SIZE: Int = 100
         public const val DEFAULT_MAX_RETRIES: Int = 5
+        public const val DEFAULT_SCHEDULE_MINUTES: Int = 60
 
         // A *all page of 100 issues is multi-megabyte - the 50-issue sample export is 3.4 MB - and
         // a loaded instance is slow rather than broken. These are deliberately far longer than the
@@ -196,6 +206,11 @@ public fun loadJiraSettings(config: ApplicationConfig): JiraSettings {
         socketTimeout = jira.millisOr("socketTimeoutMs", JiraSettings.DEFAULT_SOCKET_TIMEOUT),
         connectTimeout = jira.millisOr("connectTimeoutMs", JiraSettings.DEFAULT_CONNECT_TIMEOUT),
         maxRetries = jira.intOr("maxRetries", JiraSettings.DEFAULT_MAX_RETRIES),
+        // Not `intOr`: that helper treats any value <= 0 as "not set, use the fallback", which is
+        // right for every other knob here but wrong for this one — 0 has to be reachable, because
+        // it is how an operator turns off a feature that is on by default.
+        scheduleMinutes = jira.propertyOrNull("scheduleMinutes")?.getString()?.toIntOrNull()
+            ?.coerceAtLeast(0) ?: JiraSettings.DEFAULT_SCHEDULE_MINUTES,
     )
 }
 

@@ -7,6 +7,7 @@ import {
   type CountersEvent,
   type ImportLogLine,
   type ImportRun,
+  type ImportSchedule,
   type ImportStarted,
   type Importer,
   type LogEvent,
@@ -88,6 +89,13 @@ export class ImportRunStore {
     if (importerId) query.set('importerId', importerId);
 
     return firstValueFrom(this.http.get<ImportRun[]>(`/api/v1/import/runs?${query}`));
+  }
+
+  /** Whether `importerId` re-runs itself, and when it next will. `scheduled: false` is ordinary. */
+  schedule(importerId: string): Promise<ImportSchedule> {
+    return firstValueFrom(
+      this.http.get<ImportSchedule>(`/api/v1/import/${importerId}/schedule`),
+    );
   }
 
   /** Start an import and begin watching it. The caller gets the run id it can link to. */

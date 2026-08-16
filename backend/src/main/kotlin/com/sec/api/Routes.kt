@@ -15,6 +15,7 @@ import com.sec.config.JiraSettings
 import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
+import com.sec.importer.ImportScheduler
 import com.sec.meta.MetaWriter
 import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
@@ -25,7 +26,6 @@ import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraIssuesProjection
-import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -60,11 +60,7 @@ public fun Application.configureRouting(
     // Null when JIRA is not configured on this deployment, which is a normal state: the routes
     // answer 503 and /jira/health reports why. See api/routes/JiraRoutes.kt.
     jiraClient: JiraHttpClient?,
-    // Never null, unlike the client: the configured project list lives in the graph and is readable
-    // and editable whether or not this deployment has a JIRA host, which is what lets an operator
-    // set the two up in either order.
-    jiraSettingsStore: JiraSettingsStore,
-    // Also never null, and for a stronger reason than the store's: the issues it reads are in this
+    // Never null, and for a stronger reason than the client's: the issues it reads are in this
     // graph, so the table works on a deployment whose JIRA credentials have expired. A table that
     // went blank because a token did would be reporting a connection problem as an absence of data.
     jiraIssuesProjection: JiraIssuesProjection,
@@ -91,6 +87,9 @@ public fun Application.configureRouting(
     // §8.3. The same instance the import-pipeline hook and the startup pass use, so a manual
     // reconcile and an automatic one are never racing two independent views of "already seeded".
     accessReconciler: AccessReconciler,
+    // ADR 0018. Source-agnostic: whichever importers are on a schedule, keyed by their own id.
+    // Empty when nothing is scheduled.
+    importSchedulers: Map<String, ImportScheduler> = emptyMap(),
 ) {
     routing {
         // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
@@ -106,14 +105,13 @@ public fun Application.configureRouting(
             jiraRoutes(
                 jiraSettings,
                 jiraClient,
-                jiraSettingsStore,
                 jiraIssuesProjection,
                 jiraLinkGraphProjection,
                 jiraColumnStore,
                 jiraFieldsProjection,
             )
             windchillRoutes(windchillSettings, windchillProjection, importRunService)
-            importRoutes(importRunService)
+            importRoutes(importRunService, importSchedulers)
             moduleRoutes(doorsProjection, metaWriter)
             reviewRoutes(
                 doorsProjection,

@@ -3,6 +3,43 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 28) — JIRA: RBAC is the gate, plus a periodic scheduler
+
+Branch **`feature/access-control`**, on top of session 27's committed `CurrentUser.PLACEHOLDER`
+wiring (`e969892`). Closes the JIRA scope gap session 26 explicitly deferred: the project allow-list
+is gone, access categories are the sole visibility gate (R8), and a new coroutine `ImportScheduler`
+re-runs JIRA periodically since removing the picker removed the only manual re-trigger. Full design
+reasoning is **ADR 0018**.
+
+| # | Change | Where |
+|---|---|---|
+| 1 | `JiraJql.build` drops `projectKeys`; query is now fixed (`created <= … ORDER BY key ASC`) | `JiraJql.kt` |
+| 2 | `JiraSettingsStore`, `:__JiraSettings`, `NoProjectsConfigured`/`InvalidProjectKey` deleted outright | `JiraSettingsStore.kt` (removed), `JiraFailure.kt`, `JiraNames.kt` |
+| 3 | Sweep collapses to one statement (`SWEEP_DECONFIGURED` removed, `SWEEP_DELETED` loses its project scope) | `JiraCypher.kt`, `JiraGraphWriter.kt`, `JiraImporter.kt` |
+| 4 | `GET`/`PUT /jira/settings` removed; `GET /jira/projects` kept, repurposed as a read-only diagnostic | `JiraRoutes.kt`, `ApiPaths.kt`, `JiraDtos.kt` |
+| 5 | New `ImportScheduler` — source-agnostic, mirrors `ImportRunService`'s coroutine shape, delay-first ticks, `AlreadyRunning` is a silent no-op | `importer/ImportScheduler.kt` |
+| 6 | `jira.scheduleMinutes` config (default 60, `0` disables; not read via the shared `intOr` helper — see the field's own doc comment for why) | `config/JiraSettings.kt`, `application.yaml` |
+| 7 | New `GET /import/{importerId}/schedule` (`ImportScheduleDto`), wired via a source-agnostic `Map<String, ImportScheduler>` threaded through `Routes.kt` | `ImportRoutes.kt`, `ImportDtos.kt`, `Application.kt`, `Routes.kt` |
+| 8 | `GraphNamesTest`/`AccessGuardTest`'s `JiraCypher` statement lists and exemption indices renumbered (both are self-checking; both passed clean on the first try) | both test files |
+| 9 | Frontend: project chip picker + JQL preview deleted; Connection section now lists what the token can see; Import section shows "Next scheduled import" | `jira-settings.*` |
+| 10 | New ADR 0018; ADR 0014 decisions #2/#5/#18 and `JIRA_ISSUES_FEATURE_SPEC.md` §8/§10.1/§12/§13.5/§17 carry forward-pointers to it | `docs/adr/`, `docs/JIRA_ISSUES_FEATURE_SPEC.md` |
+
+### Verified
+
+- `mvn -pl backend -am test` — **362/362**, 0 failures (includes the new `ImportSchedulerTest`, the
+  trimmed `JiraJqlTest`, and the two now-obsolete `JiraIssueImportTest` scenarios removed).
+- `mvn -pl backend -am -Pdocker test` — **158/158**, 0 failures, including the real-Neo4j
+  `JiraIssueImportTest` exercising the simplified `SWEEP_DELETED` against a real Community instance.
+- `npm run lint && npm test && npm run build` from `frontend/` — lint clean, **273/273** tests pass,
+  build succeeds.
+- **Not yet committed** — sitting on `feature/access-control` on top of `e969892`.
+
+### Resume here
+
+Phase 4 (`docs/features/access-control.md` §15) is next, same as session 27 left it: every remaining
+read path gets the `/*ACL*/` predicate. Machine-auth for `POST /access/reconcile` remains a
+separately deferred, still-open gap (unaffected by this session).
+
 ## State as of 2026-08-16 (session 27) — wiring `CurrentUser.PLACEHOLDER` into real routes
 
 Branch **`feature/access-control`**, on top of session 26's committed phase 3 (`cd0ee65`). Closes

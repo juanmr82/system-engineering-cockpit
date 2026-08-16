@@ -185,32 +185,28 @@ public class JiraGraphWriter(
      * Phase 5 — the sweep, and the one method in this class that deletes imported issues.
      *
      * **It trusts [seenIds] completely.** A set missing the issues of a page that failed is
-     * indistinguishable here from a project somebody emptied in JIRA, so the decision that phase 3
+     * indistinguishable here from those issues genuinely being gone, so the decision that phase 3
      * completed is made by the caller and is not second-guessed — the guard lives in
      * [JiraImporter], where the knowledge is (spec §12 phase 5).
      *
-     * Two statements rather than one because the run summary has to say *why* something went: an
-     * issue deleted in JIRA is news, and an issue that left with its project's tick box is not.
+     * One statement, under ADR 0018: there is no project allow-list any more, so "JIRA deleted it"
+     * and "the token can no longer see it" are the same fact from here — not in ($seenIds) is not
+     * in ($seenIds), whatever the reason.
      *
-     * Orphan cleanup last, after both deletions, because it is the deletions that create the
-     * orphans.
+     * Orphan cleanup last, after the deletion, because it is the deletion that creates the orphans.
      */
-    public suspend fun sweep(configuredKeys: List<String>, seenIds: Set<String>): SweepCounts {
+    public suspend fun sweep(seenIds: Set<String>): SweepCounts {
         val deleted = deleteReturningCount(
             JiraCypher.SWEEP_DELETED,
-            mapOf("configuredKeys" to configuredKeys, "seenIds" to seenIds.toList()),
-        )
-        val byConfig = deleteReturningCount(
-            JiraCypher.SWEEP_DECONFIGURED,
-            mapOf("configuredKeys" to configuredKeys),
+            mapOf("seenIds" to seenIds.toList()),
         )
         val orphans = deleteReturningCount(
             JiraCypher.DELETE_ORPHANED_ENTITIES,
             mapOf("labels" to JiraLabel.orphanable.toList()),
         ) + deleteReturningCount(JiraCypher.DELETE_ORPHANED_PLACEHOLDERS, emptyMap())
 
-        logger.info { "JIRA sweep: $deleted deleted, $byConfig de-configured, $orphans orphaned nodes" }
-        return SweepCounts(deleted = deleted, deletedByConfig = byConfig, orphansRemoved = orphans)
+        logger.info { "JIRA sweep: $deleted deleted, $orphans orphaned nodes" }
+        return SweepCounts(deleted = deleted, orphansRemoved = orphans)
     }
 
     /**
@@ -275,16 +271,9 @@ public class JiraGraphWriter(
     /** Issues in the graph and how many carry a projection. The two should be equal (spec §12). */
     public data class IssueCounts(public val issues: Int, public val projections: Int)
 
-    /**
-     * What one sweep removed.
-     *
-     * [deleted] and [deletedByConfig] are kept apart all the way to the run report because they are
-     * different news: the first says JIRA lost an issue, the second says a person changed the
-     * configuration and got what they asked for.
-     */
+    /** What one sweep removed. */
     public data class SweepCounts(
         public val deleted: Int,
-        public val deletedByConfig: Int,
         public val orphansRemoved: Int,
     )
 

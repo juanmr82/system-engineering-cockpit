@@ -84,6 +84,19 @@ public data class ImportLogLineDto(
 @Serializable
 public data class ImportStartedDto(public val runId: String)
 
+/**
+ * Whether this importer re-runs itself, and when it next will (ADR 0018).
+ *
+ * [scheduled] false is the ordinary state for an importer with no scheduler — never a 404: an
+ * importer either has one or does not, and both are things to render rather than errors.
+ */
+@Serializable
+public data class ImportScheduleDto(
+    public val scheduled: Boolean,
+    public val nextRunAt: String? = null,
+    public val intervalMinutes: Int? = null,
+)
+
 // -- SSE payloads --------------------------------------------------------------------------------
 //
 // One class per `event:` name. The names are API surface — a client dispatches on them — so they

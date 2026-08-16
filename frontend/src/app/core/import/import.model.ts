@@ -69,6 +69,17 @@ export interface ImportStarted {
   readonly runId: string;
 }
 
+/**
+ * Whether this importer re-runs itself, and when it next will (ADR 0018).
+ *
+ * `scheduled: false` is the ordinary state for an importer with no scheduler — never an error.
+ */
+export interface ImportSchedule {
+  readonly scheduled: boolean;
+  readonly nextRunAt: string | null;
+  readonly intervalMinutes: number | null;
+}
+
 // -- SSE payloads --------------------------------------------------------------------------------
 //
 // One per `event:` name. The names are API surface — the server dispatches on them too.
@@ -139,5 +150,4 @@ export const COUNTER_LABELS: Readonly<Record<string, string>> = {
   unresolvedCreated: 'Placeholders created',
   unresolvedResolved: 'Placeholders resolved',
   deleted: 'Deleted',
-  deletedByConfig: 'Removed with a project',
 };
