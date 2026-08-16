@@ -205,6 +205,13 @@ public fun visible(alias: String): String =
     "WHERE ${'$'}seesAll OR …)"
 ```
 
+**Its subquery variable is `aclCat`, and the name is load-bearing.** A Cypher `EXISTS { }` imports
+every variable bound outside it, so declaring one that shadows an outer binding is an error rather
+than a shadowing warning — and `c` is exactly what several statements already bind for the
+system-level `:__Classification` (`RequirementCardCypher`, `ModuleCypher`, `StatisticsCypher`). A
+predicate that cannot be dropped into an arbitrary statement is a predicate that will be reproduced
+by hand at the one call site it does not fit, which is the thing this function exists to prevent.
+
 The exact Cypher was settled by measurement in phase 2, not by preference — **ADR 0016 §8 has the
 db-hit numbers and form A won**, against the a-priori guess below. Two candidate forms were
 compared, both correct:
@@ -562,13 +569,44 @@ answered by running the application, not by reading the tests.
 | 1 | **Keycloak realm + the session.** `docs/KEYCLOAK_SETUP.md` applied, `/auth/*`, the route-tree guard, `/auth/me`, the frontend shell, the user menu, the `401`/`403` split. **No data filtering yet** | *Signing out and back in as two different users shows two different names and role sets, and every `/api/v1` call without a session is a `401`* |
 | 2 | **Model, schema, resolver, predicate.** `GraphNames` additions, `MetaSchema`, `AccessResolver`, `AccessCypher.visible()`, `AccessGuardTest`, the `PROFILE` measurement and the ADR update. **Applied to exactly one endpoint** — `/modules/{ref}/objects` | *One module tagged by hand in Cypher is visible to one group and invisible to another, and the db-hit numbers are in ADR 0016* |
 | 3 | **Containment and the reconciler.** `AccessContainment`, `AccessReconciler`, `POST /access/reconcile`, the startup pass, the import-pipeline phase, `sec-import-doors.ps1` calling it | *Tagging a module propagates to 984 objects and untagging retracts them, twice, with the same counts* |
-| 4 | **Every read path.** Item, tree, children, traces, breakdown, dependency graph, modules, objects, tables, JIRA issues and link graph, Windchill documents, statistics, search. **And every item in §7** | *The visibility matrix test is green and the `+n` badge, the banner and every statistic have been read on screen as two different users* |
+| 4 | **Every read path.** Item, tree, children, traces, breakdown, dependency graph, modules, objects, tables, JIRA issues and link graph, Windchill documents, statistics, search. **And every item in §7** — **done, except the on-screen half of its acceptance question, see §15.1** | *The visibility matrix test is green and the `+n` badge, the banner and every statistic have been read on screen as two different users* |
 | 5 | **Write guards.** `requireRole` on `/settings/*`, imports, meta writes; anchor visibility on Tier-2 writes | *A `sec-user` cannot reach the settings gear, and cannot comment on an object they cannot see even with a hand-made request* |
 | 6 | **The Access views.** Categories, grants matrix, unassigned queue, import defaults, the sidenav badge | *An access manager can take a freshly imported module from invisible to visible without touching Cypher* |
 | 7 | **Hardening.** `sec-auditor`, the audit trail, IdP brokering rehearsal, the final `PROFILE`, `docs/RUNNING.md` and the handover updated | *A second identity provider is configured in Keycloak and a brokered login lands in the right groups* |
 
 Phases 1–2 are safe to merge on their own. **Phase 4 is the one that must not be split across a
 release**, because a half-filtered API is worse than an unfiltered one: it looks guarded.
+
+### 15.1 What phase 4 settled, and the one thing it did not
+
+Every statement that carried a `phase 4 read path` exemption is filtered; `AccessGuardTest` has none
+left. Four things learned in the building that are not re-derivable from the code:
+
+- **A statement's second predicate site is the one that gets missed.** `MODULE_OBJECTS` shipped in
+  phase 2 filtering its row and *not* the two pattern comprehensions that build its References
+  column, so the one endpoint called finished was disclosing hidden objects' DOORS ids. A `COUNT{}`
+  subquery is the same trap: it counts neighbours, and an outer `WHERE` does not reach it
+  (`StatisticsCypher.MODULE_OBJECTS` has three, `JiraCypher`'s `linkCount` one).
+- **The lockstep rule earns its place, and the badge is where.** With the cards filtered and the two
+  neighbour statements not, `truncatedNeighbours` counts every hidden object beyond the picture —
+  confirmed by removing the predicate and watching a badge read `3` where it should read `2`. The
+  test that catches it has to seed **one hop further out** than the obvious node: seeding on the
+  object that owns the hidden link admits the hidden neighbour and then drops it for having no card,
+  so it lands *inside* the set and is never counted. `VisibilityMatrixTest` carries both cases.
+- **The Kotlin-derived values needed no arithmetic of their own** once their groups moved together —
+  `truncated`, `cyclic`, `module.truncated`, `edgesExamined`, `modulesWithoutSystemLevel`. That is
+  the payoff of the lockstep grouping rather than a happy accident: each of them compares two numbers
+  that now carry the identical filter.
+- **`seesAll` sees uncategorised objects**, and that is what the words *Sees everything* mean. R8's
+  "invisible to everyone, administrators included" is about the *other* axis: `sec-admin` and
+  `sec-access-manager` are capabilities and grant no visibility. A group is how visibility is
+  granted, and `seesAll` is a group granted all of it — which is why §10.2 puts it behind a
+  confirmation and calls it the one control that turns the feature off for a group.
+
+**Not done: the on-screen half of the acceptance question.** Nobody has read the `+n` badge, the
+unresolved-modules banner and the statistics in a browser as two different users. The matrix test
+asserts all three at the projection layer, against a real Neo4j; what it cannot prove is that the
+frontend renders the filtered answer without adding a claim of its own. Do that before merging.
 
 ---
 

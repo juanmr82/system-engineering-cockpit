@@ -3,6 +3,101 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 30) — access control phase 4 is complete
+
+Branch **`feature/access-control`**, on top of session 29's step 1 (`c4b414e`). Steps 2-5 of the plan
+in **`/home/juanmrc/.claude/plans/ancient-juggling-magpie.md`** are done, in two commits
+(`3bce197` threading, `d5561ef` filtering) plus this session's test and doc work.
+
+**`AccessGuardTest` has no `phase 4 read path` entries left.** Every one of the 37 statements is
+filtered. The branch is now internally coherent — a half-filtered API was the thing phase 4 must not
+ship, and it no longer is one.
+
+### The gap session 29 named, closed first
+
+`mvn -Pdocker test` was run before anything else. The unrun fail-closed test passes: **Neo4j does
+error on the missing `$seesAll`/`$acl` parameter**, so a mis-wired call site fails rather than
+quietly returning everything, and step 2's threading rests on solid ground. No compile-time guard
+was needed.
+
+### What steps 2-5 delivered
+
+| Step | Change |
+|---|---|
+| 2 | `AccessSet` threaded through ~25 projection methods, every route handler, and `MetaWriter`'s three public methods; every one of those call sites moved to the binding `executeRead` overload. **No Cypher changed** and all 362 tests stayed green, so the diff reviewed as pure plumbing |
+| 3 | All 37 statements filtered, in the plan's lockstep order: Review → cards/graph/breakdown → statistics → JIRA → Windchill, plus `ModuleCypher`, `ItemCypher` and `TableCypher` |
+| 4 | Audited rather than built: every problem-detail message interpolates a count or the caller's own input, so none of them names an object the caller cannot see. Nothing to change |
+| 5 | **`VisibilityMatrixTest`** — 21 docker-tagged cases over one fixture as four callers |
+
+### Three things worth knowing before touching this again
+
+1. **`AccessCypher.visible()`'s subquery variable is `aclCat`, not `c`.** An `EXISTS { }` imports its
+   outer scope, so declaring `c` inside it is a hard error wherever the statement already binds `c`
+   for the system-level classification — `RequirementCardCypher`, `ModuleCypher`, `StatisticsCypher`.
+   Renaming it back breaks three files at once.
+2. **`GraphNamesTest.stripComments` is now nesting-aware**, because Kotlin nests block comments and
+   the old non-greedy regex closed a KDoc at the first `*/` it found inside quoted prose — which the
+   ACL marker is, in every comment that explains it. The rest of that KDoc was then scanned as code.
+   The cheap way to silence it was to stop naming graph names in comments, which is backwards.
+   (Writing the replacement's own doc comment reproduced the bug once: spelling the delimiters out
+   closed the KDoc early and would not compile. The doc describes them in words for that reason.)
+3. **The badge test has to seed one hop further out than seems natural.** Seeding on the object that
+   owns the hidden link does *not* expose the leak: an unfiltered walk admits the hidden neighbour
+   and then drops it for having no card, so it lands inside the admitted set and is never counted as
+   cut. Seeding one hop back puts it beyond the set, where the badge counts it. Verified by removing
+   the predicate from the two neighbour statements and watching a badge read 3 where it reads 2.
+
+### Both guards verified by deliberate break, as the spec asks
+
+- `AccessGuardTest`: removing the marker from `WindchillCypher.LIST_DOCUMENTS` failed it by name
+  (`WindchillCypher[3]`); green again on restore.
+- `VisibilityMatrixTest`: removing the predicate from `DependencyGraphCypher`'s two neighbour
+  statements failed the badge case; green again on restore.
+
+### Two loose threads from session 29, both settled
+
+- **The `seesAll` naming.** `AccessControlFeatureTest`'s test claimed "seesAll included" and never
+  asserted it — and the claim was false. A `seesAll` group *does* see an uncategorised object, which
+  is what *Sees everything* means; R8's "invisible to everyone, administrators included" is about
+  capabilities, which grant no visibility at all. The test is renamed and now pins both readings, and
+  `access-control.md` §15.1 states the distinction so the matrix cannot encode the wrong one.
+- **`AccessCypher[8]`**, the placeholder containment's redundant seed pass, is unchanged — still a
+  no-op, still exempted and explained. Not worth collapsing until a third DOORS containment exists.
+
+### One correction found while filtering
+
+`WindchillCypher.COUNT_DOCUMENTS` was exempted as "Windchill Documents view, count". It is not: it is
+what `WindchillGraphWriter` reads either side of its own sweep for the mass-deletion warning
+(ADR 0015 §7), and it has no user-facing caller at all. Reclassified as a permanent importer-read
+exemption with the real reason.
+
+### Verified
+
+- `mvn -pl backend -am test` — **362/362**, unchanged from the baseline all the way through, which is
+  what made step 2 reviewable as plumbing.
+- `mvn -pl backend -am -Pdocker test` — **180/180** (159 + the 21 new matrix cases), against
+  `neo4j:2026.06.0-community`.
+- From `frontend/`: lint clean, **273/273**, build green. No frontend file changed this session.
+
+### Resume here
+
+**Read it on screen as two different users before merging.** That is the half of phase 4's own
+acceptance question no test can answer (`access-control.md` §15.1): the matrix proves the projections
+return a filtered answer, not that the frontend renders it without adding a claim of its own. Look
+hardest at the `+n` badge, the unresolved-modules banner and the statistics page. `deploy/docker-compose.dev.yml`
+has the Keycloak realm with `sec-dev-user` / `sec-dev-admin` / `sec-dev-nogroup`; the categories and
+grants still have to be written by hand in Cypher, because the Access views are phase 6.
+
+Then **phase 5** (write guards): `requireRole` on `/settings/*`, on the imports, and on the meta
+writes; per-anchor visibility on Tier-2 writes. Note that phase 4 already pulled the *container* half
+of that forward — `MetaWriter`'s `moduleExists` check is filtered, so a module that 404s on read
+cannot accept a write. What phase 5 still owes is the per-anchor guard and `requireRole` itself,
+which does not exist yet (`security/Roles.kt` declares the strings and says why the plugin waited).
+
+Still open and unchanged: machine-auth for `POST /access/reconcile` (`sec-import-doors.ps1` has no
+session cookie), and §16 question 2 — whether the unassigned queue is exempt from filtering so an
+access manager can see what they are assigning. That one is phase 6's, not phase 5's.
+
 ## State as of 2026-08-16 (session 29) — access control phase 4, step 1 of 5 only
 
 Branch **`feature/access-control`**. **Phase 4 is started and deliberately incomplete.** The full

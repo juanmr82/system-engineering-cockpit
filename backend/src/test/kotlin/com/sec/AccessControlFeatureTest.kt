@@ -7,6 +7,7 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.security.AccessResolver
+import com.sec.security.AccessSet
 import com.sec.source.doors.ReviewProjection
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
@@ -170,10 +171,24 @@ class AccessControlFeatureTest {
         assertEquals(1, reviewProjection.getModuleObjects(moduleId, access).total)
     }
 
-    // The correct default state for a freshly imported object (§4.4, R8): no category at all is
-    // invisible to everyone, administrators included — capability and visibility are separate axes.
+    /**
+     * The correct default state for a freshly imported object (§4.4, R8): with no category at all
+     * it is invisible to every group.
+     *
+     * **`seesAll` is the exception, and it is not a bug.** The predicate is `$seesAll OR EXISTS{…}`,
+     * so a `seesAll` group does see an uncategorised object — which is what the words *Sees
+     * everything* promise, and why the spec calls that flag "the one control that turns the whole
+     * feature off for a group" and puts it behind a confirmation (§10.2). R8's "invisible to
+     * everyone, administrators included" is about the other axis: `sec-admin` and
+     * `sec-access-manager` are *capabilities* and grant no visibility at all. A group is how
+     * visibility is granted, and `seesAll` is a group that has been granted all of it.
+     *
+     * The name of this test used to claim `seesAll` included, which it never asserted and which is
+     * the opposite of the truth. Both readings are pinned below so the next reader gets the
+     * distinction rather than the ambiguity.
+     */
     @Test
-    fun `an untagged object is invisible to every group, seesAll included`() = runBlocking {
+    fun `an untagged object is invisible to every group, but not to a seesAll group`() = runBlocking {
         graphDriver.executeWrite(
             Query(
                 """
@@ -190,6 +205,10 @@ class AccessControlFeatureTest {
 
         val member = accessResolver.resolve(listOf("/SEC/SomeGroup"))
         assertEquals(0, reviewProjection.getModuleObjects(moduleId, member).total)
+        assertEquals(0, reviewProjection.getModuleObjects(moduleId, AccessSet.NONE).total)
+
+        // And the deliberate exception, asserted rather than left to the name.
+        assertEquals(1, reviewProjection.getModuleObjects(moduleId, AccessSet.SEES_ALL).total)
     }
 
     /**
