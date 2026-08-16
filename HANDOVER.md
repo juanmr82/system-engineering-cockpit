@@ -3,6 +3,63 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 30, later) — phase 5 is complete too
+
+Branch **`feature/access-control`**, four further commits on top of phase 4. Phase 5 is done in two
+parts (`4f52bc7` capability, `02fa03f` visibility), plus the dev seed (`2b5c45d`) that makes phase
+4's on-screen check cheap.
+
+**`AccessGuardTest` now has no deferred exemptions at all.** Every read is filtered, every Tier-2
+write is filtered on its anchor, and every remaining entry in that map is permanently exempt with its
+own reason.
+
+### Phase 5, and the four things that had to be learned by running it
+
+| Trap | What it looked like |
+|---|---|
+| **`createChild` reuses a child whose selector compares equal** | A shared `object` selector made *every* `requireRole` mount onto one node. Two guards = one node carrying both: `sec-admin` demanded of `/access/reconcile`, and a holder of the right role refused its own route. A fresh selector instance per call fixes it |
+| **A raw `intercept` runs for everything resolved through the route** | Hence a route-scoped plugin. `authenticate` is not built on a bare interceptor either, and this is why |
+| **`AuthenticationChecked` fires even when authentication failed** | Null principal + a 401 already challenged. Throwing there turned every 401 into a 500. It returns instead — the CSRF check's trap from the other side |
+| **Filtered write statements need their parameters bound** | `MetaWriter` builds `Query` objects and runs them as one transaction, so `Write.kt` needed the access-binding overload `Read.kt` already had. Without it every Tier-2 write fails on a missing parameter — safe, not shippable |
+
+### The split inside Tier 2, so it is not "fixed" later
+
+**`POST /modules/{ref}/comments` stays `sec-user`.** It and module settings are both `:__Meta`, and
+the difference is real: a comment is one reviewer's note on one object; a mandatory-attribute policy
+governs every object in a module and changes what the Issues column says about all of them. Only one
+is an opinion. `RoleGuardTest` asserts both directions, and the second list matters as much as the
+first — a guard drawn too wide fails closed, so it passes every "is it a 403" check while quietly
+breaking the application for ordinary users.
+
+### Two layers on the write path, on purpose
+
+`MetaWriter` already refused a forged `__id` before phase 5 started, through the filtered
+`moduleExists` and `MODULE_OBJECT_IDS`. The nine write statements are filtered *as well*, which is
+redundant today and deliberate: a guarantee that survives its caller being reordered is worth more
+than one that depends on the order two checks happen to run in.
+
+### Verified
+
+- `mvn -pl backend -am test` — **368/368**; `-Pdocker test` — **183/183**.
+- Frontend untouched since phase 4's check: lint clean, 273/273, build green.
+- Deliberate breaks, all four recorded: `AccessGuardTest` (marker removed), `VisibilityMatrixTest`
+  (neighbour filter removed → badge inflated; `UPSERT_COMMENTS` filter removed → forged note stored),
+  `RoleGuardTest` (guard removed → failed by name).
+
+### Resume here
+
+1. **The on-screen check** — still the only thing phase 4 owes, now a short job:
+   `deploy/dev-access-seed.cypher` plus `access-control.md` §15.2. Sign in as `sec-dev-user` and
+   `sec-dev-admin`; look hardest at the `+n` badge, the unresolved-modules banner and the statistics.
+   Do it before merging — the branch is otherwise ready.
+2. **Phase 6, the Access views** — and it is what retires the dev seed. Note `AccessResolver.invalidate()`
+   still has no caller, so until `AccessAdminService` exists a grant edited by hand needs a backend
+   restart (`access-control.md` §5 has the table).
+3. Still open and unchanged: machine-auth for `POST /access/reconcile` — now sharper, since that
+   route is `sec-access-manager`-gated and `sec-import-doors.ps1` has neither cookie nor role, so it
+   degrades to §8.3's warning and the startup pass is what actually closes it. And §16 question 2
+   (is the unassigned queue exempt from filtering?), which phase 6 has to answer to build screen 3.
+
 ## State as of 2026-08-16 (session 30) — access control phase 4 is complete
 
 Branch **`feature/access-control`**, on top of session 29's step 1 (`c4b414e`). Steps 2-5 of the plan
