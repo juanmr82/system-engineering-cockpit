@@ -1,5 +1,6 @@
 package com.sec.graph
 
+import com.sec.security.AccessSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.neo4j.driver.Query
@@ -44,3 +45,16 @@ public suspend fun <T> GraphDriver.executeAutocommit(query: Query, transform: (L
             transform(session.run(query).list())
         }
     }
+
+/**
+ * The write counterpart of `Read.kt`'s access-binding overload (`access-control.md` §6.3).
+ *
+ * Phase 5 filtered every Tier-2 write on its anchor, so those statements carry `$seesAll`/`$acl`
+ * like any filtered read and would fail on a missing parameter without this. Binding them here
+ * rather than in `MetaWriter` keeps the rule the spec states — no call site assembles the two by
+ * hand — and means a statement that gains the predicate needs no change at its caller.
+ *
+ * Still one transaction for the whole list (R7): a dialog spanning two tabs saves once, atomically.
+ */
+public suspend fun GraphDriver.executeWrite(queries: List<Query>, access: AccessSet): Unit =
+    executeWrite(queries.map { Query(it.text(), it.parameters().asMap() + access.parameters()) })

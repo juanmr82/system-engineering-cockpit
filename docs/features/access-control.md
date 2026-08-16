@@ -584,7 +584,7 @@ answered by running the application, not by reading the tests.
 | 2 | **Model, schema, resolver, predicate.** `GraphNames` additions, `MetaSchema`, `AccessResolver`, `AccessCypher.visible()`, `AccessGuardTest`, the `PROFILE` measurement and the ADR update. **Applied to exactly one endpoint** — `/modules/{ref}/objects` | *One module tagged by hand in Cypher is visible to one group and invisible to another, and the db-hit numbers are in ADR 0016* |
 | 3 | **Containment and the reconciler.** `AccessContainment`, `AccessReconciler`, `POST /access/reconcile`, the startup pass, the import-pipeline phase, `sec-import-doors.ps1` calling it | *Tagging a module propagates to 984 objects and untagging retracts them, twice, with the same counts* |
 | 4 | **Every read path.** Item, tree, children, traces, breakdown, dependency graph, modules, objects, tables, JIRA issues and link graph, Windchill documents, statistics, search. **And every item in §7** — **done, except the on-screen half of its acceptance question, see §15.1** | *The visibility matrix test is green and the `+n` badge, the banner and every statistic have been read on screen as two different users* |
-| 5 | **Write guards.** `requireRole` on `/settings/*`, imports, meta writes; anchor visibility on Tier-2 writes | *A `sec-user` cannot reach the settings gear, and cannot comment on an object they cannot see even with a hand-made request* |
+| 5 | **Write guards.** `requireRole` on `/settings/*`, imports, meta writes; anchor visibility on Tier-2 writes — **done**, see §15.3 | *A `sec-user` cannot reach the settings gear, and cannot comment on an object they cannot see even with a hand-made request* |
 | 6 | **The Access views.** Categories, grants matrix, unassigned queue, import defaults, the sidenav badge | *An access manager can take a freshly imported module from invisible to visible without touching Cypher* |
 | 7 | **Hardening.** `sec-auditor`, the audit trail, IdP brokering rehearsal, the final `PROFILE`, `docs/RUNNING.md` and the handover updated | *A second identity provider is configured in Keycloak and a brokered login lands in the right groups* |
 
@@ -662,6 +662,40 @@ computed from what was left *out*.
 unresolved-modules banner and the statistics in a browser as two different users. The matrix test
 asserts all three at the projection layer, against a real Neo4j; what it cannot prove is that the
 frontend renders the filtered answer without adding a claim of its own. Do that before merging.
+
+---
+
+### 15.3 What phase 5 settled
+
+`requireRole(Role.X) { }` guards route groups; `AccessGuardTest` has no deferred entries left at all,
+because every Tier-2 write is now filtered on its anchor as well.
+
+Four things worth not rediscovering:
+
+- **`createChild` reuses a child whose selector compares equal.** A shared `object` selector made
+  every `requireRole` in the application mount onto one node, so two guards meant one node carrying
+  both — `sec-admin` demanded of `/access/reconcile`, and a holder of the right role refused its own
+  route. A fresh selector instance per call is what makes them separate subtrees.
+- **A raw `intercept` on a route runs for everything resolved through it**, which is why this is a
+  route-scoped plugin. `authenticate` is not built on a bare interceptor either.
+- **`AuthenticationChecked` fires whether or not authentication succeeded.** A request with no
+  session reaches it with a null principal and its own `401` already challenged, so the guard must
+  return rather than throw or respond — the same trap the CSRF check documents, from the other side.
+- **The write statements are filtered too, not only their callers.** `MetaWriter` already checked the
+  module and the item ids through filtered reads, so the Cypher predicate is redundant *today*; it is
+  there because a filter that survives its caller being reordered is worth more than one that does
+  not. That made `Write.kt` need the access-binding overload `Read.kt` already had — otherwise every
+  Tier-2 write fails on a missing parameter, which is the safe direction but not a shippable one.
+
+**`sec-user` keeps `POST /modules/{ref}/comments`.** Both it and module settings are `:__Meta`, and
+the split is deliberate: a comment is one reviewer's note on one object, while a mandatory-attribute
+policy governs every object in a module and changes what the Issues column says about all of them.
+Only one of the two is an opinion.
+
+**What phase 5 does not do:** there is still no audit trail, and `sec-auditor` remains unbuilt —
+both are phase 7. `POST /access/reconcile` is now `sec-access-manager`-gated, which sharpens rather
+than solves the standing machine-auth gap: `sec-import-doors.ps1` has neither a session cookie nor a
+role, so it still degrades to the warning §8.3 specifies and the startup pass is what closes it.
 
 ---
 

@@ -127,9 +127,10 @@ public object ModuleCypher {
         LIMIT 1
     """
 
-    public const val SET_SYSTEM_LEVEL: String = """
+    public val SET_SYSTEM_LEVEL: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         MERGE (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
           ON CREATE SET c.$META_ID        = ${'$'}metaId,
                         c.$META_KIND      = '$CLASSIFICATION_KIND',
@@ -141,16 +142,18 @@ public object ModuleCypher {
             c.$UPDATED_AT = ${'$'}now
     """
 
-    public const val CLEAR_SYSTEM_LEVEL: String = """
+    public val CLEAR_SYSTEM_LEVEL: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
               -[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
+        WHERE ${AccessCypher.visible("m")}
         DETACH DELETE c
     """
 
-    public const val ADD_MANDATORY_POLICIES: String = """
+    public val ADD_MANDATORY_POLICIES: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         UNWIND ${'$'}add AS row
         MERGE (m)-[:$POLICY_FOR]->(p:$META:$POLICY {$ATTRIBUTE_NAME: row.attributeName,
                                                     $RULE: '$MANDATORY_RULE'})
@@ -164,10 +167,11 @@ public object ModuleCypher {
             p.$UPDATED_AT = ${'$'}now
     """
 
-    public const val REMOVE_MANDATORY_POLICIES: String = """
+    public val REMOVE_MANDATORY_POLICIES: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
         WHERE p.$RULE = '$MANDATORY_RULE' AND p.$ATTRIBUTE_NAME IN ${'$'}remove
+          AND ${AccessCypher.visible("m")}
         DETACH DELETE p
     """
 }

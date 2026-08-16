@@ -89,7 +89,7 @@ public class MetaWriter(
             attributeSettings?.let { addAll(attributeSettingQueries(moduleId, it, user, now)) }
         }
 
-        graphDriver.executeWrite(queries)
+        graphDriver.executeWrite(queries, access)
         return SaveModuleSettingsOutcome.Saved
     }
 
@@ -131,7 +131,7 @@ public class MetaWriter(
                 ?: error("A system-level edit always changes something")
         }
 
-        graphDriver.executeWrite(queries)
+        graphDriver.executeWrite(queries, access)
         return SaveSystemLevelsOutcome.Saved(
             edits.map { SavedSystemLevel(moduleId = it.moduleId, code = it.code) },
         )
@@ -178,12 +178,12 @@ public class MetaWriter(
         }
 
         if (queries.isNotEmpty()) {
-            graphDriver.executeWrite(queries)
+            graphDriver.executeWrite(queries, access)
         }
 
         // Read back what was stored rather than echoing what was asked for: the server decides,
         // and this is what lets the table clear its dirty marks without reloading (§8).
-        val stored = readComments(written.map { it.itemId })
+        val stored = readComments(written.map { it.itemId }, access)
         return SaveCommentsOutcome.Saved(
             comments = edits.map { edit ->
                 stored[edit.itemId] ?: SavedComment(edit.itemId, metaId = null, text = null, updatedAt = null)
@@ -204,12 +204,15 @@ public class MetaWriter(
             access,
         ) { records -> records.map { it.get("id").asString() }.toSet() }
 
-    private suspend fun readComments(itemIds: List<String>): Map<String, SavedComment> {
+    private suspend fun readComments(
+        itemIds: List<String>,
+        access: AccessSet,
+    ): Map<String, SavedComment> {
         if (itemIds.isEmpty()) {
             return emptyMap()
         }
         return graphDriver.executeRead(
-            Query(ReviewCypher.READ_COMMENTS, mapOf("itemIds" to itemIds)),
+            ReviewCypher.READ_COMMENTS, mapOf("itemIds" to itemIds), access,
         ) { records ->
             records.associate { record ->
                 val itemId = record.get("ref").asString()

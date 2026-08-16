@@ -39,11 +39,13 @@ import kotlin.test.assertTrue
  * fixture over a shared base (see `ReviewFeatureTest`'s container setup) — a second, independent
  * enumeration is also a second chance to notice a file the other missed.
  *
- * This is the reason phase 2 leaves nearly every statement in [exemptions]: `access-control.md`
- * §15 filters exactly one endpoint per phase, and every other statement's exemption reason names
- * the phase that pays it off — phase 4 for reads, phase 5 for writes. An entry leaving this map
- * without the statement gaining a real `/*ACL*/` marker is a regression, and
- * [`every declared exemption still needs one`] is what catches that the moment it happens.
+ * Phases 4 and 5 have both landed, so **nothing in [exemptions] is deferred any more**. Every
+ * remaining entry is permanently exempt and says why in its own words: an importer's own writes,
+ * the reconciler building `__inAccessCategory` itself, schema statements, per-user preference
+ * nodes, and the JIRA field catalogue, which is instance schema with no container to inherit from.
+ *
+ * An entry leaving that map without the statement gaining a real `/*ACL*/` marker is a regression,
+ * and [`every declared exemption still needs one`] catches it the moment it happens.
  */
 class AccessGuardTest {
 
@@ -138,25 +140,18 @@ class AccessGuardTest {
         )
     }
 
-    // -- the exemptions: every statement above that touches a type label and is not yet filtered --
+    // -- the exemptions: every statement above that touches a type label and does not filter ----
 
     /**
-     * `docs/features/access-control.md` §15's build order, not an oversight: phase 2 filters
-     * `/modules/{ref}/objects` alone. Every read here is filtered in phase 4; every write is
-     * anchor-checked in phase 5. Both reasons are stated per entry rather than once, so a reader
-     * who greps one statement's name gets the answer without cross-referencing the build order.
+     * Every statement touching a filtered label that legitimately does not carry the predicate.
+     *
+     * Each reason is stated per entry rather than once, so a reader who greps one statement's name
+     * gets the answer without cross-referencing the build order. None is a deferral now: phase 4
+     * filtered every read and phase 5 filtered every Tier-2 write, **including the ones whose
+     * Kotlin caller already checks the anchor** — a filter that survives its caller being reordered
+     * is worth more than one that does not.
      */
     private val exemptions: Map<String, String> = mapOf(
-        "ModuleCypher[6]" to "phase 5 write path — system-level classification; anchors a :DOORSModule",
-        "ModuleCypher[7]" to "phase 5 write path — clears the system-level classification",
-        "ModuleCypher[8]" to "phase 5 write path — mandatory-policy upsert; anchors a :DOORSModule",
-        "ModuleCypher[9]" to "phase 5 write path — mandatory-policy removal",
-        "ReviewCypher[7]" to "phase 5 write path — comment upsert; anchor-visibility check, not a read",
-        "ReviewCypher[8]" to "phase 5 write path — comment delete; anchor-visibility check, not a read",
-        "ReviewCypher[9]" to "phase 5 write path — comment read-back after save",
-        "ReviewCypher[11]" to "phase 5 write path — attribute-setting upsert; anchors a :DOORSModule, " +
-            "not an :SEItem instance, but MERGEs through the module's own label",
-        "ReviewCypher[12]" to "phase 5 write path — attribute-setting removal",
         "JiraCypher[0]" to "importer write path — issue-type catalogue upsert (ADR 0013)",
         "JiraCypher[1]" to "importer write path — unused-issue-type sweep",
         "JiraCypher[2]" to "importer write path — field catalogue upsert",

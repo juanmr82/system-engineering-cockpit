@@ -205,10 +205,11 @@ public object ReviewCypher {
     // already has a note updates that node instead of gaining a second one. __metaId is only set
     // ON CREATE, so re-saving a comment never rewrites its identity, and __createdBy/__createdAt
     // survive every later edit.
-    public const val UPSERT_COMMENTS: String = """
+    public val UPSERT_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}comments AS c
         MATCH (i:$SE_ITEM {$ID: c.itemId})
+        WHERE ${AccessCypher.visible("i")}
         MERGE (i)-[:$NOTE_ON]->(n:$META:$NOTE)
           ON CREATE SET n.$META_ID   = c.metaId,
                         n.$CREATED_BY = ${'$'}user,
@@ -222,19 +223,21 @@ public object ReviewCypher {
 
     // Clearing a comment deletes the node rather than storing "", so MATCH (m:__Meta) stays a true
     // inventory of what the application knows (§5.2).
-    public const val DELETE_COMMENTS: String = """
+    public val DELETE_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
-        MATCH (:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        WHERE ${AccessCypher.visible("i")}
         DETACH DELETE n
     """
 
     // Read back after the write so the client can clear its dirty marks without reloading the
     // table (§8): the server, not the client, decides what was stored.
-    public const val READ_COMMENTS: String = """
+    public val READ_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
         MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        WHERE ${AccessCypher.visible("i")}
         RETURN i.$ID        AS ref,
                n.$META_ID   AS metaId,
                n.$TEXT      AS text,
@@ -257,9 +260,10 @@ public object ReviewCypher {
 
     // One node per (module, attributeName) — MERGE on attributeName is what enforces it, since
     // Community has no composite constraint to lean on.
-    public const val UPSERT_ATTRIBUTE_SETTINGS: String = """
+    public val UPSERT_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         UNWIND ${'$'}settings AS row
         MERGE (m)-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING {$ATTRIBUTE_NAME: row.attributeName})
           ON CREATE SET s.$META_ID    = row.metaId,
@@ -276,10 +280,10 @@ public object ReviewCypher {
 
     // An attribute set back to all-false carries no information, so its node goes rather than
     // lingering as a row of false — same reasoning as an emptied comment.
-    public const val DELETE_ATTRIBUTE_SETTINGS: String = """
+    public val DELETE_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
-        WHERE s.$ATTRIBUTE_NAME IN ${'$'}names
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE s.$ATTRIBUTE_NAME IN ${'$'}names AND ${AccessCypher.visible("m")}
         DETACH DELETE s
     """
 }

@@ -35,7 +35,15 @@ public suspend fun <T> GraphDriver.executeRead(
     params: Map<String, Any?>,
     access: AccessSet,
     transform: (List<Record>) -> T,
-): T = executeRead(
-    Query(statement, params + mapOf("seesAll" to access.seesAll, "acl" to access.categoryIds)),
-    transform,
-)
+): T = executeRead(Query(statement, params + access.parameters()), transform)
+
+/**
+ * The two authorization parameters, named once.
+ *
+ * `$seesAll` and `$acl` are a contract between [com.sec.graph.cypher.AccessCypher.visible] and the
+ * session-opening functions that bind them, and this is the only place either name is spelled on
+ * the binding side — reads and writes both come through here, so they cannot drift apart. A third
+ * spelling in `Write.kt` is exactly the kind of second declaration ADR 0010 exists to prevent.
+ */
+internal fun AccessSet.parameters(): Map<String, Any> =
+    mapOf("seesAll" to seesAll, "acl" to categoryIds)
