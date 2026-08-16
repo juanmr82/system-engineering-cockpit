@@ -98,6 +98,29 @@ item *types* with the Requirements tile beside it rather than claiming anything 
 left alone — it selects over the modules that exist for this caller, and there is no other list it
 could offer.
 
+### Project-wide numbers: answered, no ADR needed
+
+Confirmed in review: the users who produce programme-level figures will be given access to
+everything, so the per-caller statistics are fine as they stand. That needs no new machinery —
+`seesAll` on a group *is* that mechanism, and §16 question 3 already chose it over a per-source
+variant. The "second read path with its own capability" floated earlier is **not** wanted; do not
+build it.
+
+**`seesAll` and "granted every category" are not the same thing, and for this use case the
+difference is decisive.** `seesAll` short-circuits the predicate, so it also covers objects carrying
+*no* category — which is every freshly imported object until an access manager works the Unassigned
+queue. A group granted every category instead would silently under-count after each import, which is
+exactly the failure that gets reported as "the statistics are wrong" with no way to see why. Use
+`seesAll` for these users.
+
+**One operational trap while the Access views are still phase 6.** `AccessResolver.invalidate()` has
+no caller yet, so its cache — keyed on the *sorted group set*, not on the user or the session — is
+frozen for the process lifetime. Adding someone to a group key this process has never resolved is a
+cache miss and works immediately; flipping `seesAll` on a group that has already been resolved once
+does **not** take effect until the backend restarts, and signing out and back in does not help. There
+is no TTL to wait out, deliberately. Written up in `access-control.md` §5. It disappears when phase 6
+lands, since every write there calls `invalidate()`.
+
 ### One correction found while filtering
 
 `WindchillCypher.COUNT_DOCUMENTS` was exempted as "Windchill Documents view, count". It is not: it is

@@ -189,6 +189,20 @@ Resolution, in order:
   happen.
 - Measured cost of a cold resolve is recorded in the ADR at the end of phase 2. It is one query.
 
+**Until phase 6, `invalidate()` has no caller, and that has an operational consequence.**
+`AccessAdminService` is what bumps the version, and it does not exist yet — so a grant edited by hand
+in Cypher against a running backend behaves differently depending on *what* was edited:
+
+| Hand edit | Effect |
+|---|---|
+| The user joins a group whose key this process has not resolved before | Different cache key → cache miss → takes effect immediately |
+| `seesAll` flipped, or a `__mayRead` added, on a group already resolved once | Same cache key, no version bump → **stale until the backend restarts** |
+
+**Signing out and back in does not clear it**, which is the counter-intuitive half: the cache is keyed
+on the group set, not on the session or the user. Restart the backend, or grant through a group name
+this process has not seen. There is no TTL to wait out, by design (see above). This disappears the
+moment phase 6 lands, because every write there calls `invalidate()`.
+
 ---
 
 ## 6. The filter — one predicate, one function, one guard test
