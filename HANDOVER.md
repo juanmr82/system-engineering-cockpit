@@ -32,13 +32,17 @@ reasoning is **ADR 0018**.
   `JiraIssueImportTest` exercising the simplified `SWEEP_DELETED` against a real Community instance.
 - `npm run lint && npm test && npm run build` from `frontend/` — lint clean, **273/273** tests pass,
   build succeeds.
-- **Not yet committed** — sitting on `feature/access-control` on top of `e969892`.
+- Committed as **`bcfa3e4`** on `feature/access-control`, on top of `e969892`. Not pushed.
 
 ### Resume here
 
 Phase 4 (`docs/features/access-control.md` §15) is next, same as session 27 left it: every remaining
-read path gets the `/*ACL*/` predicate. Machine-auth for `POST /access/reconcile` remains a
-separately deferred, still-open gap (unaffected by this session).
+read path gets the `/*ACL*/` predicate — 37 statements are named in `AccessGuardTest`'s exemption
+list with a `phase 4 read path` reason, and they are the checklist. Two things to settle **before**
+starting it, both listed under "What is open" below: spec §16 question 1 (are `:__UNDEFINED`
+placeholders visible?) and §16 question 2 (is the unassigned queue exempt?) — both change what
+phase 4 builds. Machine-auth for `POST /access/reconcile` remains a separately deferred, still-open
+gap (unaffected by this session).
 
 ## State as of 2026-08-16 (session 27) — wiring `CurrentUser.PLACEHOLDER` into real routes
 
