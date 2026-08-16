@@ -658,10 +658,32 @@ What to look at, hardest first: the **`+n` badge** on the dependency graph, the
 `sec-dev-admin`. The badge is the value most likely to be quietly wrong, because it is the one
 computed from what was left *out*.
 
-**Not done: the on-screen half of the acceptance question.** Nobody has read the `+n` badge, the
-unresolved-modules banner and the statistics in a browser as two different users. The matrix test
-asserts all three at the projection layer, against a real Neo4j; what it cannot prove is that the
-frontend renders the filtered answer without adding a claim of its own. Do that before merging.
+**Done, 2026-08-17 — against real DOORS data, not the synthetic fixture.** Three sanitised exports
+(977 + 545 + 924 objects, real `Object Type` values intact) were imported into a local Neo4j and
+tagged with `deploy/dev-access-seed.cypher`, one module deliberately left ungranted so the scoped
+user's view is genuinely narrower rather than merely smaller. Read on screen as both `sec-dev-user`
+and `sec-dev-admin`:
+
+- **Statistics** — `sec-dev-user` (one category): 2 modules, 1469 items. `sec-dev-admin`
+  (`seesAll`): 3 modules, 2446 items — exactly the reconciler's own `+2446 propagated` startup
+  count, so the read path and the reconciler agree on the same number from two different angles.
+- **Unresolved-modules banner** — correct for `sec-dev-admin`, viewing SRD, whose dangling
+  `refersTo` targets a module nobody has exported. **Never appears for `sec-dev-user`**, because the
+  only module with dangling links is itself invisible to them — the absence is correct, not a gap.
+- **Breakdown tree** — "Not yet imported" / "refines an object that is not yet imported" render
+  correctly for a genuinely unimported module (admin view). For the scoped user, an item whose
+  *only* link is the access-filtered one reads "No incoming links" — R8's "no caveat, ever" holds
+  even at this extreme, where 100% of an item's neighbours are filtered.
+- **`+n` badge** — no leak found. An item with zero visible neighbours renders no badge at all (a
+  generic "nothing links to this requirement" empty state), since the badge is a per-rendered-node
+  annotation and there is no node left to carry it once every neighbour is filtered. Consistent with
+  R8, not tested by the original phase-4 badge case (which covers a *partially* truncated node).
+
+One unrelated bug found and fixed along the way: signing out while running `ng serve` (i.e. exactly
+the two-origin setup `SEC_AUTH_FRONTEND_URL` exists for) failed with Keycloak's "Invalid redirect
+uri". `sec-realm.json`'s `post.logout.redirect.uris` was `"+"` (matches `redirectUris`, which holds
+only the backend's OIDC callback path) rather than the landing pages this §2 table already asked
+for. Fixed to `http://localhost:8080/*##http://localhost:4200/*`; verified end to end.
 
 ---
 

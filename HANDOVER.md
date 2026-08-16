@@ -3,6 +3,43 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-17 (session 31) — phase 4's on-screen check, closed for real
+
+Branch **`feature/access-control`**, still on top of session 30's phase 5 commits. No code changed
+in the access-control model itself — this session did the one thing `access-control.md` §15.2 named
+as not done: **read the `+n` badge, the unresolved-modules banner and the statistics on screen, as
+two different users, against real DOORS data.** Full writeup is in §15.2 itself now; this entry is
+the pointer.
+
+Three sanitised DOORS exports (977 + 545 + 924 objects) were imported into a bare-metal local
+Neo4j — one (`Something_0009f361_current.json`) had never actually landed as a `:DOORSModule`
+despite the user believing all three were imported; it only existed as 394 `:__UNDEFINED`
+placeholders referenced by the other two. Imported it, confirmed the CLI importer is idempotent
+(0 nodes/relationships on a second run), then re-seeded `deploy/dev-access-seed.cypher` cleanly
+(a first pass at 2-of-3 modules and a second at 3-of-3 had left two modules double-tagged with both
+categories, which would have made the scoped user see everything and defeated the check).
+
+**Result: no leak found.** `sec-dev-user`'s statistics (2 modules, 1469 items) and `sec-dev-admin`'s
+(3 modules, 2446 items) match the reconciler's own propagation count exactly. The `+n` badge and the
+unresolved-modules banner behave correctly, including at an edge case the original phase-4 badge
+test doesn't cover — an item whose *only* neighbour is access-filtered renders a plain empty state,
+not a count and not a hint that something exists.
+
+**One unrelated bug found and fixed**: `sec-realm.json`'s `post.logout.redirect.uris` was `"+"`,
+which only matches `redirectUris` (the backend's OIDC callback) — so "Sign out" errored with
+"Invalid redirect uri" for anyone running `ng serve` on `:4200`, exactly the setup
+`SEC_AUTH_FRONTEND_URL` exists for. Fixed to name both landing pages explicitly; verified end to end
+(sign out now lands cleanly back on the login form, no stale SSO re-auth).
+
+### Resume here
+
+Phase 4's acceptance question is now fully answered; the branch is ready to merge on that count.
+Next is **phase 6, the Access views** (`access-control.md` §15, done when *"an access manager can
+take a freshly imported module from invisible to visible without touching Cypher"*) — it retires
+`dev-access-seed.cypher` and gives `AccessResolver.invalidate()` its first caller. Still open,
+unchanged from session 30: machine-auth for `POST /access/reconcile`, and §16 question 2 (is the
+unassigned queue exempt from filtering).
+
 ## State as of 2026-08-16 (session 30, later) — phase 5 is complete too
 
 Branch **`feature/access-control`**, four further commits on top of phase 4. Phase 5 is done in two
