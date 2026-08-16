@@ -403,6 +403,31 @@ but blind spots.
 
 Three states, not two — §6.1. Distinguishes an import-scope problem from a data problem.
 
+### 12.5 Every number on this page is per-caller, and the page never says so
+
+Added when access control's phase 4 filtered this view (`docs/features/access-control.md` §7,
+"Statistics"). **Two users can open the same page, pick the same scope, and read different totals.
+That is correct and is not a defect.** R8 leaves no alternative: a count taken over objects the
+caller may not read is precisely what §7 forbids, and reopening it needs an ADR, not a flag.
+
+Two consequences that look like bugs and are not:
+
+- **"All modules" means all modules you may read.** It is a scope selector over the modules that
+  exist *for this caller*; there is no other list it could offer.
+- **A completeness or coverage figure is a proportion of the visible set**, so the same module
+  appearing in two users' pages agrees, while the roll-up above it need not.
+
+**The page carries no caveat about this, deliberately.** A line saying "some data is hidden from you"
+is itself the disclosure — it tells a reader that hidden things exist, which is the thing §7 spends
+its whole length preventing. The same reasoning already governs the Breakdown tree, where a branch
+reaching an invisible child "simply ends. No 'loops back to ‹id›', no ellipsis, no count."
+
+What that costs, and what it buys: the copy may not claim to be exhaustive, because it cannot be.
+The Items tile's hint was **"Everything imported"** and is now **"Headings and tables included"** —
+it was always contrasting item *types* with the Requirements tile beside it rather than making a
+claim about access, but the word "everything" became an absolute the filter had falsified. Any new
+label here gets read the same way: say what is counted, never how much of the world it covers.
+
 ---
 
 ## 13. Acceptance criteria

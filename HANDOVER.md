@@ -80,6 +80,24 @@ an object of module B granted category A, kept clear of a1/a2 so the badge cases
 is also the first test of the escape hatch itself. Verified by reverting the fix: the assertion
 failed naming the leaked handle itself — `bW9kdWxlLWI`, which decodes to `module-b`.
 
+### The statistics page is per-caller, and that is now written down
+
+Raised in review: the statistics are limited to the caller's visibility scope. Confirmed, and it is
+permanent rather than interim — R8 leaves no alternative and reopening it needs an ADR. Two users can
+pick the same scope and read different totals.
+
+`requirements-statistics.md` §12.5 now records that, including the part that is easy to get wrong
+later: **the page carries no caveat about it, deliberately.** A line saying "some data is hidden from
+you" is itself the disclosure, and §7 already decides this shape — the Breakdown tree reaching an
+invisible child "simply ends. No 'loops back to ‹id›', no ellipsis, no count."
+
+One string was actually falsified by the filtering and is fixed: the Items tile's hint read
+**"Everything imported"** and now reads **"Headings and tables included"**. It was always contrasting
+item *types* with the Requirements tile beside it rather than claiming anything about access, but
+"everything" is an absolute the filter no longer delivers. `All modules` in the scope selector is
+left alone — it selects over the modules that exist for this caller, and there is no other list it
+could offer.
+
 ### One correction found while filtering
 
 `WindchillCypher.COUNT_DOCUMENTS` was exempted as "Windchill Documents view, count". It is not: it is
