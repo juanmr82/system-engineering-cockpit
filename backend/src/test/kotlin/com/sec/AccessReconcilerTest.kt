@@ -108,7 +108,10 @@ class AccessReconcilerTest {
             ),
         ) { records -> records.single().get("n").asLong() }
 
-    private val doors get() = AccessContainment.all.single { it.sourceId == "doors" }
+    // By name, not sourceId: DOORS declares two containments now — objects and placeholders
+    // (§16.1a) — so `single { it.sourceId == "doors" }` is ambiguous. These tests seed
+    // :DOORSObject nodes, so the object containment is the one they mean.
+    private val doors get() = AccessContainment.all.single { it.name == "doors.objects" }
 
     @Test
     fun `propagate tags every object once, and again produces zero new relationships`() = runBlocking {

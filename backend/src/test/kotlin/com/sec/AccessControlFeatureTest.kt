@@ -2,6 +2,8 @@ package com.sec
 
 import com.sec.config.Neo4jSettings
 import com.sec.graph.GraphDriver
+import com.sec.graph.cypher.ReviewCypher
+import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.security.AccessResolver
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.TestInstance
 import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -188,4 +191,37 @@ class AccessControlFeatureTest {
         val member = accessResolver.resolve(listOf("/SEC/SomeGroup"))
         assertEquals(0, reviewProjection.getModuleObjects(moduleId, member).total)
     }
+
+    /**
+     * The structural safety net phase 4 leans on: a filtered statement issued **without** the
+     * access parameters fails, rather than quietly returning everything.
+     *
+     * `AccessGuardTest` proves every statement *carries* the predicate; nothing proves each one is
+     * *called* through the binding overload in `graph/Read.kt`. This is what covers that gap — a
+     * mis-wired call site is an error, not an unfiltered result. Neo4j rejects an undefined
+     * parameter, so the failure direction is the safe one (R8: "no code path may widen visibility
+     * on error"), and it is pinned here because the whole threading plan assumes it.
+     */
+    @Test
+    fun `a filtered statement issued without the access parameters fails rather than returning everything`() =
+        runBlocking {
+            seedModuleTaggedInto("acl-cat-unbound")
+
+            val thrown = runCatching {
+                // The 2-arg overload deliberately: no $seesAll, no $acl.
+                graphDriver.executeRead(
+                    Query(ReviewCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId)),
+                ) { records -> records.firstOrNull()?.get("total")?.asInt() ?: 0 }
+            }.exceptionOrNull()
+
+            assertNotNull(thrown, "an unparameterised ACL statement returned rows instead of failing")
+            // Asserted on the message rather than an exception type: the server reports
+            // Neo.ClientError.Statement.ParameterMissing, and the driver surfaces that as a general
+            // ClientException — there is no dedicated type to catch in driver 6.
+            assertTrue(
+                (thrown.message ?: "").contains("seesAll", ignoreCase = true) ||
+                    (thrown.message ?: "").contains("parameter", ignoreCase = true),
+                "failed, but not for the missing parameter: $thrown",
+            )
+        }
 }

@@ -3,6 +3,58 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-16 (session 29) — access control phase 4, step 1 of 5 only
+
+Branch **`feature/access-control`**. **Phase 4 is started and deliberately incomplete.** The full
+approved design is in **`/home/juanmrc/.claude/plans/ancient-juggling-magpie.md`** — read that first,
+it is the working document for this phase and holds the analysis this section only summarises.
+
+**Phase 4 must not be split across a release** (`access-control.md` §15: *"a half-filtered API is
+worse than an unfiltered one: it looks guarded"*). What is committed so far changes **no** read path
+— it is foundations only, so the branch is in a safe, coherent state, but it must not be merged until
+steps 2–5 are done.
+
+### What step 1 delivered (committed)
+
+| Change | Where |
+|---|---|
+| `AccessSet.SEES_ALL` beside the existing `NONE`; `resolveFromGraph` now returns it | `security/AccessResolver.kt` |
+| **`doors.placeholders` containment** (§16.1a) — `:__UNDEFINED` nodes inherit their module's categories via the `__moduleUrl` the importer already stores on them | `security/AccessContainment.kt` |
+| **`Containment.name`** — `sourceId` stopped being unique the moment DOORS declared two containments, which silently broke `single { it.sourceId == "doors" }` and made the reconciler log two indistinguishable `Reconciled 'doors'` lines | `AccessContainment.kt`, `AccessReconciler.kt`, `AccessReconcilerTest.kt` |
+| `AccessCypher[1]`–`[10]` exemptions renumbered; JIRA field catalogue (`LIST_FIELDS`/`FIND_FIELDS`) reclassified from `phase 4 read path` to **permanently exempt** | `AccessGuardTest.kt` |
+| Fail-closed test: a `/*ACL*/` statement issued without `$seesAll`/`$acl` must error, not return everything | `AccessControlFeatureTest.kt` |
+
+### Verified, and the one gap
+
+- `mvn -pl backend -am test` — **362/362**, 0 failures. Both guard tests green.
+- **`mvn -Pdocker test` was NOT run this session.** The new fail-closed test is therefore **unrun**,
+  and step 2's whole approach assumes the property it asserts. **Run it first thing.** If Neo4j turns
+  out not to error on the missing parameter, the threading in step 2 needs a compile-time guard
+  instead of relying on a runtime failure — that is a design change, not a tweak.
+
+### Resume here — step 2 of the plan
+
+**Mechanical threading, no Cypher changes.** `access: AccessSet` through ~25 projection methods, 20
+route handlers, the 5 route functions that have no `AccessResolver` yet, and `MetaWriter`'s three
+write methods (the `moduleExists` decision — filter it including its write-path callers). Everything
+still returns everything; every existing test stays green; the diff reviews as pure plumbing. Expect
+~60 test call sites to gain `AccessSet.SEES_ALL`.
+
+Then step 3 — the **lockstep groups**, where the actual risk is. The plan file has the table. The one
+to be most careful with: `RequirementCardCypher.NODES` is shared by the dependency graph and the
+breakdown tree, and filtering it *without* the neighbour statements makes the `+n` badge **grow** by
+exactly the number of hidden objects — a worse leak than not filtering at all.
+
+### Two loose threads worth a look
+
+- `AccessControlFeatureTest`'s test named *"an untagged object is invisible to every group, seesAll
+  included"* only asserts for a normal group member. The predicate is `$seesAll OR EXISTS{…}`, so a
+  `seesAll` group **does** see untagged objects. Either the name overclaims or R8/§4.4's wording
+  needs revisiting — worth settling before the visibility matrix test encodes one reading.
+- `AccessCypher[8]` (the placeholder containment's seed pass) is a no-op in practice: it seeds the
+  same `:DOORSModule` container `[7]` already seeds. Exempted and explained, but if a third DOORS
+  containment ever appears, the seed step is doing redundant work worth collapsing.
+
 ## State as of 2026-08-16 (session 28) — JIRA: RBAC is the gate, plus a periodic scheduler
 
 Branch **`feature/access-control`**, on top of session 27's committed `CurrentUser.PLACEHOLDER`

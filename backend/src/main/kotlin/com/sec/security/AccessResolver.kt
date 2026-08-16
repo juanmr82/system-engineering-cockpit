@@ -20,6 +20,14 @@ public data class AccessSet(
     public companion object {
         /** A caller in no group at all (§5 step 1): no grant, no `everyGroup` category, nothing. */
         public val NONE: AccessSet = AccessSet(seesAll = false, categoryIds = emptyList())
+
+        /**
+         * A caller in a `seesAll` group — what [AccessResolver.resolveFromGraph] returns for one.
+         *
+         * `categoryIds` is empty on purpose and is not a shortcut: §5 step 3 says `seesAll` answers
+         * everything on its own, so the predicate never reads `$acl` when it is true.
+         */
+        public val SEES_ALL: AccessSet = AccessSet(seesAll = true, categoryIds = emptyList())
     }
 }
 
@@ -75,17 +83,16 @@ public class AccessResolver(private val graphDriver: GraphDriver) {
             ),
         ) { records ->
             val record = records.single()
-            val seesAll = record.get("seesAll").asBoolean(false)
-            AccessSet(
-                seesAll = seesAll,
-                // §5 step 3: seesAll answers everything on its own, so the category list carries
-                // nothing when it is true — the predicate never needs $acl in that case either.
-                categoryIds = if (seesAll) {
-                    emptyList()
-                } else {
-                    record.get("categoryIds").asList { it.asString() }.distinct().sorted()
-                },
-            )
+            // §5 step 3: seesAll answers everything on its own, so the category list carries
+            // nothing when it is true — the predicate never needs $acl in that case either.
+            if (record.get("seesAll").asBoolean(false)) {
+                AccessSet.SEES_ALL
+            } else {
+                AccessSet(
+                    seesAll = false,
+                    categoryIds = record.get("categoryIds").asList { it.asString() }.distinct().sorted(),
+                )
+            }
         }
 
     private data class CacheEntry(val version: Long, val set: AccessSet)

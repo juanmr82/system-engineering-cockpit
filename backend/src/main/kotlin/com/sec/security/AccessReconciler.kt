@@ -54,9 +54,13 @@ public class AccessReconciler(private val graphDriver: GraphDriver) {
             ),
         )
 
+        // Logged by Containment.name, not sourceId: one source may declare several containments —
+        // DOORS has two (objects, placeholders) — and two lines reading "Reconciled 'doors'" with
+        // different numbers is a log nobody can act on. ReconcileResult keeps sourceId, because
+        // that is what the import hook aggregates a run's counters by.
         val result = ReconcileResult(containment.sourceId, propagated, retracted, seeded)
         logger.info {
-            "Reconciled '${containment.sourceId}': +$propagated propagated, -$retracted retracted, " +
+            "Reconciled '${containment.name}': +$propagated propagated, -$retracted retracted, " +
                 "$seeded seeded"
         }
         return result

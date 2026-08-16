@@ -208,8 +208,14 @@ class AccessGuardTest {
         "JiraCypher[20]" to "phase 4 read path — Issues table, ascending page",
         "JiraCypher[21]" to "phase 4 read path — Issues table, descending page",
         "JiraCypher[22]" to "phase 4 read path — Issues table, matching count",
-        "JiraCypher[23]" to "phase 4 read path — field catalogue, for the column picker",
-        "JiraCypher[24]" to "phase 4 read path — field catalogue lookup by id",
+        // Permanently exempt, not deferred: a :JiraField is a field *definition* — `summary`,
+        // `customfield_18201` — describing the JIRA instance's own schema. It names no project
+        // content and has no container to inherit a category from, so there is nothing for the
+        // predicate to compare against; filtering it would empty the column picker for every user
+        // until somebody categorised 1 171 definitions by hand.
+        "JiraCypher[23]" to "schema, not project content — the JIRA field catalogue describes the " +
+            "instance, carries no issue data, and has no container to inherit from",
+        "JiraCypher[24]" to "schema, not project content — field catalogue lookup by id, same as above",
         "JiraCypher[25]" to "per-user preference node (:JiraColumnConfig), not an item",
         "JiraCypher[26]" to "per-user preference node (:JiraColumnConfig) — same as the load above",
         "JiraCypher[27]" to "phase 4 read path — related-issues link graph, neighbours",
@@ -229,19 +235,29 @@ class AccessGuardTest {
         "WindchillCypher[4]" to "schema (index/constraint), not a data read",
         "WindchillCypher[5]" to "schema (index/constraint), not a data read",
         "WindchillCypher[6]" to "schema (index/constraint), not a data read",
+        // Indexed by position in AccessContainment.all — [doors, doorsPlaceholders, jira,
+        // windchill] — so the propagate/retract pairs run [1]..[6] and the seeds [7]..[10].
+        // Adding a containment renumbers every entry after it; that is what this comment is for.
         "AccessCypher[1]" to "AccessReconciler's own write — propagates a DOORS module's direct " +
             "category to its objects; builds __inAccessCategory itself, not a read subject to it",
         "AccessCypher[2]" to "AccessReconciler's own write — retracts a DOORS object's inherited " +
             "category once its module no longer carries it directly",
-        "AccessCypher[3]" to "AccessReconciler's own write — propagates a JIRA project's direct " +
+        "AccessCypher[3]" to "AccessReconciler's own write — propagates a DOORS module's direct " +
+            "category to the :__UNDEFINED placeholders that name it in __moduleUrl (§16.1a)",
+        "AccessCypher[4]" to "AccessReconciler's own write — retracts a DOORS placeholder's " +
+            "inherited category once its module no longer carries it directly (§16.1a)",
+        "AccessCypher[5]" to "AccessReconciler's own write — propagates a JIRA project's direct " +
             "category to its issues",
-        "AccessCypher[4]" to "AccessReconciler's own write — retracts a JIRA issue's inherited " +
+        "AccessCypher[6]" to "AccessReconciler's own write — retracts a JIRA issue's inherited " +
             "category once its project no longer carries it directly",
-        "AccessCypher[5]" to "AccessReconciler's own write — seeds a never-categorised DOORS " +
+        "AccessCypher[7]" to "AccessReconciler's own write — seeds a never-categorised DOORS " +
             "module from its source default (§8.3)",
-        "AccessCypher[6]" to "AccessReconciler's own write — seeds a never-categorised JIRA " +
+        "AccessCypher[8]" to "AccessReconciler's own write — the placeholder containment's own " +
+            "seed pass; a no-op in practice, since it seeds the :DOORSModule container [7] already " +
+            "seeded, but generated for every containment and so exempted for every containment",
+        "AccessCypher[9]" to "AccessReconciler's own write — seeds a never-categorised JIRA " +
             "project from its source default (§8.3)",
-        "AccessCypher[7]" to "AccessReconciler's own write — seeds an uncategorised " +
+        "AccessCypher[10]" to "AccessReconciler's own write — seeds an uncategorised " +
             "WindchillDocument directly from its source default; containerless (§8.2)",
     )
 
