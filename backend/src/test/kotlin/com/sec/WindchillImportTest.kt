@@ -8,6 +8,7 @@ import com.sec.graph.executeWrite
 import com.sec.importer.ImportContext
 import com.sec.importer.ImportLogLevel
 import com.sec.importer.ImportRequest
+import com.sec.security.AccessSet
 import com.sec.source.windchill.WindchillExport
 import com.sec.source.windchill.WindchillExportParser
 import com.sec.source.windchill.WindchillGraphWriter
@@ -119,7 +120,7 @@ class WindchillImportTest {
         runBlocking {
             import(export(DOC_B1, DOC_A1, DOC_A2))
 
-            val rows = WindchillProjection(graphDriver, WindchillSettings(host = "")).listDocuments()
+            val rows = WindchillProjection(graphDriver, WindchillSettings(host = "")).listDocuments(access = AccessSet.SEES_ALL)
 
             assertEquals(
                 listOf("N-A 02 [1]", "N-A 01 [2]", "N-B 01 [1]"),
@@ -135,7 +136,7 @@ class WindchillImportTest {
         val configured = WindchillProjection(
             graphDriver,
             WindchillSettings(host = "https://windchill.example.com/Windchill"),
-        ).listDocuments()
+        ).listDocuments(access = AccessSet.SEES_ALL)
 
         assertEquals(
             "https://windchill.example.com/Windchill/app/#ptc1/tcomp/infoPage?oid=OR:wt.doc.WTDocument:1",
@@ -143,7 +144,7 @@ class WindchillImportTest {
         )
 
         // …and no host means an absent link rather than one that goes nowhere.
-        val unconfigured = WindchillProjection(graphDriver, WindchillSettings(host = "")).listDocuments()
+        val unconfigured = WindchillProjection(graphDriver, WindchillSettings(host = "")).listDocuments(access = AccessSet.SEES_ALL)
         assertNull(unconfigured.rows.single().browseUrl)
         assertTrue(!unconfigured.hostConfigured)
     }

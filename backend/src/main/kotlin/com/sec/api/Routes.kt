@@ -109,10 +109,11 @@ public fun Application.configureRouting(
                 jiraLinkGraphProjection,
                 jiraColumnStore,
                 jiraFieldsProjection,
+                accessResolver,
             )
-            windchillRoutes(windchillSettings, windchillProjection, importRunService)
+            windchillRoutes(windchillSettings, windchillProjection, importRunService, accessResolver)
             importRoutes(importRunService, importSchedulers)
-            moduleRoutes(doorsProjection, metaWriter)
+            moduleRoutes(doorsProjection, metaWriter, accessResolver)
             reviewRoutes(
                 doorsProjection,
                 reviewProjection,
@@ -121,8 +122,8 @@ public fun Application.configureRouting(
                 metaWriter,
                 accessResolver,
             )
-            statisticsRoutes(statisticsProjection)
-            tableRoutes(doorsProjection, tableProjection)
+            statisticsRoutes(statisticsProjection, accessResolver)
+            tableRoutes(doorsProjection, tableProjection, accessResolver)
             configRoutes()
             accessRoutes(accessReconciler)
         }

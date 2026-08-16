@@ -7,6 +7,7 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
+import com.sec.security.AccessSet
 import com.sec.source.doors.DoorsTableProjection
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
@@ -181,7 +182,7 @@ class TablesFeatureTest {
 
     @Test
     fun `a module's tables come back reconstructed, in document order, with no cell dropped`() = runBlocking {
-        val views = tables.getModuleTables(moduleId)
+        val views = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL)
 
         assertEquals(2, views.size)
         // __sortKey order: 2.1.0-1 before 3.0-1.
@@ -201,7 +202,7 @@ class TablesFeatureTest {
     // order and not objectNumber, which does not sort correctly as a string — did the ordering.
     @Test
     fun `rows and cells arrive in sort-key order, not creation order`() = runBlocking {
-        val table = tables.getModuleTables(moduleId).first()
+        val table = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL).first()
 
         assertEquals(listOf(1, 2), table.rows.map { it.rowNumber })
         assertEquals("SRD-1171", table.rows[0].id)
@@ -210,7 +211,7 @@ class TablesFeatureTest {
 
     @Test
     fun `the first row is the header row`() = runBlocking {
-        val table = tables.getModuleTables(moduleId).first()
+        val table = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL).first()
 
         assertEquals(1, table.headerRowCount)
         assertTrue(table.rows[0].isHeader)
@@ -221,7 +222,7 @@ class TablesFeatureTest {
     // Cell (1,3) claims column 1 in the export; it must still be drawn in column 3.
     @Test
     fun `a disagreeing exported column index is reported and the outline number still wins`() = runBlocking {
-        val table = tables.getModuleTables(moduleId).first()
+        val table = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL).first()
 
         assertEquals("r1c3", table.rows[0].cells[2].text)
         val mismatch = table.anomalies.single { it.kind == TableAnomalyKind.INDEX_MISMATCH }
@@ -230,7 +231,7 @@ class TablesFeatureTest {
 
     @Test
     fun `a table with no children is returned and reported empty rather than omitted`() = runBlocking {
-        val empty = tables.getModuleTables(moduleId).single { it.ref == Ref.encode(emptyTableId) }
+        val empty = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL).single { it.ref == Ref.encode(emptyTableId) }
 
         assertEquals(0, empty.rowCount)
         assertEquals(0, empty.columnCount)
@@ -247,7 +248,7 @@ class TablesFeatureTest {
      */
     @Test
     fun `no attribute but Object Text reaches the payload`() = runBlocking {
-        val rendered = tables.getModuleTables(moduleId).toString()
+        val rendered = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL).toString()
 
         assertFalse(rendered.contains("Analysis"), rendered)
         assertFalse(rendered.contains("Inspection"), rendered)
@@ -256,7 +257,7 @@ class TablesFeatureTest {
 
     @Test
     fun `requirements outside a table are not part of any table`() = runBlocking {
-        val refs = tables.getModuleTables(moduleId)
+        val refs = tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL)
             .flatMap { view -> view.rows.flatMap { row -> row.cells.mapNotNull { it.ref } } }
 
         assertFalse(refs.contains(Ref.encode("doors://req-1")))
@@ -266,7 +267,7 @@ class TablesFeatureTest {
 
     @Test
     fun `a cell resolves upward to the table that owns it`() = runBlocking {
-        val fromCell = tables.getTableFor("doors://c-2-3")
+        val fromCell = tables.getTableFor("doors://c-2-3", access = AccessSet.SEES_ALL)
 
         assertNotNull(fromCell)
         assertEquals(Ref.encode(tableId), fromCell.ref)
@@ -275,13 +276,13 @@ class TablesFeatureTest {
 
     @Test
     fun `a row and the table itself resolve to the same table`() = runBlocking {
-        assertEquals(Ref.encode(tableId), tables.getTableFor("doors://r-2")?.ref)
-        assertEquals(Ref.encode(tableId), tables.getTableFor(tableId)?.ref)
+        assertEquals(Ref.encode(tableId), tables.getTableFor("doors://r-2", access = AccessSet.SEES_ALL)?.ref)
+        assertEquals(Ref.encode(tableId), tables.getTableFor(tableId, access = AccessSet.SEES_ALL)?.ref)
     }
 
     @Test
     fun `an object that does not exist is not found, and is not confused with an orphan`() = runBlocking {
-        assertNull(tables.getTableFor("doors://nope"))
+        assertNull(tables.getTableFor("doors://nope", access = AccessSet.SEES_ALL))
     }
 
     /**
@@ -306,7 +307,7 @@ class TablesFeatureTest {
             ),
         ) { }
 
-        val view = tables.getTableFor("doors://orphan-cell")
+        val view = tables.getTableFor("doors://orphan-cell", access = AccessSet.SEES_ALL)
 
         assertNotNull(view)
         assertEquals(
@@ -332,8 +333,8 @@ class TablesFeatureTest {
         val before = properties(tableId)
         val cellBefore = properties("doors://c-1-3")
 
-        tables.getModuleTables(moduleId)
-        tables.getTableFor("doors://c-1-3")
+        tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL)
+        tables.getTableFor("doors://c-1-3", access = AccessSet.SEES_ALL)
 
         assertEquals(before, properties(tableId))
         assertEquals(cellBefore, properties("doors://c-1-3"))
@@ -342,8 +343,8 @@ class TablesFeatureTest {
     @Test
     fun `rendering the same module twice produces an identical payload`() = runBlocking {
         assertEquals(
-            tables.getModuleTables(moduleId),
-            tables.getModuleTables(moduleId),
+            tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL),
+            tables.getModuleTables(moduleId, access = AccessSet.SEES_ALL),
         )
     }
 

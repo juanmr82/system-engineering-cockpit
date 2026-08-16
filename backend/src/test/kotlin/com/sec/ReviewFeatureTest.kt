@@ -196,9 +196,9 @@ class ReviewFeatureTest {
         assertTrue(rows.getValue("SRD-1").references.incomingComplete)
         assertEquals(listOf("SRD-1"), rows.getValue("SRD-2").references.incoming.map { it.id })
 
-        val traces = reviewProjection.getTraces("obj-1", incoming = false)
+        val traces = reviewProjection.getTraces("obj-1", incoming = false, access = seesAll)
         assertTrue(traces.complete)
-        assertFalse(reviewProjection.getTraces("obj-2", incoming = true).complete)
+        assertFalse(reviewProjection.getTraces("obj-2", incoming = true, access = seesAll).complete)
     }
 
     // Criteria 5 and 7: one transaction, and the anchor node is byte-identical across the write.
@@ -212,6 +212,7 @@ class ReviewFeatureTest {
                 MetaWriter.CommentEditInput("obj-1", "Needs a rationale"),
                 MetaWriter.CommentEditInput("obj-2", "Agreed at review"),
             ),
+            access = seesAll,
         )
         val saved = assertIs<SaveCommentsOutcome.Saved>(outcome)
         assertEquals(2, saved.comments.count { it.metaId != null })
@@ -226,10 +227,10 @@ class ReviewFeatureTest {
     // §5.2: exactly one comment per object. Editing must update the node, never add a second.
     @Test
     fun `editing a comment updates the same node and keeps its identity`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "First")))
+        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "First")), access = seesAll)
         val original = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
 
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "Second")))
+        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "Second")), access = seesAll)
         val edited = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
 
         assertEquals("Second", edited?.text)
@@ -247,10 +248,10 @@ class ReviewFeatureTest {
     // Criterion 8: clearing a comment removes the node rather than storing an empty string.
     @Test
     fun `clearing a comment deletes its node`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "Temporary")))
+        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "Temporary")), access = seesAll)
         assertNotNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
 
-        val outcome = metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "   ")))
+        val outcome = metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "   ")), access = seesAll)
 
         assertNull(assertIs<SaveCommentsOutcome.Saved>(outcome).comments.single().metaId)
         assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
@@ -262,6 +263,7 @@ class ReviewFeatureTest {
         val outcome = metaWriter.saveComments(
             moduleId,
             listOf(MetaWriter.CommentEditInput("missing-1", "Should not be stored")),
+            access = seesAll,
         )
 
         assertEquals(SaveCommentsOutcome.UnknownItems(listOf("missing-1")), outcome)
@@ -282,10 +284,11 @@ class ReviewFeatureTest {
                 MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = true, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
         assertEquals(SaveModuleSettingsOutcome.Saved, outcome)
 
-        val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
+        val attributes = doorsProjection.getModuleAttributes(moduleId, access = seesAll).associateBy { it.name }
         assertTrue(attributes.getValue("Object Text").mandatory)
         assertTrue(attributes.getValue("Object Text").visible)
         assertFalse(attributes.getValue("Object Text").verification)
@@ -293,7 +296,7 @@ class ReviewFeatureTest {
         assertTrue(attributes.getValue("REQ. Priorität").verification)
 
         // The Modules dialog reads mandatory from :__Policy — the same node, not a copy.
-        assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId))
+        assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId, access = seesAll))
     }
 
     /**
@@ -365,6 +368,7 @@ class ReviewFeatureTest {
             attributeSettings = listOf(
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
 
         val rows = reviewProjection.getModuleObjects(moduleId, seesAll).rows.associateBy { it.id }
@@ -402,6 +406,7 @@ class ReviewFeatureTest {
             attributeSettings = listOf(
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
         assertEquals(
             listOf("REQ. Priorität"),
@@ -414,6 +419,7 @@ class ReviewFeatureTest {
             attributeSettings = listOf(
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
         assertEquals(
             emptyList(),
@@ -439,10 +445,11 @@ class ReviewFeatureTest {
                 MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
         assertEquals(
             setOf("Object Text", "REQ. Priorität"),
-            doorsProjection.getExistingMandatoryAttributes(moduleId),
+            doorsProjection.getExistingMandatoryAttributes(moduleId, access = seesAll),
         )
 
         // One row flipped off, every other row resent unchanged — exactly what the dialog sends.
@@ -453,11 +460,12 @@ class ReviewFeatureTest {
                 MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = false, excludedFromOpenPoints = false),
                 MetaWriter.AttributeSettingInput("REQ. Priorität", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
 
-        assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId))
+        assertEquals(setOf("Object Text"), doorsProjection.getExistingMandatoryAttributes(moduleId, access = seesAll))
         // The visible flags of both rows survive the mandatory change untouched.
-        val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
+        val attributes = doorsProjection.getModuleAttributes(moduleId, access = seesAll).associateBy { it.name }
         assertTrue(attributes.getValue("Object Text").visible)
         assertTrue(attributes.getValue("REQ. Priorität").visible)
     }
@@ -465,8 +473,8 @@ class ReviewFeatureTest {
     // A dialog that does not show system level must not be able to clear it (SystemLevelChange).
     @Test
     fun `an attribute-settings save leaves the system level alone`() = runBlocking {
-        metaWriter.saveModuleSettings(moduleId, SystemLevelChange.Set("L2"))
-        assertEquals("L2", doorsProjection.getModuleDetail(moduleId)?.systemLevel)
+        metaWriter.saveModuleSettings(moduleId, SystemLevelChange.Set("L2"), access = seesAll)
+        assertEquals("L2", doorsProjection.getModuleDetail(moduleId, access = seesAll)?.systemLevel)
 
         metaWriter.saveModuleSettings(
             moduleId = moduleId,
@@ -474,21 +482,23 @@ class ReviewFeatureTest {
             attributeSettings = listOf(
                 MetaWriter.AttributeSettingInput("Object Text", mandatory = false, visible = true, verification = false, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
 
-        assertEquals("L2", doorsProjection.getModuleDetail(moduleId)?.systemLevel)
+        assertEquals("L2", doorsProjection.getModuleDetail(moduleId, access = seesAll)?.systemLevel)
     }
 
     // Criterion 8, second half: one query removes everything the app knows and nothing else.
     @Test
     fun `deleting all meta removes comments and attribute settings, leaving imported data intact`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-1", "A comment")))
+        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-1", "A comment")), access = seesAll)
         metaWriter.saveModuleSettings(
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
             attributeSettings = listOf(
                 MetaWriter.AttributeSettingInput("Object Text", mandatory = true, visible = true, verification = true, excludedFromOpenPoints = false),
             ),
+            access = seesAll,
         )
         val before = rawProperties("obj-1")
 
@@ -497,7 +507,7 @@ class ReviewFeatureTest {
         assertEquals(before, rawProperties("obj-1"))
         assertEquals(4, reviewProjection.getModuleObjects(moduleId, seesAll).total)
         assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }.comment)
-        val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
+        val attributes = doorsProjection.getModuleAttributes(moduleId, access = seesAll).associateBy { it.name }
         assertFalse(attributes.getValue("Object Text").visible)
         assertFalse(attributes.getValue("Object Text").mandatory)
     }
@@ -505,7 +515,7 @@ class ReviewFeatureTest {
     // §7: the detail panel renders __moduleUrl as the module's name, per the R5 alias map.
     @Test
     fun `item detail names the module rather than exposing its url`() = runBlocking {
-        val detail = reviewProjection.getItemDetail("obj-1")
+        val detail = reviewProjection.getItemDetail("obj-1", access = seesAll)
 
         assertNotNull(detail)
         assertEquals("SRD", detail.moduleName)
@@ -524,9 +534,9 @@ class ReviewFeatureTest {
      */
     @Test
     fun `item detail carries the DOORS id, and never invents one for a placeholder`() = runBlocking {
-        assertEquals("SRD-1", assertNotNull(reviewProjection.getItemDetail("obj-1")).id)
+        assertEquals("SRD-1", assertNotNull(reviewProjection.getItemDetail("obj-1", access = seesAll)).id)
 
-        val placeholder = assertNotNull(reviewProjection.getItemDetail("missing-1"))
+        val placeholder = assertNotNull(reviewProjection.getItemDetail("missing-1", access = seesAll))
         assertNull(placeholder.id)
     }
 
@@ -543,11 +553,11 @@ class ReviewFeatureTest {
      */
     @Test
     fun `item detail keeps an empty attribute as a value, and omits one the object lacks`() = runBlocking {
-        val withEmpty = assertNotNull(reviewProjection.getItemDetail("obj-2"))
+        val withEmpty = assertNotNull(reviewProjection.getItemDetail("obj-2", access = seesAll))
         assertTrue(withEmpty.attributes.containsKey("REQ. Priorität"))
         assertEquals("", withEmpty.attributes.getValue("REQ. Priorität").toString().trim('\"'))
 
-        val heading = assertNotNull(reviewProjection.getItemDetail("obj-3"))
+        val heading = assertNotNull(reviewProjection.getItemDetail("obj-3", access = seesAll))
         assertFalse(heading.attributes.containsKey("REQ. Priorität"))
     }
 }

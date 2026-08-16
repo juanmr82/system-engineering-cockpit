@@ -15,7 +15,9 @@ import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraLinkGraphProjection
+import com.sec.security.AccessResolver
 import com.sec.security.SecPrincipal
+import com.sec.security.accessSet
 import com.sec.security.auditName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
@@ -45,6 +47,7 @@ public fun Route.jiraRoutes(
     linkGraphProjection: JiraLinkGraphProjection,
     columnStore: JiraColumnStore,
     fieldsProjection: JiraFieldsProjection,
+    accessResolver: AccessResolver,
 ) {
     /**
      * The configured columns, resolved against the catalogue.
@@ -103,6 +106,10 @@ public fun Route.jiraRoutes(
                 size = size,
                 sort = sort,
                 direction = direction,
+                // RBAC is the gate (ADR 0018): every project is imported, and which issues this
+                // caller sees is decided here and nowhere else. The count comes back through the
+                // same filter, so the paginator never promises a page it will answer empty.
+                access = call.accessSet(accessResolver),
                 query = call.request.queryParameters["q"],
                 // Repeatable rather than comma-separated: a project key cannot contain a comma, but
                 // a splitter that assumes so is one more rule the client has to know.
@@ -130,7 +137,7 @@ public fun Route.jiraRoutes(
                 ProblemType.VALIDATION,
             )
 
-        val graph = linkGraphProjection.graphOf(issueId, depth)
+        val graph = linkGraphProjection.graphOf(issueId, depth, call.accessSet(accessResolver))
             ?: return@get call.respondProblem(
                 HttpStatusCode.NotFound,
                 "No such issue",

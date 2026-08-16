@@ -10,7 +10,7 @@ import com.sec.domain.SystemLevel
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.RequirementCardCypher
 import com.sec.graph.executeRead
-import org.neo4j.driver.Query
+import com.sec.security.AccessSet
 import org.neo4j.driver.Record
 import org.neo4j.driver.types.Node
 
@@ -37,8 +37,8 @@ public class RequirementCardProjection(private val graphDriver: GraphDriver) {
      * An id with no node is simply absent from the result. That is what lets a caller tell "no such
      * object" from "an object with nothing attached" without a second query.
      */
-    public suspend fun loadCards(ids: Collection<String>): Map<String, RequirementCardDto> =
-        load(ids).cards
+    public suspend fun loadCards(ids: Collection<String>, access: AccessSet): Map<String, RequirementCardDto> =
+        load(ids, access).cards
 
     /**
      * The cards **and** the raw property bag each was built from, in one round trip.
@@ -48,16 +48,18 @@ public class RequirementCardProjection(private val graphDriver: GraphDriver) {
      * depth is not that. Handing back the rows beats adding a field to the shared DTO that only one
      * consumer of one strategy ever looks at, and beats querying the same nodes twice.
      */
-    public suspend fun load(ids: Collection<String>): Cards {
+    public suspend fun load(ids: Collection<String>, access: AccessSet): Cards {
         if (ids.isEmpty()) {
             return Cards(emptyMap(), emptyMap())
         }
 
         val rows = graphDriver.executeRead(
-            Query(RequirementCardCypher.NODES, mapOf("ids" to ids.toList())),
+            RequirementCardCypher.NODES, mapOf("ids" to ids.toList()), access,
         ) { records -> records.associate { it.get("node").asNode().nodeKey() to it.toCardRow() } }
 
-        val verification = loadVerificationAttributes(rows.values.mapNotNull { it.moduleId }.distinct())
+        val verification = loadVerificationAttributes(
+            rows.values.mapNotNull { it.moduleId }.distinct(), access,
+        )
 
         return Cards(
             cards = rows.mapValues { (id, row) -> row.toDto(id, verification[row.moduleId].orEmpty()) },
@@ -101,12 +103,15 @@ public class RequirementCardProjection(private val graphDriver: GraphDriver) {
     }
 
     /** Attribute names flagged `verification` per module (`REQ_REVIEW.md` §9.2), never per object. */
-    private suspend fun loadVerificationAttributes(moduleIds: List<String>): Map<String, List<String>> {
+    private suspend fun loadVerificationAttributes(
+        moduleIds: List<String>,
+        access: AccessSet,
+    ): Map<String, List<String>> {
         if (moduleIds.isEmpty()) {
             return emptyMap()
         }
         return graphDriver.executeRead(
-            Query(RequirementCardCypher.VERIFICATION_ATTRIBUTES, mapOf("moduleIds" to moduleIds)),
+            RequirementCardCypher.VERIFICATION_ATTRIBUTES, mapOf("moduleIds" to moduleIds), access,
         ) { records ->
             records
                 .groupBy({ it.get("moduleId").asString() }, { it.get("name").asString("") })

@@ -8,6 +8,7 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.RequirementCardProjection
@@ -169,8 +170,8 @@ class BreakdownFeatureTest {
 
     /** The Tier-2 configuration the tab reads: system levels, and one verification attribute. */
     private suspend fun configure() {
-        metaWriter.saveModuleSettings(systemModule, SystemLevelChange.Set("L1"))
-        metaWriter.saveModuleSettings(segmentModule, SystemLevelChange.Set("L2"))
+        metaWriter.saveModuleSettings(systemModule, SystemLevelChange.Set("L1"), access = AccessSet.SEES_ALL)
+        metaWriter.saveModuleSettings(segmentModule, SystemLevelChange.Set("L2"), access = AccessSet.SEES_ALL)
         metaWriter.saveModuleSettings(
             segmentModule,
             SystemLevelChange.Unchanged,
@@ -183,11 +184,12 @@ class BreakdownFeatureTest {
                     excludedFromOpenPoints = false,
                 ),
             ),
+            access = AccessSet.SEES_ALL,
         )
     }
 
     private fun breakdown(itemId: String, maxDepth: Int = 6, maxNodes: Int = 200) = runBlocking {
-        assertNotNull(breakdownProjection.getBreakdown(itemId, maxDepth = maxDepth, maxNodes = maxNodes))
+        assertNotNull(breakdownProjection.getBreakdown(itemId, maxDepth = maxDepth, maxNodes = maxNodes, access = AccessSet.SEES_ALL))
     }
 
     // Criterion 1: every root, and the full decomposition down from each — not just the selected
@@ -287,7 +289,7 @@ class BreakdownFeatureTest {
     @Test
     fun `a heading describes itself by outline number and heading text`() = runBlocking {
         // CMP-0 is not linked to anything, so its own breakdown is a forest of one.
-        val result = assertNotNull(breakdownProjection.getBreakdown("cmp-0"))
+        val result = assertNotNull(breakdownProjection.getBreakdown("cmp-0", access = AccessSet.SEES_ALL))
 
         assertEquals("2.1 Structure", result.nodes.single().description)
         assertEquals(listOf(Ref.encode("cmp-0")), result.roots)
@@ -352,7 +354,7 @@ class BreakdownFeatureTest {
 
     @Test
     fun `an unknown item is absent rather than an empty tree`() = runBlocking {
-        assertNull(breakdownProjection.getBreakdown("no-such-object"))
+        assertNull(breakdownProjection.getBreakdown("no-such-object", access = AccessSet.SEES_ALL))
     }
 
     private fun metaNodeIds(): Set<String> = runBlocking {

@@ -8,6 +8,7 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.DoorsProjection
 import com.sec.meta.MetaSchema
 import kotlinx.coroutines.runBlocking
@@ -111,19 +112,20 @@ class ModulesFeatureTest {
             systemLevel = SystemLevelChange.Set("L2"),
             addAttributes = listOf("Object Text"),
             removeAttributes = emptyList(),
+            access = AccessSet.SEES_ALL,
         )
         assertEquals(SaveModuleSettingsOutcome.Saved, saved)
 
         // Criterion 14: the DOORSModule node's property map is byte-identical before and after.
         assertEquals(before, rawModuleProperties(moduleId))
 
-        val detail = doorsProjection.getModuleDetail(moduleId)
+        val detail = doorsProjection.getModuleDetail(moduleId, access = AccessSet.SEES_ALL)
         assertEquals("L2", detail?.systemLevel)
 
-        val listRow = doorsProjection.listModules().first { it.ref == detail!!.ref }
+        val listRow = doorsProjection.listModules(access = AccessSet.SEES_ALL).first { it.ref == detail!!.ref }
         assertEquals("L2", listRow.systemLevel?.code)
 
-        val attributes = doorsProjection.getModuleAttributes(moduleId).associateBy { it.name }
+        val attributes = doorsProjection.getModuleAttributes(moduleId, access = AccessSet.SEES_ALL).associateBy { it.name }
         assertTrue(attributes.getValue("Object Text").mandatory)
         assertTrue(!attributes.getValue("Priority").mandatory)
 
@@ -133,10 +135,11 @@ class ModulesFeatureTest {
             systemLevel = SystemLevelChange.Clear,
             addAttributes = emptyList(),
             removeAttributes = listOf("Object Text"),
+            access = AccessSet.SEES_ALL,
         )
         assertEquals(SaveModuleSettingsOutcome.Saved, cleared)
-        assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
-        assertTrue(!doorsProjection.getExistingMandatoryAttributes(moduleId).contains("Object Text"))
+        assertNull(doorsProjection.getModuleDetail(moduleId, access = AccessSet.SEES_ALL)?.systemLevel)
+        assertTrue(!doorsProjection.getExistingMandatoryAttributes(moduleId, access = AccessSet.SEES_ALL).contains("Object Text"))
 
         // Criterion 16: the one meta-deletion query removes everything this feature wrote, and
         // nothing else — the module node must still be present afterwards.
@@ -160,11 +163,11 @@ class ModulesFeatureTest {
         val moduleId = "module-word-export"
         seedModule(moduleId, emptyList())
 
-        val row = doorsProjection.listModules().single { it.name == moduleId }
+        val row = doorsProjection.listModules(access = AccessSet.SEES_ALL).single { it.name == moduleId }
         assertEquals("The elevator SRD", row.wordExportTitle)
         assertEquals("D-1234-56", row.wordExportNumber)
 
-        val detail = doorsProjection.getModuleDetail(moduleId)
+        val detail = doorsProjection.getModuleDetail(moduleId, access = AccessSet.SEES_ALL)
         val labels = detail?.properties?.map { it.label to it.value }.orEmpty()
         assertTrue(
             "Version" to "Current" in labels,
@@ -234,7 +237,7 @@ class ModulesFeatureTest {
         }
         seedModule(moduleId, objects)
 
-        val discovered = doorsProjection.discoverAttributeNames(moduleId)
+        val discovered = doorsProjection.discoverAttributeNames(moduleId, access = AccessSet.SEES_ALL)
 
         assertTrue(discovered.contains("Late Attribute"), "discovered: $discovered")
         assertTrue(discovered.contains("Object Text"), "discovered: $discovered")
@@ -249,11 +252,11 @@ class ModulesFeatureTest {
 
         assertEquals(
             SaveModuleSettingsOutcome.ModuleNotFound,
-            metaWriter.saveModuleSettings("does-not-exist", SystemLevelChange.Unchanged),
+            metaWriter.saveModuleSettings("does-not-exist", SystemLevelChange.Unchanged, access = AccessSet.SEES_ALL),
         )
         assertEquals(
             SaveModuleSettingsOutcome.InvalidSystemLevel("L9"),
-            metaWriter.saveModuleSettings(moduleId, SystemLevelChange.Set("L9")),
+            metaWriter.saveModuleSettings(moduleId, SystemLevelChange.Set("L9"), access = AccessSet.SEES_ALL),
         )
         assertEquals(
             SaveModuleSettingsOutcome.UnknownAttributes(listOf("Not A Real Attribute")),
@@ -261,9 +264,10 @@ class ModulesFeatureTest {
                 moduleId,
                 SystemLevelChange.Unchanged,
                 addAttributes = listOf("Not A Real Attribute"),
+                access = AccessSet.SEES_ALL,
             ),
         )
-        assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
+        assertNull(doorsProjection.getModuleDetail(moduleId, access = AccessSet.SEES_ALL)?.systemLevel)
     }
 
     /**
@@ -286,10 +290,11 @@ class ModulesFeatureTest {
                 MetaWriter.SystemLevelEditInput(first, "L1"),
                 MetaWriter.SystemLevelEditInput(second, "L3"),
             ),
+            access = AccessSet.SEES_ALL,
         )
         assertIs<SaveSystemLevelsOutcome.Saved>(saved)
-        assertEquals("L1", doorsProjection.getModuleDetail(first)?.systemLevel)
-        assertEquals("L3", doorsProjection.getModuleDetail(second)?.systemLevel)
+        assertEquals("L1", doorsProjection.getModuleDetail(first, access = AccessSet.SEES_ALL)?.systemLevel)
+        assertEquals("L3", doorsProjection.getModuleDetail(second, access = AccessSet.SEES_ALL)?.systemLevel)
 
         // Not set clears the classification; the other module in the same batch is untouched.
         metaWriter.saveSystemLevels(
@@ -297,9 +302,10 @@ class ModulesFeatureTest {
                 MetaWriter.SystemLevelEditInput(first, null),
                 MetaWriter.SystemLevelEditInput(second, "L4"),
             ),
+            access = AccessSet.SEES_ALL,
         )
-        assertNull(doorsProjection.getModuleDetail(first)?.systemLevel)
-        assertEquals("L4", doorsProjection.getModuleDetail(second)?.systemLevel)
+        assertNull(doorsProjection.getModuleDetail(first, access = AccessSet.SEES_ALL)?.systemLevel)
+        assertEquals("L4", doorsProjection.getModuleDetail(second, access = AccessSet.SEES_ALL)?.systemLevel)
 
         // R1: classifying a module never writes to the module node the importer created.
         assertTrue(rawModuleProperties(first).keys.none { it.startsWith("__meta") })
@@ -324,6 +330,7 @@ class ModulesFeatureTest {
                     MetaWriter.SystemLevelEditInput(moduleId, "L1"),
                     MetaWriter.SystemLevelEditInput("does-not-exist", "L2"),
                 ),
+                access = AccessSet.SEES_ALL,
             ),
         )
         assertEquals(
@@ -333,10 +340,11 @@ class ModulesFeatureTest {
                     MetaWriter.SystemLevelEditInput(moduleId, "L1"),
                     MetaWriter.SystemLevelEditInput(moduleId, "L9"),
                 ),
+                access = AccessSet.SEES_ALL,
             ),
         )
 
         // The valid half of each rejected batch was not written.
-        assertNull(doorsProjection.getModuleDetail(moduleId)?.systemLevel)
+        assertNull(doorsProjection.getModuleDetail(moduleId, access = AccessSet.SEES_ALL)?.systemLevel)
     }
 }

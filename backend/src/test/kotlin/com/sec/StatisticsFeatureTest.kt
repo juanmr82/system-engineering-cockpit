@@ -199,16 +199,17 @@ class StatisticsFeatureTest {
                     excludedFromOpenPoints = false,
                 ),
             ),
+            access = seesAll,
         )
-        metaWriter.saveModuleSettings(topModule, SystemLevelChange.Set("L0"))
+        metaWriter.saveModuleSettings(topModule, SystemLevelChange.Set("L0"), access = seesAll)
         // module-none is deliberately left unclassified.
     }
 
     private fun statistics(moduleId: String? = null) = runBlocking {
-        assertNotNull(statistics.getStatistics(moduleId))
+        assertNotNull(statistics.getStatistics(moduleId, access = seesAll))
     }
 
-    private fun cycles(moduleId: String? = null) = runBlocking { statistics.getCycles(moduleId) }
+    private fun cycles(moduleId: String? = null) = runBlocking { statistics.getCycles(moduleId, access = seesAll) }
 
     private fun moduleOf(moduleId: String) =
         statistics().modules.single { it.ref == Ref.encode(moduleId) }
@@ -249,7 +250,7 @@ class StatisticsFeatureTest {
 
     @Test
     fun `an unknown module is absent rather than an empty page of zeroes`(): Unit = runBlocking {
-        assertNull(statistics.getStatistics("module-that-never-existed"))
+        assertNull(statistics.getStatistics("module-that-never-existed", access = seesAll))
     }
 
     // --- Completeness -------------------------------------------------------------------------
@@ -344,6 +345,7 @@ class StatisticsFeatureTest {
                     excludedFromOpenPoints = excluded,
                 ),
             ),
+            access = seesAll,
         )
     }
 
@@ -470,10 +472,10 @@ class StatisticsFeatureTest {
     @Test
     fun `neither endpoint writes anything to the graph`() = runBlocking {
         val before = census()
-        statistics.getStatistics(null)
-        statistics.getStatistics(levelledModule)
-        statistics.getCycles(null)
-        statistics.getCycles(levelledModule)
+        statistics.getStatistics(null, access = seesAll)
+        statistics.getStatistics(levelledModule, access = seesAll)
+        statistics.getCycles(null, access = seesAll)
+        statistics.getCycles(levelledModule, access = seesAll)
         assertEquals(before, census())
     }
 

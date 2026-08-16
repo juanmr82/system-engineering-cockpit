@@ -5,6 +5,8 @@ import com.sec.api.decodeRef
 import com.sec.api.dto.ModuleTablesResponseDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
+import com.sec.security.AccessResolver
+import com.sec.security.accessSet
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
 import io.ktor.http.HttpStatusCode
@@ -29,25 +31,27 @@ import io.ktor.server.routing.route
 public fun Route.tableRoutes(
     doorsProjection: DoorsProjection,
     tableProjection: DoorsTableProjection,
+    accessResolver: AccessResolver,
 ) {
     route("${ApiPaths.MODULES}/${ApiPaths.REF}/tables") {
         get {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            if (!doorsProjection.moduleExists(moduleId)) {
+            val access = call.accessSet(accessResolver)
+            if (!doorsProjection.moduleExists(moduleId, access)) {
                 return@get call.respondProblem(
                     HttpStatusCode.NotFound,
                     "Module not found",
                     "No module for this reference.",
                 )
             }
-            call.respond(ModuleTablesResponseDto(tableProjection.getModuleTables(moduleId)))
+            call.respond(ModuleTablesResponseDto(tableProjection.getModuleTables(moduleId, access)))
         }
     }
 
     route("${ApiPaths.ITEMS}/${ApiPaths.REF}/table") {
         get {
             val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            val table = tableProjection.getTableFor(itemId)
+            val table = tableProjection.getTableFor(itemId, call.accessSet(accessResolver))
                 ?: return@get call.respondProblem(
                     HttpStatusCode.NotFound,
                     "Object not found",

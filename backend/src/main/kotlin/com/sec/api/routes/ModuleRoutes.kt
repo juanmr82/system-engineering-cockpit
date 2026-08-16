@@ -17,7 +17,9 @@ import com.sec.domain.SaveSystemLevelsOutcome
 import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessResolver
 import com.sec.security.SecPrincipal
+import com.sec.security.accessSet
 import com.sec.security.auditName
 import com.sec.source.doors.DoorsProjection
 import io.ktor.http.HttpStatusCode
@@ -32,25 +34,36 @@ import io.ktor.server.routing.route
 
 // The DOORS-specific module projection (CLAUDE.md §5 "API shape"). Handlers delegate to
 // source/ and meta/ — they hold no logic beyond turning a sealed outcome into a status code.
-public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: MetaWriter) {
+public fun Route.moduleRoutes(
+    doorsProjection: DoorsProjection,
+    metaWriter: MetaWriter,
+    accessResolver: AccessResolver,
+) {
     route(ApiPaths.MODULES) {
         get {
-            call.respond(ModuleListResponseDto(doorsProjection.listModules()))
+            val access = call.accessSet(accessResolver)
+            call.respond(ModuleListResponseDto(doorsProjection.listModules(access)))
         }
 
         get("/{ref}") {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            val detail = doorsProjection.getModuleDetail(moduleId)
+            val access = call.accessSet(accessResolver)
+            // A module this caller may not see is a 404 and never a 403 — a 403 would confirm it
+            // exists, which is the whole of what a module name discloses (spec §7).
+            val detail = doorsProjection.getModuleDetail(moduleId, access)
                 ?: return@get call.respondModuleNotFound()
             call.respond(detail)
         }
 
         get("/{ref}/attributes") {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            if (!doorsProjection.moduleExists(moduleId)) {
+            val access = call.accessSet(accessResolver)
+            if (!doorsProjection.moduleExists(moduleId, access)) {
                 return@get call.respondModuleNotFound()
             }
-            call.respond(ModuleAttributesResponseDto(doorsProjection.getModuleAttributes(moduleId)))
+            call.respond(
+                ModuleAttributesResponseDto(doorsProjection.getModuleAttributes(moduleId, access)),
+            )
         }
 
         /**
@@ -82,7 +95,10 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                 }
             }
 
-            when (val outcome = metaWriter.saveSystemLevels(edits, user = principal.auditName)) {
+            val access = call.accessSet(accessResolver)
+            when (
+                val outcome = metaWriter.saveSystemLevels(edits, access, user = principal.auditName)
+            ) {
                 is SaveSystemLevelsOutcome.MalformedRefs ->
                     call.respondProblem(
                         HttpStatusCode.BadRequest,
@@ -143,6 +159,7 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                 val outcome = metaWriter.saveModuleSettings(
                     moduleId = moduleId,
                     systemLevel = systemLevel,
+                    access = call.accessSet(accessResolver),
                     addAttributes = body.mandatoryAttributes.add,
                     removeAttributes = body.mandatoryAttributes.remove,
                     attributeSettings = body.attributeSettings?.map {
@@ -175,7 +192,7 @@ public fun Route.moduleRoutes(doorsProjection: DoorsProjection, metaWriter: Meta
                     )
 
                 is SaveModuleSettingsOutcome.Saved -> {
-                    val detail = doorsProjection.getModuleDetail(moduleId)
+                    val detail = doorsProjection.getModuleDetail(moduleId, call.accessSet(accessResolver))
                         ?: return@post call.respondModuleNotFound()
                     call.respond(detail)
                 }

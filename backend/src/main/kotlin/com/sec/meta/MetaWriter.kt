@@ -13,6 +13,7 @@ import com.sec.graph.cypher.ModuleCypher
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
+import com.sec.security.AccessSet
 import com.sec.security.CurrentUser
 import com.sec.source.doors.DoorsProjection
 import org.neo4j.driver.Query
@@ -26,6 +27,18 @@ import java.time.Instant
 // Several feature-shaped endpoints reach this class (module settings, review settings, the batch
 // comment save). That is deliberate and is what CLAUDE.md §5 allows: a dialog or a table save is
 // one transaction, not N annotation calls. One meta write path, however many endpoints reach it.
+//
+// Every public method takes an AccessSet, and it is not decoration. Each one already answers
+// "does this module exist" through DoorsProjection.moduleExists before it writes, and that read is
+// filtered — so a module this caller cannot see is ModuleNotFound here for the same reason it is a
+// 404 on the read side. Without it the container would 404 on read and accept a write, which is
+// worse than either behaviour on its own. This is a deliberate, bounded pull-forward of phase 5's
+// anchor guard (docs/features/access-control.md §15): it closes the *container* case only. Phase 5
+// widens it to each individual anchor an edit names.
+//
+// The same set is threaded into `discoverAttributeNames` and `objectsOfModule`, the two reads that
+// decide whether a request's attribute names and item ids are ones the caller was entitled to have
+// seen — an unfiltered read there would answer a question about objects the caller cannot see.
 public class MetaWriter(
     private val graphDriver: GraphDriver,
     private val doorsProjection: DoorsProjection,
@@ -36,12 +49,13 @@ public class MetaWriter(
     public suspend fun saveModuleSettings(
         moduleId: String,
         systemLevel: SystemLevelChange,
+        access: AccessSet,
         addAttributes: List<String> = emptyList(),
         removeAttributes: List<String> = emptyList(),
         attributeSettings: List<AttributeSettingInput>? = null,
         user: String = CurrentUser.PLACEHOLDER,
     ): SaveModuleSettingsOutcome {
-        if (!doorsProjection.moduleExists(moduleId)) {
+        if (!doorsProjection.moduleExists(moduleId, access)) {
             return SaveModuleSettingsOutcome.ModuleNotFound
         }
 
@@ -56,7 +70,7 @@ public class MetaWriter(
             .filter { it.mandatory || it.visible || it.verification || it.excludedFromOpenPoints }
             .map { it.name }
         if (proposed.isNotEmpty()) {
-            val discovered = doorsProjection.discoverAttributeNames(moduleId).toSet()
+            val discovered = doorsProjection.discoverAttributeNames(moduleId, access).toSet()
             val unknown = proposed.filterNot { it in discovered }.distinct()
             if (unknown.isNotEmpty()) {
                 return SaveModuleSettingsOutcome.UnknownAttributes(unknown)
@@ -94,6 +108,7 @@ public class MetaWriter(
      */
     public suspend fun saveSystemLevels(
         edits: List<SystemLevelEditInput>,
+        access: AccessSet,
         user: String = CurrentUser.PLACEHOLDER,
     ): SaveSystemLevelsOutcome {
         val invalid = edits.mapNotNull { it.code }.firstOrNull { SystemLevel.fromCode(it) == null }
@@ -101,7 +116,8 @@ public class MetaWriter(
             return SaveSystemLevelsOutcome.InvalidSystemLevel(invalid)
         }
 
-        val unknown = edits.map { it.moduleId }.distinct().filterNot { doorsProjection.moduleExists(it) }
+        val unknown = edits.map { it.moduleId }.distinct()
+            .filterNot { doorsProjection.moduleExists(it, access) }
         if (unknown.isNotEmpty()) {
             return SaveSystemLevelsOutcome.UnknownModules(unknown)
         }
@@ -129,16 +145,18 @@ public class MetaWriter(
     public suspend fun saveComments(
         moduleId: String,
         edits: List<CommentEditInput>,
+        access: AccessSet,
         user: String = CurrentUser.PLACEHOLDER,
     ): SaveCommentsOutcome {
-        if (!doorsProjection.moduleExists(moduleId)) {
+        if (!doorsProjection.moduleExists(moduleId, access)) {
             return SaveCommentsOutcome.ModuleNotFound
         }
 
         // A client may only comment on objects of the module it loaded. Without this an arbitrary
         // __id in the body would attach a note to any node in the graph.
         val itemIds = edits.map { it.itemId }
-        val known = itemIds.takeIf { it.isNotEmpty() }?.let { objectsOfModule(moduleId, it) } ?: emptySet()
+        val known = itemIds.takeIf { it.isNotEmpty() }
+            ?.let { objectsOfModule(moduleId, it, access) } ?: emptySet()
         val unknown = itemIds.filterNot { it in known }.distinct()
         if (unknown.isNotEmpty()) {
             return SaveCommentsOutcome.UnknownItems(unknown)
@@ -175,9 +193,15 @@ public class MetaWriter(
 
     // --- Internals -------------------------------------------------------------------------------
 
-    private suspend fun objectsOfModule(moduleId: String, itemIds: List<String>): Set<String> =
+    private suspend fun objectsOfModule(
+        moduleId: String,
+        itemIds: List<String>,
+        access: AccessSet,
+    ): Set<String> =
         graphDriver.executeRead(
-            Query(ModuleCypher.MODULE_OBJECT_IDS, mapOf("moduleUrl" to moduleId, "itemIds" to itemIds)),
+            ModuleCypher.MODULE_OBJECT_IDS,
+            mapOf("moduleUrl" to moduleId, "itemIds" to itemIds),
+            access,
         ) { records -> records.map { it.get("id").asString() }.toSet() }
 
     private suspend fun readComments(itemIds: List<String>): Map<String, SavedComment> {

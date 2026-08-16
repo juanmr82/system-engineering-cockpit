@@ -1,5 +1,8 @@
 package com.sec.security
 
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.principal
+
 /**
  * The authenticated caller, as every route handler and every future access-control read path sees
  * it. `call.principal<SecPrincipal>()` after the session-authentication plugin has run.
@@ -37,3 +40,24 @@ public data class SecPrincipal(
  * `AuthRoutes`'s own `displayName` agree on the same fallback rather than each re-deriving it.
  */
 public val SecPrincipal.auditName: String get() = name.ifBlank { username }
+
+/**
+ * What this caller may see, for the read path about to run
+ * (`docs/features/access-control.md` §6.3).
+ *
+ * One declaration rather than the same four lines in every handler: phase 4 threads an [AccessSet]
+ * through roughly twenty of them, and a handler that resolved it its own way — or defaulted it when
+ * the principal was missing — is exactly the drift §6.3 rules out.
+ *
+ * **Throws rather than falling back to [AccessSet.NONE]** when there is no principal. Both are
+ * fail-closed in what they return, but only one is honest: no principal here means the session guard
+ * did not run, which is a wiring defect in `Routes.kt` and not a user in no group. Returning an empty
+ * set would hide that behind an application that merely looks empty (R8: "no code path may widen
+ * visibility on error" — and none may quietly narrow it either, because a silent narrowing is a bug
+ * report about missing data rather than about missing authentication).
+ */
+public suspend fun ApplicationCall.accessSet(accessResolver: AccessResolver): AccessSet {
+    val principal = principal<SecPrincipal>()
+        ?: error("${request.local.uri} ran without a principal despite the session guard")
+    return accessResolver.resolve(principal.groups)
+}

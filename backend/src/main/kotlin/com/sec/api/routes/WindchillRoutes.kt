@@ -12,6 +12,8 @@ import com.sec.source.windchill.WindchillExportFailure
 import com.sec.source.windchill.WindchillExportParser
 import com.sec.source.windchill.WindchillExportProblem
 import com.sec.source.windchill.WindchillImporter
+import com.sec.security.AccessResolver
+import com.sec.security.accessSet
 import com.sec.source.windchill.WindchillProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
@@ -52,6 +54,7 @@ public fun Route.windchillRoutes(
     settings: WindchillSettings,
     projection: WindchillProjection,
     importRunService: ImportRunService,
+    accessResolver: AccessResolver,
 ) {
 
     route(ApiPaths.WINDCHILL) {
@@ -61,8 +64,11 @@ public fun Route.windchillRoutes(
             call.respond(WindchillHealthDto(configured = settings.isConfigured, host = settings.host))
         }
 
+        // The 20 000-row server cap is applied *after* filtering, which is why the access set goes
+        // into the statement rather than the rows being filtered afterwards: a cap counted over
+        // documents the caller cannot see would leak a total through its own warning (spec §7).
         get("/documents") {
-            call.respond(projection.listDocuments())
+            call.respond(projection.listDocuments(call.accessSet(accessResolver)))
         }
 
         /**

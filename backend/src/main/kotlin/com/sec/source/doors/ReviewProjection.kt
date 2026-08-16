@@ -19,7 +19,6 @@ import com.sec.security.AccessSet
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
-import org.neo4j.driver.Query
 import org.neo4j.driver.Record
 import org.neo4j.driver.Value
 import org.neo4j.driver.types.Node
@@ -50,7 +49,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
         // One extra read for the whole page, not one per row: a module carries on the order of ten
         // mandatory policies and they are the same for every object in it.
-        val policies = getMandatoryPolicies(moduleId)
+        val policies = getMandatoryPolicies(moduleId, access)
 
         val rows = graphDriver.executeRead(
             ReviewCypher.MODULE_OBJECTS,
@@ -59,7 +58,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         ) { records -> records.map { it.toReviewRow(policies) } }
 
         return ModuleObjectsResponseDto(
-            rows = withModuleNames(rows),
+            rows = withModuleNames(rows, access),
             total = total,
             truncated = skip + rows.size < total,
         )
@@ -71,7 +70,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * Done here rather than in the row query because a page of 984 rows carrying ~400 references
      * would otherwise join the module node once per reference to fetch the same handful of names.
      */
-    private suspend fun withModuleNames(rows: List<ReviewRowDto>): List<ReviewRowDto> {
+    private suspend fun withModuleNames(rows: List<ReviewRowDto>, access: AccessSet): List<ReviewRowDto> {
         val moduleIds = rows
             .flatMap { it.references.outgoing + it.references.incoming }
             .mapNotNull { it.moduleRef }
@@ -81,7 +80,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             return rows
         }
 
-        val namesById = lookupModuleNames(moduleIds)
+        val namesById = lookupModuleNames(moduleIds, access)
         if (namesById.isEmpty()) {
             return rows
         }
@@ -96,9 +95,12 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         }
     }
 
-    private suspend fun lookupModuleNames(moduleIds: List<String>): Map<String, String> =
+    private suspend fun lookupModuleNames(
+        moduleIds: List<String>,
+        access: AccessSet,
+    ): Map<String, String> =
         graphDriver.executeRead(
-            Query(ReviewCypher.MODULE_NAMES, mapOf("moduleIds" to moduleIds)),
+            ReviewCypher.MODULE_NAMES, mapOf("moduleIds" to moduleIds), access,
         ) { records -> records.associate { it.get("id").asString() to it.get("name").asString("") } }
 
     private fun ReferenceDto.named(namesById: Map<String, String>): ReferenceDto {
@@ -115,15 +117,20 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * measured against the running service it turned an 8ms panel open into 26ms for a list nobody
      * asked for.
      */
-    public suspend fun getItemDetail(itemId: String): ItemDetailDto? =
-        graphDriver.executeRead(Query(ReviewCypher.ITEM_DETAIL, mapOf("itemId" to itemId))) { records ->
+    public suspend fun getItemDetail(itemId: String, access: AccessSet): ItemDetailDto? =
+        graphDriver.executeRead(ReviewCypher.ITEM_DETAIL, mapOf("itemId" to itemId), access) { records ->
             records.firstOrNull()?.toItemDetail()
         }
 
-    public suspend fun getTraces(itemId: String, incoming: Boolean, limit: Int = DEFAULT_PAGE): TracesResponseDto {
+    public suspend fun getTraces(
+        itemId: String,
+        incoming: Boolean,
+        access: AccessSet,
+        limit: Int = DEFAULT_PAGE,
+    ): TracesResponseDto {
         val statement = if (incoming) ReviewCypher.ITEM_TRACES_IN else ReviewCypher.ITEM_TRACES_OUT
         val references = graphDriver.executeRead(
-            Query(statement, mapOf("itemId" to itemId, "limit" to limit)),
+            statement, mapOf("itemId" to itemId, "limit" to limit), access,
         ) { records -> records.map { it.toReference() } }
 
         // Out-links are everything the source asserted. In-links are only those whose referencing
@@ -134,9 +141,12 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
     // --- Mapping ---------------------------------------------------------------------------------
 
-    private suspend fun getMandatoryPolicies(moduleId: String): List<DoorsChecks.MandatoryPolicy> =
+    private suspend fun getMandatoryPolicies(
+        moduleId: String,
+        access: AccessSet,
+    ): List<DoorsChecks.MandatoryPolicy> =
         graphDriver.executeRead(
-            Query(ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId)),
+            ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId), access,
         ) { records ->
             records.map { record ->
                 DoorsChecks.MandatoryPolicy(
