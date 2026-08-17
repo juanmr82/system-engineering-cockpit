@@ -7,6 +7,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -60,6 +61,7 @@ public class JiraIssuesProjection(
         size: Int,
         sort: SortField,
         direction: SortDirection,
+        access: AccessSet,
         query: String? = null,
         projectKeys: List<String>? = null,
         columns: List<JiraColumnDto> = emptyList(),
@@ -82,20 +84,22 @@ public class JiraIssuesProjection(
         }
 
         val rows = graphDriver.executeRead(
-            Query(
-                statement,
-                filters + mapOf(
-                    "sortField" to sort.property,
-                    "skip" to page.toLong() * size,
-                    "limit" to size,
-                    "fieldIds" to fieldIds,
-                ),
+            statement,
+            filters + mapOf(
+                "sortField" to sort.property,
+                "skip" to page.toLong() * size,
+                "limit" to size,
+                "fieldIds" to fieldIds,
             ),
+            access,
         ) { records -> records.map { it.toRowDto(fieldIds) } }
 
-        val total = graphDriver.executeRead(Query(JiraCypher.COUNT_ISSUES_MATCHING, filters)) { records ->
-            records.firstOrNull()?.get("total")?.asInt() ?: 0
-        }
+        // The identical filter the page carries, by construction: both statements embed
+        // JiraCypher.ISSUE_FILTER and both are bound here. A count taken over a wider set than its
+        // own page is a paginator that promises pages it will then answer empty (spec §7, "counts").
+        val total = graphDriver.executeRead(
+            JiraCypher.COUNT_ISSUES_MATCHING, filters, access,
+        ) { records -> records.firstOrNull()?.get("total")?.asInt() ?: 0 }
 
         return JiraIssuesPageDto(
             page = page,

@@ -1,0 +1,22 @@
+<span class="sec-container-actions-cell">
+  <button
+    mat-icon-button
+    type="button"
+    [attr.aria-label]="'Edit categories for ' + name()"
+    matTooltip="Edit categories"
+    (click)="edit()"
+  >
+    <mat-icon svgIcon="gearbox" />
+  </button>
+  @if (hasCategories()) {
+    <button
+      mat-icon-button
+      type="button"
+      [attr.aria-label]="'Clear categories for ' + name()"
+      matTooltip="Clear categories"
+      (click)="clear()"
+    >
+      <mat-icon svgIcon="close" />
+    </button>
+  }
+</span>

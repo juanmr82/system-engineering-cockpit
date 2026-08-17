@@ -4,6 +4,10 @@ import com.sec.api.respondProblem
 import com.sec.config.Neo4jSettings
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
+import com.sec.security.Role
+import com.sec.security.TEST_PRINCIPAL
+import com.sec.security.authenticatedClient
+import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -13,6 +17,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import io.ktor.server.sessions.SessionStorageMemory
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
@@ -29,6 +34,24 @@ class ApplicationTest {
     private fun ApplicationTestBuilder.appWithoutGraph() {
         application {
             configureApp(GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")))
+        }
+    }
+
+    // Two of the routes below sit behind the session guard (ADR 0017) now that it wraps every
+    // feature route. `/api/v1/nope` (the 404 tests) and the ad-hoc /api/v1/probe route both stay
+    // reachable with no session — see Routes.kt and AuthRoutes.kt for exactly which paths do.
+    private fun ApplicationTestBuilder.appWithSession(vararg roles: String): HttpClient {
+        val sessionStorage = SessionStorageMemory()
+        application {
+            configureApp(
+                GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                sessionStorage = sessionStorage,
+            )
+        }
+        return if (roles.isEmpty()) {
+            authenticatedClient(sessionStorage)
+        } else {
+            authenticatedClient(sessionStorage, TEST_PRINCIPAL.copy(roles = roles.toSet()))
         }
     }
 
@@ -57,7 +80,7 @@ class ApplicationTest {
     // Was a 500 with the JDK's "Illegal base64 character 21" in the body (BACKEND_REVIEW §3.1).
     @Test
     fun `a malformed ref is a 400 and leaks nothing`() = testApplication {
-        appWithoutGraph()
+        val client = appWithSession()
 
         val response = client.get("/api/v1/modules/!!!not-base64!!!")
 
@@ -68,9 +91,13 @@ class ApplicationTest {
     }
 
     // Was a 400 naming the internal DTO class in the body (BACKEND_REVIEW §3.1).
+    //
+    // Needs `sec-admin`: module settings became an administrative route in phase 5, so a plain
+    // `sec-user` is now refused before the body is ever parsed. The refusal is the point of
+    // `RoleGuardTest`; what this one still checks is the answer *past* the guard.
     @Test
     fun `a malformed request body names no internal type`() = testApplication {
-        appWithoutGraph()
+        val client = appWithSession(Role.USER, Role.ADMIN)
 
         val response = client.post("/api/v1/modules/${Ref.encode("module-1")}/settings") {
             contentType(ContentType.Application.Json)

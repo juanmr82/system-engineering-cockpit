@@ -38,10 +38,10 @@ public object StatisticsCypher {
      * A null `moduleId` means every module. Passing the filter as a null-tolerant parameter rather
      * than building two statements keeps one query plan and one place to change the projection.
      */
-    public const val MODULES_IN_SCOPE: String = """
+    public val MODULES_IN_SCOPE: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE)
-        WHERE ${'$'}moduleId IS NULL OR m.$ID = ${'$'}moduleId
+        WHERE (${'$'}moduleId IS NULL OR m.$ID = ${'$'}moduleId) AND ${AccessCypher.visible("m")}
         OPTIONAL MATCH (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
         RETURN m.$ID   AS id,
                m.$NAME AS name,
@@ -65,25 +65,28 @@ public object StatisticsCypher {
      * Ordered by the sort key so that a truncated scan is the first N objects in document order
      * rather than an arbitrary N — truncation is reported, and it should also be reproducible.
      */
-    public const val MODULE_OBJECTS: String = """
+    public val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         WITH o
         ORDER BY o.$SORT_KEY
         LIMIT ${'$'}limit
         RETURN o         AS object,
                labels(o) AS labels,
-               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM) WHERE NOT t:$UNDEFINED } AS resolvedParents,
-               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM) WHERE t:$UNDEFINED }     AS placeholderParents,
-               COUNT { (o)-[:$REFERS_TO]-(t:$SE_ITEM) WHERE t:$DELETED }        AS deletedLinks
+               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM)
+                       WHERE NOT t:$UNDEFINED AND ${AccessCypher.visible("t")} } AS resolvedParents,
+               COUNT { (o)-[:$REFERS_TO]->(t:$SE_ITEM)
+                       WHERE t:$UNDEFINED AND ${AccessCypher.visible("t")} }     AS placeholderParents,
+               COUNT { (o)-[:$REFERS_TO]-(t:$SE_ITEM)
+                       WHERE t:$DELETED AND ${AccessCypher.visible("t")} }       AS deletedLinks
     """
 
     /** Counted separately so a truncated object scan still reports an honest total. */
-    public const val COUNT_MODULE_OBJECTS: String = """
+    public val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         RETURN count(o) AS total
     """
 
@@ -94,12 +97,14 @@ public object StatisticsCypher {
      * be named even when its node does not exist yet — in which case `name` is null and the view
      * says so rather than inventing one.
      */
-    public const val DANGLING_TARGET_MODULES: String = """
+    public val DANGLING_TARGET_MODULES: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})-[:$REFERS_TO]->(t:$SE_ITEM)
         WHERE t:$UNDEFINED AND NOT o:$DOORS_MODULE AND NOT o:$DELETED
+          AND ${AccessCypher.visible("o")} AND ${AccessCypher.visible("t")}
         WITH DISTINCT t.$MODULE_URL AS moduleUrl
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: moduleUrl})
+          WHERE ${AccessCypher.visible("m")}
         RETURN moduleUrl AS id,
                m.$NAME   AS name
         ORDER BY name, id
@@ -115,9 +120,10 @@ public object StatisticsCypher {
      *
      * Ordered so the SCC input is stable, and therefore so is the rendered finding list.
      */
-    public const val ALL_TRACE_EDGES: String = """
+    public val ALL_TRACE_EDGES: String = """
         CYPHER 25
         MATCH (a:$SE_ITEM)-[:$REFERS_TO]->(b:$SE_ITEM)
+        WHERE ${AccessCypher.visible("a")} AND ${AccessCypher.visible("b")}
         RETURN a.$ID AS fromId,
                b.$ID AS toId
         ORDER BY fromId, toId
@@ -131,11 +137,13 @@ public object StatisticsCypher {
      * classification is anchored on the module node (CLAUDE.md §2, Shape A). Same shape as
      * `BreakdownCypher.NODES`, which the finding list links into.
      */
-    public const val LOOP_MEMBERS: String = """
+    public val LOOP_MEMBERS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (n:$SE_ITEM {$ID: id})
+        WHERE ${AccessCypher.visible("n")}
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: n.$MODULE_URL})
+          WHERE ${AccessCypher.visible("m")}
         OPTIONAL MATCH (m)-[:$CLASSIFIED_AS]->(c:$META:$CLASSIFICATION {$SCHEME: '$SYSTEM_LEVEL_SCHEME'})
         RETURN n.$ID       AS id,
                n.$DOORS_ID AS sourceId,

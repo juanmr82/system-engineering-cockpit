@@ -1,0 +1,32 @@
+@use 'mixins' as sec;
+
+:host {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+
+// Tier-2 chip, the same shape ModuleLevelCell's own select uses — a native select rather than a
+// Material one, so it needs no overlay to position inside a virtualised grid cell.
+.sec-default-category-cell__select {
+  @include sec.meta-chip;
+
+  max-width: 100%;
+  border: 0;
+  appearance: none;
+  font: inherit;
+  font-size: var(--sec-text-xs);
+  cursor: pointer;
+  text-overflow: ellipsis;
+
+  &:focus-visible {
+    @include sec.focus-ring(1px);
+  }
+}
+
+// Pending, not yet written to the graph — the same dashed-ring convention ModuleLevelCell uses.
+.sec-default-category-cell__select--dirty {
+  outline: 2px dashed var(--sec-highlight-meta);
+  outline-offset: 1px;
+}

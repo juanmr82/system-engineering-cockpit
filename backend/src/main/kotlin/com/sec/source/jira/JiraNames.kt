@@ -65,16 +65,13 @@ public object JiraLabel {
      */
     public const val PROJECTION: String = "__JiraProjection"
 
-    /** The configured project keys — a singleton. Application configuration, not annotation. */
-    public const val SETTINGS: String = "__JiraSettings"
-
     /** The chosen columns and their order — a singleton. Becomes per-user when RBAC lands. */
     public const val COLUMN_CONFIG: String = "__JiraColumnConfig"
 
     /** Every label this source declares. Read by `GraphNamesTest`, which is why it is exhaustive. */
     public val all: Set<String> = setOf(
         ISSUE, PROJECT, ISSUE_TYPE, FIELD, STATUS, PRIORITY, RESOLUTION, USER, COMPONENT, VERSION,
-        PROJECTION, SETTINGS, COLUMN_CONFIG,
+        PROJECTION, COLUMN_CONFIG,
     )
 
     /**
@@ -304,9 +301,6 @@ public object JiraLinkProp {
  * says whose the node is, and prefixing the payload as well would say it twice.
  */
 public object JiraAppProp {
-    /** `:__JiraSettings` — the configured project keys, in the user's own order. */
-    public const val PROJECT_KEYS: String = "projectKeys"
-
     /** `:__JiraColumnConfig` — the chosen field ids, in column order. Optional columns only. */
     public const val FIELD_IDS: String = "fieldIds"
 
@@ -322,7 +316,6 @@ public object JiraAppProp {
  * in the graph without exception (spec §6.2).
  */
 public object JiraId {
-    public const val SETTINGS: String = "jira-settings"
     public const val COLUMN_CONFIG: String = "jira-columns"
 
     /** `<host>/rest/api/2/field/<id>`. */

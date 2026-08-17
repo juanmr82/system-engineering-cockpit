@@ -1,5 +1,7 @@
 package com.sec.api
 
+import com.sec.api.routes.accessRoutes
+import com.sec.api.routes.authRoutes
 import com.sec.api.routes.configRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.importRoutes
@@ -10,16 +12,24 @@ import com.sec.api.routes.statisticsRoutes
 import com.sec.api.routes.tableRoutes
 import com.sec.api.routes.windchillRoutes
 import com.sec.config.JiraSettings
+import com.sec.config.NavigationSettings
 import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
+import com.sec.importer.ImportScheduler
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessAdminService
+import com.sec.security.AccessReconciler
+import com.sec.security.AccessResolver
+import com.sec.security.Oidc
+import com.sec.security.Role
+import com.sec.security.requireRole
+import com.sec.security.requireSecSession
 import com.sec.source.jira.JiraColumnStore
 import com.sec.source.jira.JiraFieldsProjection
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraLinkGraphProjection
 import com.sec.source.jira.JiraIssuesProjection
-import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -38,7 +48,6 @@ import io.ktor.server.routing.routing
 //   GET  /api/v1/tree
 //   GET  /api/v1/items/{ref}/children, /annotations
 //   POST /api/v1/items/{ref}/annotations, PATCH|DELETE /api/v1/annotations/{ref}
-//   GET  /api/v1/config/navigation
 //   GET  /api/v1/modules/{ref}/checks/attribute-policy
 //   POST /api/v1/cypher/explain, /api/v1/cypher/run   (docs/CYPHER_API_DESIGN.md)
 public fun Application.configureRouting(
@@ -54,11 +63,7 @@ public fun Application.configureRouting(
     // Null when JIRA is not configured on this deployment, which is a normal state: the routes
     // answer 503 and /jira/health reports why. See api/routes/JiraRoutes.kt.
     jiraClient: JiraHttpClient?,
-    // Never null, unlike the client: the configured project list lives in the graph and is readable
-    // and editable whether or not this deployment has a JIRA host, which is what lets an operator
-    // set the two up in either order.
-    jiraSettingsStore: JiraSettingsStore,
-    // Also never null, and for a stronger reason than the store's: the issues it reads are in this
+    // Never null, and for a stronger reason than the client's: the issues it reads are in this
     // graph, so the table works on a deployment whose JIRA credentials have expired. A table that
     // went blank because a token did would be reporting a connection problem as an absence of data.
     jiraIssuesProjection: JiraIssuesProjection,
@@ -73,36 +78,84 @@ public fun Application.configureRouting(
     windchillSettings: WindchillSettings,
     // Reads documents this graph already holds, so it answers whether or not a host is configured.
     windchillProjection: WindchillProjection,
+    // The sidenav's structure (CLAUDE.md §2 "Where a given piece of state lives") — read from
+    // application.yaml at startup, served read-only, never touched by a request.
+    navigationSettings: NavigationSettings,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
+    // ADR 0017. authRoutes() is the one file allowed to register anything unauthenticated besides
+    // health/ready — it draws that line itself, in one place (security/Session.kt's doc comment).
+    oidc: Oidc,
+    // access-control.md §5/§6.3. One instance for the process, so its cache is actually shared
+    // across requests rather than reset per route.
+    accessResolver: AccessResolver,
+    // §8.3. The same instance the import-pipeline hook and the startup pass use, so a manual
+    // reconcile and an automatic one are never racing two independent views of "already seeded".
+    accessReconciler: AccessReconciler,
+    // Phase 6, §9/§10.2. The write path for categories, grants, containers and defaults — built
+    // one screen at a time, sharing accessResolver so its invalidate() calls land on the same
+    // cache every filtered read path already reads from.
+    accessAdminService: AccessAdminService,
+    // ADR 0018. Source-agnostic: whichever importers are on a schedule, keyed by their own id.
+    // Empty when nothing is scheduled.
+    importSchedulers: Map<String, ImportScheduler> = emptyMap(),
 ) {
     routing {
+        // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
+        // /health, /ready, and the two of /auth/* that create a session rather than needing one.
         healthRoutes(graphDriver)
-        jiraRoutes(
-            jiraSettings,
-            jiraClient,
-            jiraSettingsStore,
-            jiraIssuesProjection,
-            jiraLinkGraphProjection,
-            jiraColumnStore,
-            jiraFieldsProjection,
-        )
-        windchillRoutes(windchillSettings, windchillProjection, importRunService)
-        importRoutes(importRunService)
-        moduleRoutes(doorsProjection, metaWriter)
-        reviewRoutes(
-            doorsProjection,
-            reviewProjection,
-            breakdownProjection,
-            dependencyGraphProjection,
-            metaWriter,
-        )
-        statisticsRoutes(statisticsProjection)
-        tableRoutes(doorsProjection, tableProjection)
-        configRoutes()
+        authRoutes(oidc, accessResolver)
 
-        // Registered last so it reads as the fallback it is; Ktor scores it lowest regardless.
+        // Every other route needs a session (ADR 0017 §5) and the CSRF check on every non-GET
+        // (§11). One wrapper, so a feature route file registered here is guarded whether or not
+        // whoever adds it remembers to ask for that — requireSecSession() is `Session.kt`'s single
+        // declaration of both rules, the same discipline GraphNamesTest holds Cypher names to.
+        requireSecSession {
+            jiraRoutes(
+                jiraSettings,
+                jiraClient,
+                jiraIssuesProjection,
+                jiraLinkGraphProjection,
+                jiraColumnStore,
+                jiraFieldsProjection,
+                accessResolver,
+            )
+            windchillRoutes(windchillSettings, windchillProjection, importRunService, accessResolver)
+            moduleRoutes(doorsProjection, metaWriter, accessResolver)
+            reviewRoutes(
+                doorsProjection,
+                reviewProjection,
+                breakdownProjection,
+                dependencyGraphProjection,
+                metaWriter,
+                accessResolver,
+            )
+            statisticsRoutes(statisticsProjection, accessResolver)
+            tableRoutes(doorsProjection, tableProjection, accessResolver)
+            configRoutes(navigationSettings)
+
+            // Two whole subtrees, guarded here rather than inside their own files, because every
+            // route in each needs the same role — the import console is `/settings`-shaped in the
+            // UI (spec §3) and the Access views are `sec-access-manager` by definition. The mixed
+            // files guard their own administrative halves, since a wrapper here would take their
+            // reads with them.
+            //
+            // A route added to either file tomorrow is guarded before anyone remembers to guard
+            // it, which is the property `requireSecSession` gives the tree above.
+            requireRole(Role.ADMIN) {
+                importRoutes(importRunService, importSchedulers)
+            }
+            requireRole(Role.ACCESS_MANAGER) {
+                accessRoutes(accessReconciler, accessAdminService)
+            }
+        }
+
+        // Outside the session guard on purpose: an unmatched path is not an object and not a
+        // capability (R8's 404-vs-403 split does not apply to "nothing matched"), and this is also
+        // what serves the packaged Angular shell to a browser that has no session yet — the app
+        // loads, then its first API call gets the 401 that sends it to Keycloak. Registered last so
+        // it reads as the fallback it is; Ktor scores it lowest regardless.
         notFoundFallback()
     }
 }

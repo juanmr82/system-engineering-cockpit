@@ -15,10 +15,10 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
-import org.neo4j.driver.Query
 import org.neo4j.driver.Record
 import org.neo4j.driver.Value
 import org.neo4j.driver.types.Node
@@ -39,26 +39,26 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
 
     public suspend fun getModuleObjects(
         moduleId: String,
+        access: AccessSet,
         skip: Int = 0,
         limit: Int = DEFAULT_PAGE,
     ): ModuleObjectsResponseDto {
         val total = graphDriver.executeRead(
-            Query(ReviewCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId)),
+            ReviewCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId), access,
         ) { records -> records.firstOrNull()?.get("total")?.asInt() ?: 0 }
 
         // One extra read for the whole page, not one per row: a module carries on the order of ten
         // mandatory policies and they are the same for every object in it.
-        val policies = getMandatoryPolicies(moduleId)
+        val policies = getMandatoryPolicies(moduleId, access)
 
         val rows = graphDriver.executeRead(
-            Query(
-                ReviewCypher.MODULE_OBJECTS,
-                mapOf("moduleUrl" to moduleId, "skip" to skip, "limit" to limit),
-            ),
+            ReviewCypher.MODULE_OBJECTS,
+            mapOf("moduleUrl" to moduleId, "skip" to skip, "limit" to limit),
+            access,
         ) { records -> records.map { it.toReviewRow(policies) } }
 
         return ModuleObjectsResponseDto(
-            rows = withModuleNames(rows),
+            rows = withModuleNames(rows, access),
             total = total,
             truncated = skip + rows.size < total,
         )
@@ -70,20 +70,9 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * Done here rather than in the row query because a page of 984 rows carrying ~400 references
      * would otherwise join the module node once per reference to fetch the same handful of names.
      */
-    private suspend fun withModuleNames(rows: List<ReviewRowDto>): List<ReviewRowDto> {
-        val moduleIds = rows
-            .flatMap { it.references.outgoing + it.references.incoming }
-            .mapNotNull { it.moduleRef }
-            .distinct()
-            .mapNotNull(Ref::decodeOrNull)
-        if (moduleIds.isEmpty()) {
-            return rows
-        }
-
-        val namesById = lookupModuleNames(moduleIds)
-        if (namesById.isEmpty()) {
-            return rows
-        }
+    private suspend fun withModuleNames(rows: List<ReviewRowDto>, access: AccessSet): List<ReviewRowDto> {
+        val references = rows.flatMap { it.references.outgoing + it.references.incoming }
+        val namesById = resolveModuleNames(references, access)
 
         return rows.map { row ->
             row.copy(
@@ -95,14 +84,50 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         }
     }
 
-    private suspend fun lookupModuleNames(moduleIds: List<String>): Map<String, String> =
+    /**
+     * The visible module behind each reference, by `__id`.
+     *
+     * `MODULE_NAMES` carries the predicate, so an entry here means *this caller may read that
+     * module* — which is what makes it safe for [named] to use its absence as the signal to drop
+     * the handle. Always runs, even for an empty result: the early return it used to take on one
+     * would have left every handle in place, which is the case that matters.
+     */
+    private suspend fun resolveModuleNames(
+        references: List<ReferenceDto>,
+        access: AccessSet,
+    ): Map<String, String> {
+        val moduleIds = references.mapNotNull { it.moduleRef }.distinct().mapNotNull(Ref::decodeOrNull)
+        return if (moduleIds.isEmpty()) emptyMap() else lookupModuleNames(moduleIds, access)
+    }
+
+    private suspend fun lookupModuleNames(
+        moduleIds: List<String>,
+        access: AccessSet,
+    ): Map<String, String> =
         graphDriver.executeRead(
-            Query(ReviewCypher.MODULE_NAMES, mapOf("moduleIds" to moduleIds)),
+            ReviewCypher.MODULE_NAMES, mapOf("moduleIds" to moduleIds), access,
         ) { records -> records.associate { it.get("id").asString() to it.get("name").asString("") } }
 
+    /**
+     * Names a reference's module — **and drops the handle when it cannot**.
+     *
+     * `:ref` is base64url of `__id` and is reversible without server state (R5), so a handle to a
+     * module this caller may not read is that module's DOORS url on the wire, whether or not any
+     * view renders it. R8 admits no distinction between what is shown and what is sent: *nothing
+     * leaves the backend that the caller may not see*.
+     *
+     * The two cases it collapses — a module that is invisible and one that was never imported —
+     * are deliberately not told apart, because telling them apart is itself the disclosure. Neither
+     * loses anything: an unimported module has no node to link to, and `resolved` already carries
+     * the *Not yet imported* state the UI renders from.
+     *
+     * Only reachable at all through §8.1's escape hatch — an object granted a category its module
+     * does not carry — which is why `VisibilityMatrixTest` builds that shape explicitly.
+     */
     private fun ReferenceDto.named(namesById: Map<String, String>): ReferenceDto {
         val moduleId = moduleRef?.let(Ref::decodeOrNull) ?: return this
-        return copy(moduleName = namesById[moduleId])
+        val name = namesById[moduleId] ?: return copy(moduleRef = null, moduleName = null)
+        return copy(moduleName = name)
     }
 
     /**
@@ -114,28 +139,43 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
      * measured against the running service it turned an 8ms panel open into 26ms for a list nobody
      * asked for.
      */
-    public suspend fun getItemDetail(itemId: String): ItemDetailDto? =
-        graphDriver.executeRead(Query(ReviewCypher.ITEM_DETAIL, mapOf("itemId" to itemId))) { records ->
+    public suspend fun getItemDetail(itemId: String, access: AccessSet): ItemDetailDto? =
+        graphDriver.executeRead(ReviewCypher.ITEM_DETAIL, mapOf("itemId" to itemId), access) { records ->
             records.firstOrNull()?.toItemDetail()
         }
 
-    public suspend fun getTraces(itemId: String, incoming: Boolean, limit: Int = DEFAULT_PAGE): TracesResponseDto {
+    public suspend fun getTraces(
+        itemId: String,
+        incoming: Boolean,
+        access: AccessSet,
+        limit: Int = DEFAULT_PAGE,
+    ): TracesResponseDto {
         val statement = if (incoming) ReviewCypher.ITEM_TRACES_IN else ReviewCypher.ITEM_TRACES_OUT
         val references = graphDriver.executeRead(
-            Query(statement, mapOf("itemId" to itemId, "limit" to limit)),
+            statement, mapOf("itemId" to itemId, "limit" to limit), access,
         ) { records -> records.map { it.toReference() } }
+
+        // Named through the same helper the table uses, for the same reason: without it every
+        // reference would carry a decodable handle to its module whether or not this caller may
+        // read that module. This endpoint has no consumer today, which is exactly why it would
+        // have been the one to go unnoticed.
+        val namesById = resolveModuleNames(references, access)
+        val named = references.map { it.named(namesById) }
 
         // Out-links are everything the source asserted. In-links are only those whose referencing
         // module has itself been imported, which is a property of what has been imported so far,
         // not of the data — so it is stated rather than left for the caller to infer.
-        return TracesResponseDto(references = references, complete = !incoming)
+        return TracesResponseDto(references = named, complete = !incoming)
     }
 
     // --- Mapping ---------------------------------------------------------------------------------
 
-    private suspend fun getMandatoryPolicies(moduleId: String): List<DoorsChecks.MandatoryPolicy> =
+    private suspend fun getMandatoryPolicies(
+        moduleId: String,
+        access: AccessSet,
+    ): List<DoorsChecks.MandatoryPolicy> =
         graphDriver.executeRead(
-            Query(ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId)),
+            ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId), access,
         ) { records ->
             records.map { record ->
                 DoorsChecks.MandatoryPolicy(

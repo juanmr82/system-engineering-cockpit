@@ -59,6 +59,21 @@
       <artifactId>ktor-server-sse-jvm</artifactId>
     </dependency>
 
+    <!-- ADR 0017 / docs/features/access-control.md: the backend is the OIDC client and the only
+         session store. -->
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-auth-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-auth-jwt-jvm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-sessions-jvm</artifactId>
+    </dependency>
+
     <!-- JIRA is the one source whose importer runs in this process (ADR 0013), so the backend
          is an HTTP client too. -->
     <dependency>

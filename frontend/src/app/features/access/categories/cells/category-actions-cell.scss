@@ -1,0 +1,18 @@
+@use 'mixins' as sec;
+
+// A cell renderer's host element defaults to `display: inline`, which cannot be aligned and
+// collapses to its text box. Every renderer in this app states its own box.
+:host {
+  display: flex;
+  align-items: center;
+}
+
+.sec-category-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+
+  button {
+    @include sec.compact-icon-button;
+  }
+}

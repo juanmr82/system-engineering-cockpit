@@ -12,7 +12,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.DependencyGraphCypher
 import com.sec.graph.executeRead
-import org.neo4j.driver.Query
+import com.sec.security.AccessSet
 
 /**
  * The dependency graph's read model (docs/REQ_BREAKDOWN_GRAPH_VIEW §3).
@@ -46,20 +46,21 @@ public class DependencyGraphProjection(
      */
     public suspend fun getGraph(
         seedIds: List<String>,
+        access: AccessSet,
         depth: Int = DEFAULT_DEPTH,
         direction: GraphDirection = GraphDirection.BOTH,
         levelStrategy: GraphLevelStrategy = GraphLevelStrategy.MODULE_SYSTEM_LEVEL,
         maxNodes: Int = MAX_NODES,
     ): DependencyGraphDto? {
-        val seeds = readSeeds(seedIds)
+        val seeds = readSeeds(seedIds, access)
         if (seeds.isEmpty()) {
             return null
         }
 
-        val walk = walk(seeds, depth, direction, maxNodes)
-        val neighbourhood = readNeighbourhood(walk.admitted, maxNodes)
+        val walk = walk(seeds, access, depth, direction, maxNodes)
+        val neighbourhood = readNeighbourhood(walk.admitted, access, maxNodes)
 
-        val loaded = cardProjection.load(walk.admitted)
+        val loaded = cardProjection.load(walk.admitted, access)
         // Only nodes we could actually build a card for: a link into a module mid-re-import can
         // name an id that is gone by the time the second statement runs, and a node with no card
         // is one the client cannot draw and would have to defend against.
@@ -112,6 +113,7 @@ public class DependencyGraphProjection(
      */
     private suspend fun walk(
         seeds: List<String>,
+        access: AccessSet,
         depth: Int,
         direction: GraphDirection,
         maxNodes: Int,
@@ -123,7 +125,7 @@ public class DependencyGraphProjection(
         var frontier = seeds
         var hop = 0
         while (frontier.isNotEmpty() && hop < depth && admitted.size < maxNodes) {
-            val rows = readNeighbours(frontier, direction, statementLimit)
+            val rows = readNeighbours(frontier, direction, statementLimit, access)
             if (rows.size.toLong() >= statementLimit) {
                 truncated = true
             }
@@ -161,13 +163,14 @@ public class DependencyGraphProjection(
         ids: List<String>,
         direction: GraphDirection,
         limit: Long,
+        access: AccessSet,
     ): List<HopRow> {
         val rows = mutableListOf<HopRow>()
         if (direction != GraphDirection.INCOMING) {
-            rows += readHop(DependencyGraphCypher.OUT_NEIGHBOURS, ids, limit) { it.to }
+            rows += readHop(DependencyGraphCypher.OUT_NEIGHBOURS, ids, limit, access) { it.to }
         }
         if (direction != GraphDirection.OUTGOING) {
-            rows += readHop(DependencyGraphCypher.IN_NEIGHBOURS, ids, limit) { it.from }
+            rows += readHop(DependencyGraphCypher.IN_NEIGHBOURS, ids, limit, access) { it.from }
         }
         return rows
     }
@@ -176,16 +179,18 @@ public class DependencyGraphProjection(
         statement: String,
         ids: List<String>,
         limit: Long,
+        access: AccessSet,
         neighbour: (NeighbourRow) -> String,
     ): List<HopRow> =
-        readNeighbourRows(statement, ids, limit).map { HopRow(neighbour(it), it.sortKey) }
+        readNeighbourRows(statement, ids, limit, access).map { HopRow(neighbour(it), it.sortKey) }
 
     private suspend fun readNeighbourRows(
         statement: String,
         ids: List<String>,
         limit: Long,
+        access: AccessSet,
     ): List<NeighbourRow> =
-        graphDriver.executeRead(Query(statement, mapOf("ids" to ids, "limit" to limit))) { records ->
+        graphDriver.executeRead(statement, mapOf("ids" to ids, "limit" to limit), access) { records ->
             records.map { record ->
                 NeighbourRow(
                     from = record.get("fromId").asString(),
@@ -202,13 +207,27 @@ public class DependencyGraphProjection(
      * One pass answers both questions the picture needs: the induced edge set (§3.2), and where the
      * cap and the depth bound cut the picture off, which each boundary node reports as a badge so
      * nobody reads the edge of the scope as the edge of the data (§1.1, §5.7).
+     *
+     * **The `+n` badge counts only neighbours this caller can see**, and that is load-bearing rather
+     * than incidental (R8, spec §7: *"a `+3` that includes two invisible neighbours is a disclosure
+     * with a number attached"*). Both statements filter **both** endpoints, so an invisible neighbour
+     * is not a row here, is never put in [Neighbourhood.cutNeighbours], and is therefore not counted.
+     *
+     * This is the reason these two statements and `RequirementCardCypher.NODES` may only ever be
+     * filtered together: filtering the cards alone would leave invisible objects admitted by the walk
+     * and dropped from the node list, moving each one from *invisible* into the badge — a number that
+     * grows by exactly the count of what the reader may not see, which is worse than not filtering.
      */
-    private suspend fun readNeighbourhood(admitted: List<String>, maxNodes: Int): Neighbourhood {
+    private suspend fun readNeighbourhood(
+        admitted: List<String>,
+        access: AccessSet,
+        maxNodes: Int,
+    ): Neighbourhood {
         val inside = admitted.toSet()
         val limit = maxNodes.toLong() * EDGES_PER_NODE
 
-        val out = readNeighbourRows(DependencyGraphCypher.OUT_NEIGHBOURS, admitted, limit)
-        val incoming = readNeighbourRows(DependencyGraphCypher.IN_NEIGHBOURS, admitted, limit)
+        val out = readNeighbourRows(DependencyGraphCypher.OUT_NEIGHBOURS, admitted, limit, access)
+        val incoming = readNeighbourRows(DependencyGraphCypher.IN_NEIGHBOURS, admitted, limit, access)
         val truncated = out.size.toLong() >= limit || incoming.size.toLong() >= limit
 
         // Deduplicated: parallel `refersTo` pairs are MERGEd at import and so should not exist, but
@@ -237,9 +256,9 @@ public class DependencyGraphProjection(
         return Neighbourhood(edges.toList(), cut, truncated)
     }
 
-    private suspend fun readSeeds(seedIds: List<String>): List<String> =
+    private suspend fun readSeeds(seedIds: List<String>, access: AccessSet): List<String> =
         graphDriver.executeRead(
-            Query(DependencyGraphCypher.SEEDS, mapOf("ids" to seedIds.distinct())),
+            DependencyGraphCypher.SEEDS, mapOf("ids" to seedIds.distinct()), access,
         ) { records -> records.map { it.get("id").asString() } }
 
     // --- Levels -------------------------------------------------------------------------------

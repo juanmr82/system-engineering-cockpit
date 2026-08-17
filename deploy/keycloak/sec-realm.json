@@ -1,0 +1,136 @@
+{
+  "realm": "sec",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "registrationAllowed": false,
+  "loginTheme": "keycloak",
+
+  "roles": {
+    "realm": [
+      {
+        "name": "sec-user",
+        "description": "Read what their groups allow; write Tier 2 (comments, reviews, tags) on objects they can see."
+      },
+      {
+        "name": "sec-admin",
+        "description": "Everything under /settings: importer configuration, module settings, running an import. Does not imply visibility."
+      },
+      {
+        "name": "sec-access-manager",
+        "description": "The Access views: categories, grants, containers, import defaults, reconcile. Does not imply visibility."
+      },
+      {
+        "name": "sec-auditor",
+        "description": "Phase 7. Read the access configuration and the audit trail; change nothing."
+      }
+    ]
+  },
+
+  "groups": [
+    {
+      "name": "SEC",
+      "path": "/SEC",
+      "subGroups": [
+        { "name": "Thermal", "path": "/SEC/Thermal" },
+        { "name": "Avionics", "path": "/SEC/Avionics" },
+        { "name": "All-Read", "path": "/SEC/All-Read" }
+      ]
+    }
+  ],
+
+  "clients": [
+    {
+      "clientId": "sec-backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "sec-backend-dev-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8080/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*##http://localhost:4200/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
+          "name": "realm roles (id token)",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    }
+  ],
+
+  "users": [
+    {
+      "username": "sec-dev-user",
+      "enabled": true,
+      "email": "sec-dev-user@example.com",
+      "emailVerified": true,
+      "firstName": "Dana",
+      "lastName": "Developer",
+      "credentials": [
+        { "type": "password", "value": "sec-dev-user", "temporary": false }
+      ],
+      "realmRoles": ["sec-user"],
+      "groups": ["/SEC/Thermal"]
+    },
+    {
+      "username": "sec-dev-admin",
+      "enabled": true,
+      "email": "sec-dev-admin@example.com",
+      "emailVerified": true,
+      "firstName": "Avery",
+      "lastName": "Administrator",
+      "credentials": [
+        { "type": "password", "value": "sec-dev-admin", "temporary": false }
+      ],
+      "realmRoles": ["sec-user", "sec-admin", "sec-access-manager"],
+      "groups": ["/SEC/All-Read"]
+    },
+    {
+      "username": "sec-dev-nogroup",
+      "enabled": true,
+      "email": "sec-dev-nogroup@example.com",
+      "emailVerified": true,
+      "firstName": "Noel",
+      "lastName": "Nogroup",
+      "credentials": [
+        { "type": "password", "value": "sec-dev-nogroup", "temporary": false }
+      ],
+      "realmRoles": ["sec-user"],
+      "groups": []
+    }
+  ]
+}

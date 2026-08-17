@@ -1,0 +1,115 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, httpResource } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { AuthStore } from '../../core/auth/auth-store';
+import { Role } from '../../core/auth/roles';
+import type {
+  AccessCategory,
+  AccessCategoryListResponse,
+  AccessDefaultsResponse,
+  AccessReconcileResponse,
+  ContainersResponse,
+  CreateAccessCategoryRequest,
+  GroupListResponse,
+  GroupWithGrants,
+  SaveAccessDefaultsRequest,
+  SaveDirectCategoriesRequest,
+  SaveDirectCategoriesResponse,
+  SaveGrantsRequest,
+  SetSeesAllRequest,
+  UnassignedContainersResponse,
+  UpdateAccessCategoryRequest,
+} from './access.model';
+
+/**
+ * The one HTTP client for the Access views (CLAUDE.md §11) — built out screen by screen alongside
+ * `access.model.ts`, today only categories. `httpResource` for every GET, `HttpClient` for
+ * writes; a caller reloads the resource after a successful write rather than hand-patching a row
+ * (same discipline `ModulesApiService` follows), because the server, not the client, is truth.
+ *
+ * Every `/api/v1/access/*` route sits behind `requireRole(Role.ACCESS_MANAGER)` on the backend
+ * (unlike `ModulesApiService`'s routes), so every read here is gated on the caller's own role the
+ * same way `AccessBadgeService`'s summary request already is — otherwise a screen's own role
+ * self-check (rendering `RefusalPanel` instead of its content) would still leave the resource
+ * firing a wasted `403` underneath it on every load.
+ */
+@Injectable({ providedIn: 'root' })
+export class AccessApiService {
+  private readonly http = inject(HttpClient);
+  private readonly authStore = inject(AuthStore);
+
+  readonly categories = httpResource<AccessCategoryListResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/categories' : undefined,
+  );
+
+  createCategory(body: CreateAccessCategoryRequest): Promise<AccessCategory> {
+    return firstValueFrom(this.http.post<AccessCategory>('/api/v1/access/categories', body));
+  }
+
+  renameCategory(ref: string, body: UpdateAccessCategoryRequest): Promise<AccessCategory> {
+    return firstValueFrom(this.http.patch<AccessCategory>(`/api/v1/access/categories/${ref}`, body));
+  }
+
+  deleteCategory(ref: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`/api/v1/access/categories/${ref}`));
+  }
+
+  // -- Groups & Grants (spec §10.2 screen 2) --------------------------------------------------
+
+  readonly groups = httpResource<GroupListResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/groups' : undefined,
+  );
+
+  saveGrants(ref: string, body: SaveGrantsRequest): Promise<GroupWithGrants> {
+    return firstValueFrom(this.http.put<GroupWithGrants>(`/api/v1/access/groups/${ref}/grants`, body));
+  }
+
+  /** A deliberately separate write from `saveGrants` (spec §9: "audited loudly"). */
+  setSeesAll(ref: string, body: SetSeesAllRequest): Promise<GroupWithGrants> {
+    return firstValueFrom(this.http.patch<GroupWithGrants>(`/api/v1/access/groups/${ref}`, body));
+  }
+
+  // -- Unassigned containers (spec §10.2 screen 3) ---------------------------------------------
+
+  /** `?state=unassigned` named explicitly even though the backend defaults to it — the same
+   *  "state as data, not assumed" reasoning `ApiPaths.ACCESS_CONTAINERS`'s own doc comment gives
+   *  for the query parameter existing at all. */
+  readonly unassignedContainers = httpResource<UnassignedContainersResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/containers?state=unassigned' : undefined,
+  );
+
+  saveContainerCategories(ref: string, body: SaveDirectCategoriesRequest): Promise<SaveDirectCategoriesResponse> {
+    return firstValueFrom(
+      this.http.put<SaveDirectCategoriesResponse>(`/api/v1/access/containers/${ref}/categories`, body),
+    );
+  }
+
+  /** Scoped to one source (spec §8.3 "Scope it") — the Unassigned screen's own auto-reconcile
+   *  after a bulk assign calls this once per distinct source among the containers just touched. */
+  reconcileSource(sourceId: string): Promise<AccessReconcileResponse> {
+    return firstValueFrom(
+      this.http.post<AccessReconcileResponse>(
+        `/api/v1/access/reconcile?scope=source&source=${encodeURIComponent(sourceId)}`,
+        null,
+      ),
+    );
+  }
+
+  // -- Containers (spec §10.2 screen 5) — "change the grant of any container on demand" -------
+
+  /** `?state=all`, unlike `unassignedContainers` above: every container, categorised or not —
+   *  the Unassigned screen stays exactly what it was, this is a second, general way in. */
+  readonly containers = httpResource<ContainersResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/containers?state=all' : undefined,
+  );
+
+  // -- Import defaults (spec §10.2 screen 4) ---------------------------------------------------
+
+  readonly defaults = httpResource<AccessDefaultsResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/defaults' : undefined,
+  );
+
+  saveDefaults(body: SaveAccessDefaultsRequest): Promise<AccessDefaultsResponse> {
+    return firstValueFrom(this.http.put<AccessDefaultsResponse>('/api/v1/access/defaults', body));
+  }
+}

@@ -12,6 +12,10 @@ import com.sec.source.windchill.WindchillExportFailure
 import com.sec.source.windchill.WindchillExportParser
 import com.sec.source.windchill.WindchillExportProblem
 import com.sec.source.windchill.WindchillImporter
+import com.sec.security.AccessResolver
+import com.sec.security.Role
+import com.sec.security.accessSet
+import com.sec.security.requireRole
 import com.sec.source.windchill.WindchillProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receiveText
@@ -52,6 +56,7 @@ public fun Route.windchillRoutes(
     settings: WindchillSettings,
     projection: WindchillProjection,
     importRunService: ImportRunService,
+    accessResolver: AccessResolver,
 ) {
 
     route(ApiPaths.WINDCHILL) {
@@ -61,71 +66,82 @@ public fun Route.windchillRoutes(
             call.respond(WindchillHealthDto(configured = settings.isConfigured, host = settings.host))
         }
 
+        // The 20 000-row server cap is applied *after* filtering, which is why the access set goes
+        // into the statement rather than the rows being filtered afterwards: a cap counted over
+        // documents the caller cannot see would leak a total through its own warning (spec §7).
         get("/documents") {
-            call.respond(projection.listDocuments())
+            call.respond(projection.listDocuments(call.accessSet(accessResolver)))
         }
 
         /**
-         * Upload an export and import it.
-         *
-         * Three failures, three answers, and they are kept apart because the fix differs:
-         * a file that is not JSON is the exporter's problem, a file that is JSON but not an OData
-         * collection is the wrong file, and a file with no documents in it is an export that failed.
-         * The last is refused rather than run — see [WindchillExportParser] on why importing it
-         * would delete every document in the graph.
+         * Everything that changes this source, which here is exactly one route — and it is the
+         * sharpest one in the backend: the export is the whole truth, so this upload *deletes*
+         * every document the file does not mention (ADR 0015 §7). Until now it was reachable by
+         * any signed-in user, which was the standing gap ADR 0014 point 9 named.
          */
-        post("/import") {
-            val body = call.receiveText()
+        requireRole(Role.ADMIN) {
+            /**
+             * Upload an export and import it.
+             *
+             * Three failures, three answers, and they are kept apart because the fix differs:
+             * a file that is not JSON is the exporter's problem, a file that is JSON but not an OData
+             * collection is the wrong file, and a file with no documents in it is an export that failed.
+             * The last is refused rather than run — see [WindchillExportParser] on why importing it
+             * would delete every document in the graph.
+             */
+            post("/import") {
+                val body = call.receiveText()
 
-            if (body.length > MAX_UPLOAD_CHARS) {
-                call.respondProblem(
-                    HttpStatusCode.PayloadTooLarge,
-                    "That export is too large",
-                    "The file is larger than this server accepts in one upload. Export fewer " +
-                        "documents at a time, or ask for the limit to be raised.",
-                    ProblemType.VALIDATION,
-                )
-                return@post
-            }
+                if (body.length > MAX_UPLOAD_CHARS) {
+                    call.respondProblem(
+                        HttpStatusCode.PayloadTooLarge,
+                        "That export is too large",
+                        "The file is larger than this server accepts in one upload. Export fewer " +
+                            "documents at a time, or ask for the limit to be raised.",
+                        ProblemType.VALIDATION,
+                    )
+                    return@post
+                }
 
-            val export = WindchillExportParser.parse(body).getOrElse { cause ->
-                val problem = (cause as? WindchillExportFailure)?.problem
-                call.respondProblem(
-                    HttpStatusCode.BadRequest,
-                    "That file is not a Windchill export",
-                    describe(problem),
-                    ProblemType.VALIDATION,
-                )
-                return@post
-            }
+                val export = WindchillExportParser.parse(body).getOrElse { cause ->
+                    val problem = (cause as? WindchillExportFailure)?.problem
+                    call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "That file is not a Windchill export",
+                        describe(problem),
+                        ProblemType.VALIDATION,
+                    )
+                    return@post
+                }
 
-            when (val result = importRunService.start(WindchillImporter.ID, export)) {
-                is StartResult.Started -> call.respond(
-                    HttpStatusCode.Accepted,
-                    WindchillImportStartedDto(
-                        runId = result.runId,
-                        documents = export.records.size,
-                        paged = export.nextLink != null,
-                        warnings = export.warnings,
-                    ),
-                )
+                when (val result = importRunService.start(WindchillImporter.ID, export)) {
+                    is StartResult.Started -> call.respond(
+                        HttpStatusCode.Accepted,
+                        WindchillImportStartedDto(
+                            runId = result.runId,
+                            documents = export.records.size,
+                            paged = export.nextLink != null,
+                            warnings = export.warnings,
+                        ),
+                    )
 
-                // The console's right reaction is to show that run: an import is exactly what was
-                // asked for and one is happening. The uploaded file is dropped, deliberately —
-                // holding it would be the staging layer this design does not have.
-                is StartResult.AlreadyRunning -> call.respondProblem(
-                    HttpStatusCode.Conflict,
-                    "An import is already running",
-                    "Windchill is already importing as ${result.runId}. Wait for it to finish, or " +
-                        "cancel it, before uploading another export.",
-                )
+                    // The console's right reaction is to show that run: an import is exactly what was
+                    // asked for and one is happening. The uploaded file is dropped, deliberately —
+                    // holding it would be the staging layer this design does not have.
+                    is StartResult.AlreadyRunning -> call.respondProblem(
+                        HttpStatusCode.Conflict,
+                        "An import is already running",
+                        "Windchill is already importing as ${result.runId}. Wait for it to finish, or " +
+                            "cancel it, before uploading another export.",
+                    )
 
-                StartResult.UnknownImporter -> call.respondProblem(
-                    HttpStatusCode.ServiceUnavailable,
-                    "The Windchill importer is not registered",
-                    "This server was started without the Windchill importer, so an export cannot " +
-                        "be imported.",
-                )
+                    StartResult.UnknownImporter -> call.respondProblem(
+                        HttpStatusCode.ServiceUnavailable,
+                        "The Windchill importer is not registered",
+                        "This server was started without the Windchill importer, so an export cannot " +
+                            "be imported.",
+                    )
+                }
             }
         }
     }

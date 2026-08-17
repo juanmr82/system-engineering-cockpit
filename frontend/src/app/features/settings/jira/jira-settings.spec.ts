@@ -3,8 +3,9 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
+import type { ImportSchedule } from '../../../core/import/import.model';
 import { JiraSettings } from './jira-settings';
-import type { JiraHealth, JiraProject, JiraProjectSettings } from './jira-settings.model';
+import type { JiraHealth, JiraProject } from './jira-settings.model';
 
 const HEALTH: JiraHealth = {
   configured: true,
@@ -14,16 +15,16 @@ const HEALTH: JiraHealth = {
   host: 'https://jira.example.com',
 };
 
-const SETTINGS: JiraProjectSettings = {
-  projectKeys: ['SCRUM', 'OTS'],
-  jql: 'project in ("SCRUM","OTS") ORDER BY key ASC',
-};
-
 const PROJECTS: JiraProject[] = [
   { key: 'SCRUM', name: 'Scrum board' },
   { key: 'OTS', name: 'Off the shelf' },
-  { key: 'NEW', name: 'A third project' },
 ];
+
+const SCHEDULE: ImportSchedule = {
+  scheduled: true,
+  nextRunAt: '2026-08-16T18:00:00Z',
+  intervalMinutes: 60,
+};
 
 describe('JiraSettings', () => {
   let fixture: ComponentFixture<JiraSettings>;
@@ -41,18 +42,19 @@ describe('JiraSettings', () => {
   /**
    * Answer everything the page asks for on load.
    *
-   * Five requests: three resources and the two the import section needs. They are matched by URL
-   * rather than in order, because the order they are issued in is not part of the contract.
+   * Five requests: two resources, and the three the import section needs — history, importers and
+   * the schedule. They are matched by URL rather than in order, because the order they are issued
+   * in is not part of the contract.
    */
-  const answer = async (settings: JiraProjectSettings = SETTINGS): Promise<void> => {
+  const answer = async (schedule: ImportSchedule = SCHEDULE): Promise<void> => {
     httpTesting.expectOne('/api/v1/jira/health').flush(HEALTH);
-    httpTesting.expectOne('/api/v1/jira/settings').flush(settings);
     httpTesting.expectOne('/api/v1/jira/projects').flush(PROJECTS);
     httpTesting.expectOne('/api/v1/jira/columns').flush([]);
     httpTesting
       .expectOne((request) => request.url.startsWith('/api/v1/import/runs'))
       .flush([]);
     httpTesting.expectOne('/api/v1/import/importers').flush([]);
+    httpTesting.expectOne('/api/v1/import/jira/schedule').flush(schedule);
     await settle();
   };
 
@@ -90,54 +92,33 @@ describe('JiraSettings', () => {
     expect(renderedText().toLowerCase()).not.toContain('token');
   });
 
-  /** The single best debugging aid in the feature: exactly what the next import will send. */
-  it('shows the query the configured projects produce', async () => {
+  /** ADR 0018: a diagnostic, not a picker — every project the token can see is listed. */
+  it('lists the projects the token can currently see', async () => {
     await answer();
 
-    expect(renderedText()).toContain('project in ("SCRUM","OTS") ORDER BY key ASC');
+    expect(renderedText()).toContain('SCRUM');
+    expect(renderedText()).toContain('OTS');
   });
 
-  /**
-   * One gesture, one request, one transaction (R7).
-   *
-   * There is no Save button for the chip list and no buffer behind it, which is what keeps this
-   * page free of an exit guard: what a user saw happen is what was written.
-   */
-  it('saves a removed project immediately, and says what it will cost', async () => {
+  /** There is no project gate any more (ADR 0018): an import is always available to run. */
+  it('the import button is never disabled for lack of configured projects', async () => {
     await answer();
-
-    element().querySelector<HTMLButtonElement>('[aria-label="Remove OTS"]')?.click();
-    await settle();
-
-    const request = httpTesting.expectOne(
-      (candidate) => candidate.url === '/api/v1/jira/settings' && candidate.method === 'PUT',
-    );
-    expect(request.request.body).toEqual({ projectKeys: ['SCRUM'] });
-
-    request.flush({ projectKeys: ['SCRUM'], jql: 'project in ("SCRUM") ORDER BY key ASC' });
-    await settle();
-
-    // The server owns the preview, so the new state is read back rather than assembled here.
-    httpTesting
-      .expectOne('/api/v1/jira/settings')
-      .flush({ projectKeys: ['SCRUM'], jql: 'project in ("SCRUM") ORDER BY key ASC' });
-    await settle();
-
-    expect(renderedText()).toContain('Issues from OTS will be deleted from the cockpit');
-  });
-
-  /**
-   * An import across a whole JIRA instance is a thing this application never does.
-   *
-   * The button says why it is disabled rather than simply being dead — the tooltip is the whole
-   * difference between a control a user can act on and one they file a bug about.
-   */
-  it('will not start an import with no projects configured', async () => {
-    await answer({ projectKeys: [], jql: null });
 
     const start = button('Import JIRA issues');
-    expect(start?.disabled).toBe(true);
-    expect(start?.getAttribute('mattooltip') ?? renderedText()).toContain('project');
+    expect(start?.disabled).toBe(false);
+  });
+
+  it('shows when the next scheduled import will run', async () => {
+    await answer();
+
+    expect(renderedText()).toContain('Next scheduled import');
+    expect(renderedText()).toContain('2026-08-16T18:00:00Z');
+  });
+
+  it('says so when no periodic import is configured', async () => {
+    await answer({ scheduled: false, nextRunAt: null, intervalMinutes: null });
+
+    expect(renderedText()).toContain('No periodic import is configured');
   });
 
   it('starts an import and reports it as running', async () => {

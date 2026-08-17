@@ -68,35 +68,9 @@
   color: var(--sec-highlight-error);
 }
 
-// The JQL preview: the single best debugging aid in this feature, so it is shown as what it is —
-// a machine string, monospaced, selectable, wrapping rather than truncating.
-.sec-jira-settings__jql {
-  @include sec.mono;
-
-  margin: 0;
-  padding: 8px 10px;
-  background: var(--sec-wash);
-  border: var(--sec-hairline) solid var(--sec-line-soft);
-  border-radius: var(--sec-radius);
-  font-size: var(--sec-text-sm);
-  overflow-wrap: anywhere;
-  inline-size: 100%;
-}
-
 .sec-jira-settings__columns {
   margin: 0;
   font-size: var(--sec-text-sm);
-}
-
-.sec-jira-settings__add {
-  inline-size: 320px;
-}
-
-// A consequence, not a failure: the import that will act on it has not run yet.
-.sec-jira-settings__warning {
-  @include sec.note-panel;
-
-  inline-size: 100%;
 }
 
 .sec-jira-settings__error {

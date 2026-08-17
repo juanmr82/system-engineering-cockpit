@@ -3,6 +3,8 @@ package com.sec.api.routes
 import com.sec.api.ApiPaths
 import com.sec.api.respondProblem
 import com.sec.domain.Ref
+import com.sec.security.AccessResolver
+import com.sec.security.accessSet
 import com.sec.source.doors.StatisticsProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -21,17 +23,24 @@ import io.ktor.server.routing.route
  * Both are pure reads. Nothing in this feature writes to the graph, which is asserted directly
  * rather than assumed (§13 criterion 14).
  */
-public fun Route.statisticsRoutes(statisticsProjection: StatisticsProjection) {
+public fun Route.statisticsRoutes(
+    statisticsProjection: StatisticsProjection,
+    accessResolver: AccessResolver,
+) {
     route("${ApiPaths.STATISTICS}/requirements") {
+        // Every number on this page is computed over the graph this caller can see — the census,
+        // every band, the TBD totals and the cycle findings alike (R8, spec §7 "Statistics"). They
+        // were already computed on read (R2), so this is a parameter reaching them, not a redesign.
         get {
+            val access = call.accessSet(accessResolver)
             when (val scope = call.moduleScope()) {
                 is ModuleScope.Malformed -> call.respondMalformedModule()
 
                 is ModuleScope.All ->
-                    call.respond(requireNotNull(statisticsProjection.getStatistics(null)))
+                    call.respond(requireNotNull(statisticsProjection.getStatistics(null, access)))
 
                 is ModuleScope.One -> {
-                    val statistics = statisticsProjection.getStatistics(scope.moduleId)
+                    val statistics = statisticsProjection.getStatistics(scope.moduleId, access)
                         ?: return@get call.respondModuleGone()
                     call.respond(statistics)
                 }
@@ -39,10 +48,12 @@ public fun Route.statisticsRoutes(statisticsProjection: StatisticsProjection) {
         }
 
         get("/cycles") {
+            val access = call.accessSet(accessResolver)
             when (val scope = call.moduleScope()) {
                 is ModuleScope.Malformed -> call.respondMalformedModule()
-                is ModuleScope.All -> call.respond(statisticsProjection.getCycles(null))
-                is ModuleScope.One -> call.respond(statisticsProjection.getCycles(scope.moduleId))
+                is ModuleScope.All -> call.respond(statisticsProjection.getCycles(null, access))
+                is ModuleScope.One ->
+                    call.respond(statisticsProjection.getCycles(scope.moduleId, access))
             }
         }
     }

@@ -1,0 +1,19 @@
+@use 'mixins' as sec;
+
+.sec-field-readout {
+  @include sec.field-readout;
+
+  margin-bottom: 6px;
+}
+
+.sec-category-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sec-category-dialog__error {
+  @include sec.error-panel;
+
+  margin: 8px 0 0;
+}

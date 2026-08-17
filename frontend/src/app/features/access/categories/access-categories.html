@@ -1,0 +1,53 @@
+@if (checkingAccess()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (!canManage()) {
+  <sec-refusal-panel title="Categories" />
+} @else {
+  <div class="sec-access-categories">
+    <header class="sec-access-categories__header">
+      <p class="sec-access-categories__eyebrow">Access</p>
+      <h1 class="sec-access-categories__title">Categories</h1>
+    </header>
+
+    @if (api.categories.isLoading() && !api.categories.hasValue()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (api.categories.error()) {
+      <div class="sec-access-categories__error" role="alert">
+        <p>Couldn't load categories.</p>
+        <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else {
+      <div class="sec-access-categories__bar">
+        <button mat-flat-button type="button" (click)="openCreate()">
+          <mat-icon svgIcon="plus" />
+          New category
+        </button>
+        <p class="sec-access-categories__stats">
+          <span><b>{{ rows().length }}</b> categories</span>
+        </p>
+      </div>
+
+      @if (actionError(); as message) {
+        <p class="sec-access-categories__error" role="alert">{{ message }}</p>
+      }
+
+      @if (rows().length === 0) {
+        <sec-empty-state
+          title="No access categories yet"
+          description="Create one to start granting visibility to modules, projects and documents."
+        />
+      } @else {
+        <div class="sec-access-categories__table-scroll sec-grid sec-grid--middle">
+          <ag-grid-angular
+            class="sec-access-categories__grid"
+            [gridOptions]="gridOptions"
+            [columnDefs]="columnDefs"
+            [rowData]="rows()"
+            [context]="cellContext"
+            [getRowId]="getRowId"
+          />
+        </div>
+      }
+    }
+  </div>
+}

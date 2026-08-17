@@ -1,0 +1,14 @@
+@if (saving()) {
+  <mat-progress-spinner mode="indeterminate" diameter="18" />
+} @else {
+  <button
+    mat-icon-button
+    type="button"
+    [disabled]="!dirty()"
+    [attr.aria-label]="'Save grants for ' + name()"
+    matTooltip="Save grants"
+    (click)="save()"
+  >
+    <mat-icon svgIcon="save" />
+  </button>
+}

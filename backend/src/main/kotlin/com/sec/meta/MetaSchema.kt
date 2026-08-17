@@ -1,7 +1,11 @@
 package com.sec.meta
 
+import com.sec.domain.GroupProp.KEY as GROUP_KEY
 import com.sec.domain.MetaProp.ATTRIBUTE_NAME
+import com.sec.domain.MetaProp.KEY as ACCESS_CATEGORY_KEY
+import com.sec.domain.NodeLabel.ACCESS_CATEGORY
 import com.sec.domain.NodeLabel.ATTRIBUTE_SETTING
+import com.sec.domain.NodeLabel.GROUP
 import com.sec.domain.NodeLabel.META
 import com.sec.domain.NodeLabel.POLICY
 import com.sec.domain.Prop.META_ID
@@ -13,7 +17,11 @@ import org.neo4j.driver.Query
 private val logger = KotlinLogging.logger {}
 
 /**
- * Schema for the `:__Meta` labels, and for those only.
+ * Schema for the `:__Meta` labels, plus the two access-control nodes access-control.md §4.3
+ * deliberately places here alongside them: `:__Group` and (later, phase 3) `:__AccessDefault` are
+ * application-owned rather than `:__Meta` (ADR 0016 §6.2), but they are schema this backend owns
+ * and applies at the same startup pass, so they live beside it rather than inventing a second file
+ * for two constraints.
  *
  * The backend owns Tier-2 schema; the importers own the schema for every imported label
  * (CLAUDE.md §10). That split must not blur — nothing here may mention `:SEItem`, `:DOORSObject`
@@ -56,6 +64,20 @@ public object MetaSchema {
         CYPHER 25
         CREATE INDEX meta_attribute_setting IF NOT EXISTS
         FOR (s:$ATTRIBUTE_SETTING) ON (s.$ATTRIBUTE_NAME)
+        """,
+        // access-control.md §4.3. __metaId's constraint above already covers :__AccessCategory as
+        // a :__Meta node; this is the *second*, human-typed key an admin actually names a category
+        // by, and Community has no composite constraint to lean on instead.
+        """
+        CYPHER 25
+        CREATE CONSTRAINT access_category_key IF NOT EXISTS
+        FOR (c:$ACCESS_CATEGORY) REQUIRE c.$ACCESS_CATEGORY_KEY IS UNIQUE
+        """,
+        // :__Group is not :__Meta (ADR 0016 §6.2) but is still this backend's own schema to apply.
+        """
+        CYPHER 25
+        CREATE CONSTRAINT group_key IF NOT EXISTS
+        FOR (g:$GROUP) REQUIRE g.$GROUP_KEY IS UNIQUE
         """,
     )
 

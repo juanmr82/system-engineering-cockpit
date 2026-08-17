@@ -2,6 +2,7 @@ package com.sec.api.routes
 
 import com.sec.config.Neo4jSettings
 import com.sec.config.WindchillSettings
+import com.sec.security.AccessResolver
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportContext
 import com.sec.importer.ImportJob
@@ -199,6 +200,11 @@ class WindchillRoutesTest {
                     settings,
                 ),
                 service,
+                // Same arrangement, same reason: these routes reach no read path, so the resolver
+                // is never asked to resolve anything.
+                AccessResolver(
+                    GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                ),
             )
         }
     }

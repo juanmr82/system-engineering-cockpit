@@ -1,6 +1,7 @@
 package com.sec.api
 
 import com.sec.api.routes.respondPackagedUi
+import com.sec.security.KeycloakUnavailableException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -36,6 +37,18 @@ public fun Application.configureProblemDetails() {
                 HttpStatusCode.NotFound,
                 "Not found",
                 "The requested resource does not exist.",
+            )
+        }
+
+        // Thrown by Oidc when Keycloak has not answered the discovery document, at startup or
+        // since (docs/features/access-control.md §12). Never a 500: this is an outage in a
+        // dependency, not a bug in this service.
+        exception<KeycloakUnavailableException> { call, cause ->
+            logger.warn(cause) { "Keycloak unreachable" }
+            call.respondProblem(
+                HttpStatusCode.ServiceUnavailable,
+                "Identity provider unreachable",
+                "Keycloak is not reachable right now. Try signing in again shortly.",
             )
         }
 

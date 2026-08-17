@@ -1,0 +1,73 @@
+@if (checkingAccess()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (!canManage()) {
+  <sec-refusal-panel title="Not assigned" />
+} @else {
+  <div class="sec-access-unassigned">
+    <header class="sec-access-unassigned__header">
+      <p class="sec-access-unassigned__eyebrow">Access</p>
+      <h1 class="sec-access-unassigned__title">Not assigned</h1>
+    </header>
+
+    @if (api.unassignedContainers.isLoading() && !api.unassignedContainers.hasValue()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (api.unassignedContainers.error()) {
+      <div class="sec-access-unassigned__error" role="alert">
+        <p>Couldn't load the unassigned queue.</p>
+        <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else if (allRows().length === 0) {
+      <sec-empty-state
+        title="Nothing waiting"
+        description="Every imported container already carries a category. New imports appear here as soon as they land."
+      />
+    } @else {
+      <div class="sec-access-unassigned__bar">
+        <mat-form-field appearance="outline" class="sec-access-unassigned__search" subscriptSizing="dynamic">
+          <input
+            matInput
+            type="text"
+            placeholder="Search"
+            aria-label="Search containers"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+          />
+        </mat-form-field>
+
+        <button
+          mat-flat-button
+          type="button"
+          [disabled]="selectedCount() === 0 || assigning()"
+          (click)="openAssign()"
+        >
+          {{
+            selectedCount() === 0
+              ? 'Assign categories'
+              : 'Assign categories to ' + selectedCount()
+          }}
+        </button>
+
+        <p class="sec-access-unassigned__stats">
+          <span><b>{{ filtered().length }}</b> shown</span>
+          <span><b>{{ allRows().length }}</b> not assigned</span>
+        </p>
+      </div>
+
+      @if (filtered().length === 0) {
+        <p class="sec-access-unassigned__no-match">No containers match "{{ search() }}".</p>
+      } @else {
+        <div class="sec-access-unassigned__table-scroll sec-grid sec-grid--middle">
+          <ag-grid-angular
+            class="sec-access-unassigned__grid"
+            [gridOptions]="gridOptions"
+            [columnDefs]="columnDefs"
+            [rowData]="filtered()"
+            [getRowId]="getRowId"
+            (gridReady)="onGridReady($event)"
+            (selectionChanged)="onSelectionChanged()"
+          />
+        </div>
+      }
+    }
+  </div>
+}

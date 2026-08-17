@@ -135,9 +135,10 @@ public object WindchillCypher {
      * `coalesce` on the order key, because a document imported before the derivation existed has
      * none — the ordering is then arbitrary rather than absent, and a re-import fixes it.
      */
-    public const val LIST_DOCUMENTS: String = """
+    public val LIST_DOCUMENTS: String = """
         CYPHER 25
         MATCH (d:$WINDCHILL_DOCUMENT)
+        WHERE ${AccessCypher.visible("d")}
         RETURN d.$ID AS id,
                d.$OID AS oid,
                d.$FOLDER_LOCATION AS folderLocation,

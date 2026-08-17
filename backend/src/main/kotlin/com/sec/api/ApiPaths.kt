@@ -26,6 +26,18 @@ public object ApiPaths {
 
     public const val HEALTH: String = "$V1/health"
     public const val READY: String = "$V1/ready"
+
+    /**
+     * The session (ADR 0017). [AUTH_LOGIN] and [AUTH_CALLBACK] are the only two routes reachable
+     * with no session — declared here, beside the paths themselves, for the same reason every
+     * other fixed segment is (CLAUDE.md §5, ADR 0010). [AUTH_ME] and [AUTH_LOGOUT] require one.
+     */
+    public const val AUTH: String = "$V1/auth"
+    public const val AUTH_LOGIN: String = "$AUTH/login"
+    public const val AUTH_CALLBACK: String = "$AUTH/callback"
+    public const val AUTH_LOGOUT: String = "$AUTH/logout"
+    public const val AUTH_ME: String = "$AUTH/me"
+
     public const val CONFIG: String = "$V1/config"
     public const val MODULES: String = "$V1/modules"
     public const val ITEMS: String = "$V1/items"
@@ -38,15 +50,6 @@ public object ApiPaths {
     public const val JIRA: String = "$V1/jira"
 
     public const val JIRA_HEALTH: String = "$JIRA/health"
-
-    /**
-     * The configured project keys (spec §10.1, §14.3).
-     *
-     * Application configuration held in the graph rather than in a file, because a user changes it
-     * during normal work — the middle row of CLAUDE.md's state table. Read and replaced whole; there
-     * is no partial update, because the user's order is part of the value.
-     */
-    public const val JIRA_SETTINGS: String = "$JIRA/settings"
 
     /**
      * The Issues table's rows (spec §14.4).
@@ -81,11 +84,11 @@ public object ApiPaths {
     public const val JIRA_COLUMN_DEFAULTS: String = "$JIRA_COLUMNS/defaults"
 
     /**
-     * The live project list, proxied from JIRA (spec §13.5).
+     * The live project list, proxied from JIRA — a read-only diagnostic (ADR 0018).
      *
-     * The one JIRA route that is a proxy rather than a read of our own graph, and it has to be: the
-     * settings page offers projects that have never been imported, which is the whole point of
-     * choosing one.
+     * The one JIRA route that is a proxy rather than a read of our own graph. There is no picker
+     * behind it any more: the importer brings in everything the token can see, and this is how the
+     * settings page still answers "what will that actually be" without a second copy of the answer.
      */
     public const val JIRA_PROJECTS: String = "$JIRA/projects"
 
@@ -130,6 +133,62 @@ public object ApiPaths {
 
     /** Run resources, addressed by the `run-<uuid>` this application minted. */
     public const val IMPORT_RUNS: String = "$IMPORT/runs"
+
+    /**
+     * The Access views (spec §9, §10.2). `AccessAdminService` (phase 6) builds this one screen at
+     * a time — [ACCESS_CATEGORIES] first; groups/grants, containers and defaults follow.
+     */
+    public const val ACCESS: String = "$V1/access"
+
+    /**
+     * Runs [com.sec.security.AccessReconciler] (§8.3): `?scope=all` (every registered source) or
+     * `?scope=source&source=<id>` (one — the import-pipeline hook's own scope, exposed here too so
+     * `sec-import-doors.ps1` can ask for exactly what its run touched). Synchronous today — it
+     * returns the counts directly rather than a run id on the SSE stream, unlike the spec's own
+     * sketch, because a reconcile pass is index-driven and batched, not the minutes-long kind of
+     * work `ImportRunService` exists for. Revisit if a deployment's pass is slow enough to want one.
+     */
+    public const val ACCESS_RECONCILE: String = "$ACCESS/reconcile"
+
+    /**
+     * The Categories screen (spec §10.2 screen 1): `GET`/`POST` here, `PATCH`/`DELETE` at
+     * `$ACCESS_CATEGORIES/{ref}`. `DELETE` is `409` while any object or grant still references the
+     * category, per [com.sec.api.ProblemType.ACCESS_CATEGORY_IN_USE].
+     */
+    public const val ACCESS_CATEGORIES: String = "$ACCESS/categories"
+
+    /**
+     * The Grants screen (spec §10.2 screen 2): `GET` here, `PUT $ACCESS_GROUPS/{ref}/grants` (the
+     * whole grant set, one group, one transaction — R7) and `PATCH $ACCESS_GROUPS/{ref}` (`seesAll`
+     * only). `{ref}` is a group's `key`, not an `__id` — groups have no `__metaId` either.
+     */
+    public const val ACCESS_GROUPS: String = "$ACCESS/groups"
+
+    /**
+     * The Unassigned queue (spec §10.2 screen 3): `GET ?state=unassigned&source=&q=` here,
+     * `PUT $ACCESS_CONTAINERS/{ref}/categories` for the whole direct set (R7). Deliberately exempt
+     * from the visibility predicate (`docs/features/access-control.md` §16.2a) — the one screen an
+     * access manager needs before they can grant themselves anything else.
+     */
+    public const val ACCESS_CONTAINERS: String = "$ACCESS/containers"
+
+    /**
+     * The single-item escape hatch (spec §8.1): `PUT $ACCESS_ITEMS/{ref}/categories`, the exact
+     * same write [ACCESS_CONTAINERS]'s categories route makes — see
+     * [com.sec.graph.cypher.AccessCypher.REPLACE_DIRECT_CATEGORIES]'s own doc comment for why one
+     * statement serves both anchor shapes.
+     */
+    public const val ACCESS_ITEMS: String = "$ACCESS/items"
+
+    /**
+     * The Import defaults screen (spec §10.2 screen 4): `GET`/`PUT`, per `(sourceId,
+     * containerLabel)`. Empty is a legitimate, and the default, answer — a pair with no
+     * `:__AccessDefault` node yet is still a row here, `categoryRef: null`.
+     */
+    public const val ACCESS_DEFAULTS: String = "$ACCESS/defaults"
+
+    /** Counts for the Access dashboard (spec §9), computed on read (R2) — never stored. */
+    public const val ACCESS_SUMMARY: String = "$ACCESS/summary"
 
     /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and

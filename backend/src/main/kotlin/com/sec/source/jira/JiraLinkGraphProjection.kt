@@ -7,6 +7,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.JiraCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import org.neo4j.driver.Query
 import org.neo4j.driver.Value
 
@@ -37,18 +38,18 @@ public class JiraLinkGraphProjection(private val graphDriver: GraphDriver) {
      * edges rather than as an error — the column that opens this only offers the control when there
      * is something to see, but a link can be deleted between the page loading and the click.
      */
-    public suspend fun graphOf(issueId: String, depth: Int): JiraLinkGraphDto? {
+    public suspend fun graphOf(issueId: String, depth: Int, access: AccessSet): JiraLinkGraphDto? {
         val seedRef = Ref.encode(issueId)
-        val admitted = walk(issueId, depth.coerceIn(MIN_DEPTH, MAX_DEPTH))
+        val admitted = walk(issueId, depth.coerceIn(MIN_DEPTH, MAX_DEPTH), access)
 
         // The walk starts from the id it was given whether or not anything carries it, so an
         // unknown handle produces a non-empty *set* and an empty *graph*. Reading the nodes is what
         // tells the two apart, and the difference matters: a hand-edited address must be a 404,
         // never a picture of nothing offered as the answer.
-        val found = nodesOf(admitted)
+        val found = nodesOf(admitted, access)
         if (found.none { it.ref == seedRef }) return null
 
-        val links = neighboursOf(admitted)
+        val links = neighboursOf(admitted, access)
 
         // An edge belongs to the picture when both of its ends do. The rest are what each node's
         // badge counts: a link that exists and is not drawn, which is the one thing a graph must
@@ -93,7 +94,7 @@ public class JiraLinkGraphProjection(private val graphDriver: GraphDriver) {
      * `__sortKey` order, then theirs. That order is what makes the same issue draw the same diagram
      * twice — ELK is deterministic given a deterministic input, and this is the input.
      */
-    private suspend fun walk(seedId: String, depth: Int): Set<String> {
+    private suspend fun walk(seedId: String, depth: Int, access: AccessSet): Set<String> {
         val admitted = LinkedHashSet<String>()
         admitted += seedId
         var frontier = listOf(seedId)
@@ -101,7 +102,7 @@ public class JiraLinkGraphProjection(private val graphDriver: GraphDriver) {
         repeat(depth) {
             if (frontier.isEmpty() || admitted.size >= MAX_NODES) return@repeat
 
-            val next = neighboursOf(frontier.toSet())
+            val next = neighboursOf(frontier.toSet(), access)
                 .map { it.otherId }
                 .filterNot { it in admitted }
                 .distinct()
@@ -116,12 +117,11 @@ public class JiraLinkGraphProjection(private val graphDriver: GraphDriver) {
         return admitted
     }
 
-    private suspend fun neighboursOf(ids: Set<String>): List<Link> =
+    private suspend fun neighboursOf(ids: Set<String>, access: AccessSet): List<Link> =
         graphDriver.executeRead(
-            Query(
-                JiraCypher.LINK_NEIGHBOURS,
-                mapOf("ids" to ids.toList(), "limit" to NEIGHBOUR_LIMIT),
-            ),
+            JiraCypher.LINK_NEIGHBOURS,
+            mapOf("ids" to ids.toList(), "limit" to NEIGHBOUR_LIMIT),
+            access,
         ) { records ->
             records.map {
                 Link(
@@ -135,9 +135,9 @@ public class JiraLinkGraphProjection(private val graphDriver: GraphDriver) {
             }
         }
 
-    private suspend fun nodesOf(ids: Set<String>): List<JiraGraphNodeDto> =
+    private suspend fun nodesOf(ids: Set<String>, access: AccessSet): List<JiraGraphNodeDto> =
         graphDriver.executeRead(
-            Query(JiraCypher.GRAPH_NODES, mapOf("ids" to ids.toList())),
+            JiraCypher.GRAPH_NODES, mapOf("ids" to ids.toList()), access,
         ) { records ->
             records.map {
                 JiraGraphNodeDto(

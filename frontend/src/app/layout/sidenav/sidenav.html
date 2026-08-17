@@ -1,6 +1,6 @@
 <nav class="sec-sidenav" aria-label="Primary">
   <sec-logo />
-  @for (group of navigation.groups(); track group.key) {
+  @for (group of groups(); track group.key) {
     <div class="sec-sidenav__group-label">{{ group.label }}</div>
     <mat-nav-list>
       @for (item of group.items; track item.key) {
@@ -10,7 +10,10 @@
           [routerLink]="item.route"
           routerLinkActive="sec-sidenav__item--active"
         >
-          {{ item.label }}
+          <span matListItemTitle>{{ item.label }}</span>
+          @if (item.badge) {
+            <span matListItemMeta class="sec-sidenav__badge">{{ item.badge }}</span>
+          }
         </a>
       }
     </mat-nav-list>

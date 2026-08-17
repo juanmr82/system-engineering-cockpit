@@ -13,12 +13,17 @@ import com.sec.domain.GraphLevelStrategy
 import com.sec.domain.Ref
 import com.sec.domain.SaveCommentsOutcome
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessResolver
+import com.sec.security.SecPrincipal
+import com.sec.security.accessSet
+import com.sec.security.auditName
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -35,11 +40,13 @@ public fun Route.reviewRoutes(
     breakdownProjection: BreakdownProjection,
     dependencyGraphProjection: DependencyGraphProjection,
     metaWriter: MetaWriter,
+    accessResolver: AccessResolver,
 ) {
     route("${ApiPaths.MODULES}/${ApiPaths.REF}") {
         get("/objects") {
             val moduleId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            if (!doorsProjection.moduleExists(moduleId)) {
+            val access = call.accessSet(accessResolver)
+            if (!doorsProjection.moduleExists(moduleId, access)) {
                 return@get call.respondModuleNotFound()
             }
 
@@ -47,12 +54,14 @@ public fun Route.reviewRoutes(
             val limit = call.intParam("limit", default = DEFAULT_LIMIT, min = 1, max = MAX_LIMIT)
                 ?: return@get call.respondBadPaging()
 
-            call.respond(reviewProjection.getModuleObjects(moduleId, skip = skip, limit = limit))
+            call.respond(reviewProjection.getModuleObjects(moduleId, access, skip = skip, limit = limit))
         }
 
         // The save icon: every dirty comment for this module, one request, one transaction (§5.2).
         post("/comments") {
             val moduleId = call.decodeRef() ?: return@post call.respondInvalidRef()
+            val principal = call.principal<SecPrincipal>()
+                ?: error("$moduleId/comments ran without a principal despite the session guard")
             val body = call.receive<SaveCommentsRequestDto>()
 
             // Refs are decoded here, before the writer sees them, so a malformed handle is a 400
@@ -70,7 +79,10 @@ public fun Route.reviewRoutes(
                 Ref.decodeOrNull(edit.ref)?.let { MetaWriter.CommentEditInput(itemId = it, text = edit.text) }
             }
 
-            when (val outcome = metaWriter.saveComments(moduleId, edits)) {
+            val access = call.accessSet(accessResolver)
+            when (
+                val outcome = metaWriter.saveComments(moduleId, edits, access, user = principal.auditName)
+            ) {
                 is SaveCommentsOutcome.ModuleNotFound ->
                     call.respondModuleNotFound()
 
@@ -115,7 +127,9 @@ public fun Route.reviewRoutes(
     route("${ApiPaths.ITEMS}/${ApiPaths.REF}") {
         get {
             val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
-            val detail = reviewProjection.getItemDetail(itemId)
+            // 404, never 403: an object this caller may not see must be indistinguishable from one
+            // that does not exist, because a 403 confirms it exists (spec §7).
+            val detail = reviewProjection.getItemDetail(itemId, call.accessSet(accessResolver))
                 ?: return@get call.respondProblem(
                     HttpStatusCode.NotFound,
                     "Object not found",
@@ -129,7 +143,11 @@ public fun Route.reviewRoutes(
         get("/traces") {
             val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
             val incoming = call.request.queryParameters["direction"].equals("in", ignoreCase = true)
-            call.respond(reviewProjection.getTraces(itemId, incoming = incoming))
+            // Both endpoints are filtered in the statement, so a link to an object this caller
+            // cannot see is simply absent — never struck through, never "unresolved" (spec §7).
+            call.respond(
+                reviewProjection.getTraces(itemId, incoming = incoming, access = call.accessSet(accessResolver)),
+            )
         }
 
         /**
@@ -159,7 +177,12 @@ public fun Route.reviewRoutes(
                 max = BreakdownProjection.MAX_MAX_NODES,
             ) ?: return@get call.respondBadBounds()
 
-            val breakdown = breakdownProjection.getBreakdown(itemId, maxDepth = maxDepth, maxNodes = maxNodes)
+            val breakdown = breakdownProjection.getBreakdown(
+                itemId,
+                access = call.accessSet(accessResolver),
+                maxDepth = maxDepth,
+                maxNodes = maxNodes,
+            )
                 ?: return@get call.respondProblem(
                     HttpStatusCode.NotFound,
                     "Object not found",
@@ -200,6 +223,7 @@ public fun Route.reviewRoutes(
 
             val graph = dependencyGraphProjection.getGraph(
                 seedIds = listOf(itemId),
+                access = call.accessSet(accessResolver),
                 depth = depth,
                 direction = direction,
                 levelStrategy = levelStrategy,

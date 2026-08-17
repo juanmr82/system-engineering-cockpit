@@ -11,7 +11,6 @@ import com.sec.importer.ImportLogLevel
 import com.sec.source.jira.JiraGraphWriter
 import com.sec.source.jira.JiraHttpClient
 import com.sec.source.jira.JiraImporter
-import com.sec.source.jira.JiraSettingsStore
 import com.sec.source.jira.jiraJson
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -47,9 +46,8 @@ import kotlin.test.assertTrue
  * Phases 3, 4 and 5 against a real Neo4j Community image — spec §16.2 tests 1–8.
  *
  * Everything here runs the **whole importer** over a stubbed JIRA rather than calling the writer
- * directly, because three of the things most able to break are not in the Cypher: the phase order,
- * the catalogue being carried from phase 2 to phase 3, and the project list being read from the
- * graph rather than from configuration.
+ * directly, because two of the things most able to break are not in the Cypher: the phase order,
+ * and the catalogue being carried from phase 2 to phase 3.
  *
  * The riskiest statements in the product are the ones exercised here. Two of them use Cypher 25
  * features — dynamic labels and `REMOVE n[key]` — that no unit test can check, because whether the
@@ -64,14 +62,12 @@ class JiraIssueImportTest {
     ).withoutAuthentication()
 
     private lateinit var graphDriver: GraphDriver
-    private lateinit var settingsStore: JiraSettingsStore
 
     @BeforeAll
     fun setUp() {
         neo4j.start()
         graphDriver = GraphDriver(Neo4jSettings(neo4j.boltUrl, "neo4j", "neo4j", "ignored"))
         graphDriver.verifyConnectivity()
-        settingsStore = JiraSettingsStore(graphDriver)
     }
 
     @AfterAll
@@ -83,14 +79,12 @@ class JiraIssueImportTest {
     @BeforeEach
     fun reset(): Unit = runBlocking {
         graphDriver.executeWrite(Query("CYPHER 25 MATCH (n) DETACH DELETE n")) { }
-        settingsStore.saveProjectKeys(listOf(PROJECT), "test").getOrThrow()
     }
 
     // -- test 1: fresh import ---------------------------------------------------------------------
 
     @Test
     fun `a fresh import writes issues, projections and promoted edges`() = runBlocking {
-        configureEveryProject()
         val run = import(issues = fixtureIssues())
 
         assertEquals(FIXTURE_ISSUES.toLong(), run.counters["issuesSeen"])
@@ -143,7 +137,6 @@ class JiraIssueImportTest {
      */
     @Test
     fun `shared entities are one node however many issues name them`() = runBlocking {
-        configureEveryProject()
         import(issues = fixtureIssues())
 
         assertEquals(
@@ -162,7 +155,6 @@ class JiraIssueImportTest {
 
     @Test
     fun `a second identical import changes nothing`() = runBlocking {
-        configureEveryProject()
         import(issues = fixtureIssues())
         val first = graphSnapshot()
 
@@ -284,26 +276,6 @@ class JiraIssueImportTest {
         assertEquals(listOf("Someone Else"), assignees)
     }
 
-    // -- refusing to run ---------------------------------------------------------------------------
-
-    /**
-     * Spec §8: never fall back to an unbounded query over the whole instance.
-     *
-     * Checked in preflight, so it fails **before** the schema and two catalogues are written rather
-     * than at the start of the phase that takes all the time.
-     */
-    @Test
-    fun `an import with no configured projects refuses to start`() = runBlocking {
-        settingsStore.saveProjectKeys(emptyList(), "test")
-        graphDriver.executeWrite(Query("CYPHER 25 MATCH (s:__JiraSettings) DETACH DELETE s")) { }
-
-        val context = RecordingContext()
-        val failure = runCatching { importer(fixtureIssues()).run(context) }.exceptionOrNull()
-
-        assertTrue(failure is com.sec.source.jira.JiraFailure.NoProjectsConfigured, "was $failure")
-        assertEquals(0, count("MATCH (i:JiraIssue) RETURN count(i) AS n"))
-    }
-
     // -- test 4: an issue deleted in JIRA ----------------------------------------------------------
 
     /**
@@ -388,45 +360,6 @@ class JiraIssueImportTest {
             "CYPHER 25 MATCH (i:JiraIssue:__UNDEFINED) RETURN i.__id AS value",
             emptyMap(),
         ).single())
-    }
-
-    // -- test 5: a project that is no longer configured --------------------------------------------
-
-    /**
-     * Spec §16.2 test 5, both halves — the issues go, and re-ticking the project brings them back.
-     *
-     * `deletedByConfig` is a separate counter from `deleted` because the two are different news: one
-     * says JIRA lost an issue and the other says a person changed their mind. A run summary that
-     * cannot tell them apart reports a data loss every time somebody edits the settings.
-     */
-    @Test
-    fun `de-configuring a project removes its issues, and re-adding it brings them back`() = runBlocking {
-        settingsStore.saveProjectKeys(listOf(PROJECT, SECOND_PROJECT), "test").getOrThrow()
-        val both = issuesIn(PROJECT, SECOND_PROJECT)
-        import(issues = both)
-
-        val secondCount = issuesIn(SECOND_PROJECT).size
-        assertEquals(both.size, count(REAL_ISSUES))
-
-        settingsStore.saveProjectKeys(listOf(PROJECT), "test").getOrThrow()
-        val narrowed = import(issues = issuesIn(PROJECT))
-
-        assertEquals(secondCount.toLong(), narrowed.counters["deletedByConfig"])
-        assertEquals(0L, narrowed.counters["deleted"], "issues still in JIRA were counted as deleted")
-        assertEquals(
-            0,
-            count("MATCH (i:JiraIssue {__projectKey: '$SECOND_PROJECT'}) RETURN count(i) AS n"),
-        )
-        assertEquals(
-            issuesIn(PROJECT).size,
-            count("MATCH (i:JiraIssue {__projectKey: '$PROJECT'}) RETURN count(i) AS n"),
-            "de-configuring one project took issues from another",
-        )
-
-        settingsStore.saveProjectKeys(listOf(PROJECT, SECOND_PROJECT), "test").getOrThrow()
-        import(issues = both)
-
-        assertEquals(both.size, count(REAL_ISSUES))
     }
 
     // -- test 6: unresolved links ------------------------------------------------------------------
@@ -692,7 +625,6 @@ class JiraIssueImportTest {
             settings,
             JiraHttpClient(settings, stubJira(issues, pageSize, failFromPage)),
             JiraGraphWriter(graphDriver, HOST),
-            settingsStore,
         )
     }
 
@@ -740,31 +672,14 @@ class JiraIssueImportTest {
     private fun MockRequestHandleScope.respondJson(body: String) =
         respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
 
-    /**
-     * Put every project in the export into the configuration.
-     *
-     * Needed by any test that imports the whole export, now that phase 5 exists: an issue whose
-     * project is not configured is one the sweep removes on the way out, which is correct and would
-     * make a count of "every issue in the fixture" wrong by 41.
-     */
-    private suspend fun configureEveryProject() {
-        val keys = fixtureIssues()
-            .mapNotNull { it["fields"]!!.jsonObject["project"]?.jsonObject?.get("key")?.jsonPrimitive?.content }
-            .distinct()
-
-        settingsStore.saveProjectKeys(keys, "test").getOrThrow()
-    }
-
     /** Every issue in the committed export. */
     private fun fixtureIssues(): List<JsonObject> =
         jiraJson.parseToJsonElement(sample(SEARCH)).jsonObject["issues"]!!.jsonArray
             .map { it.jsonObject }
 
     /**
-     * The export's issues for the named projects — what JIRA would return for that JQL.
-     *
-     * The stub has no JQL engine, so the filtering happens here. Without it every test about
-     * de-configuring a project would be testing a JIRA that ignores the query it was sent.
+     * The export's issues for the named projects — how a test scopes what the stub JIRA serves for
+     * one run, without touching the other 41 issues in the export.
      */
     private fun issuesIn(vararg keys: String): List<JsonObject> = fixtureIssues().filter {
         it["fields"]!!.jsonObject["project"]?.jsonObject?.get("key")?.jsonPrimitive?.content in keys
@@ -979,10 +894,7 @@ class JiraIssueImportTest {
         /** Distinct projects across those fifty issues — the number the dedup assertion turns on. */
         const val FIXTURE_PROJECTS = 5
 
-        /** The first issue's project, and the one configured for the import. Nine issues carry it. */
+        /** The project most tests scope [issuesIn] to. Nine issues carry it. */
         const val PROJECT = "ProjectCRPT"
-
-        /** A second configured project, for the de-configuration test. Twelve issues carry it. */
-        const val SECOND_PROJECT = "ProjectITIND"
     }
 }

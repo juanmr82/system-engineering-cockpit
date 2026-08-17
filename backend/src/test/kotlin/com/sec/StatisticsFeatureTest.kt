@@ -8,6 +8,7 @@ import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.ReviewProjection
 import com.sec.source.doors.StatisticsProjection
@@ -50,6 +51,9 @@ class StatisticsFeatureTest {
     private val levelledModule = "module-l1"
     private val topModule = "module-l0"
     private val unlevelledModule = "module-none"
+
+    // Cross-checked against the review table below, which is not itself under test here.
+    private val seesAll = AccessSet(seesAll = true, categoryIds = emptyList())
 
     @BeforeAll
     fun setUp() {
@@ -195,16 +199,17 @@ class StatisticsFeatureTest {
                     excludedFromOpenPoints = false,
                 ),
             ),
+            access = seesAll,
         )
-        metaWriter.saveModuleSettings(topModule, SystemLevelChange.Set("L0"))
+        metaWriter.saveModuleSettings(topModule, SystemLevelChange.Set("L0"), access = seesAll)
         // module-none is deliberately left unclassified.
     }
 
     private fun statistics(moduleId: String? = null) = runBlocking {
-        assertNotNull(statistics.getStatistics(moduleId))
+        assertNotNull(statistics.getStatistics(moduleId, access = seesAll))
     }
 
-    private fun cycles(moduleId: String? = null) = runBlocking { statistics.getCycles(moduleId) }
+    private fun cycles(moduleId: String? = null) = runBlocking { statistics.getCycles(moduleId, access = seesAll) }
 
     private fun moduleOf(moduleId: String) =
         statistics().modules.single { it.ref == Ref.encode(moduleId) }
@@ -245,7 +250,7 @@ class StatisticsFeatureTest {
 
     @Test
     fun `an unknown module is absent rather than an empty page of zeroes`(): Unit = runBlocking {
-        assertNull(statistics.getStatistics("module-that-never-existed"))
+        assertNull(statistics.getStatistics("module-that-never-existed", access = seesAll))
     }
 
     // --- Completeness -------------------------------------------------------------------------
@@ -255,7 +260,7 @@ class StatisticsFeatureTest {
     fun `mandatory violations match what the review table reports for the same module`() =
         runBlocking {
             val fromStatistics = moduleOf(levelledModule).completeness.itemsMissingMandatory
-            val fromReviewTable = reviewProjection.getModuleObjects(levelledModule).rows
+            val fromReviewTable = reviewProjection.getModuleObjects(levelledModule, seesAll).rows
                 .count { row -> row.issues.any { it.startsWith("Rationale") || it == "Rationale" } }
 
             assertEquals(1, fromStatistics)
@@ -266,7 +271,7 @@ class StatisticsFeatureTest {
     @Test
     fun `the item count equals the review table's own total for the same module`() = runBlocking {
         assertEquals(
-            reviewProjection.getModuleObjects(levelledModule).total,
+            reviewProjection.getModuleObjects(levelledModule, seesAll).total,
             moduleOf(levelledModule).completeness.items,
         )
     }
@@ -340,6 +345,7 @@ class StatisticsFeatureTest {
                     excludedFromOpenPoints = excluded,
                 ),
             ),
+            access = seesAll,
         )
     }
 
@@ -466,10 +472,10 @@ class StatisticsFeatureTest {
     @Test
     fun `neither endpoint writes anything to the graph`() = runBlocking {
         val before = census()
-        statistics.getStatistics(null)
-        statistics.getStatistics(levelledModule)
-        statistics.getCycles(null)
-        statistics.getCycles(levelledModule)
+        statistics.getStatistics(null, access = seesAll)
+        statistics.getStatistics(levelledModule, access = seesAll)
+        statistics.getCycles(null, access = seesAll)
+        statistics.getCycles(levelledModule, access = seesAll)
         assertEquals(before, census())
     }
 

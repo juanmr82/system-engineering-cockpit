@@ -1,5 +1,4 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormField, form } from '@angular/forms/signals';
 import { MatButtonModule } from '@angular/material/button';
 import {
@@ -13,7 +12,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
-import type { ProblemDetails } from '../../../core/error/problem-details';
+import { detailOf } from '../../../core/error/problem-details';
 import {
   AttributeSettingsList,
   type AttributeFlagName,
@@ -42,16 +41,6 @@ const MODULE_FLAGS: readonly AttributeFlagName[] = [
   'verification',
   'excludedFromOpenPoints',
 ];
-
-function extractErrorDetail(error: unknown): string {
-  if (error instanceof HttpErrorResponse && error.error) {
-    const problem = error.error as Partial<ProblemDetails>;
-    if (problem.detail) {
-      return problem.detail;
-    }
-  }
-  return 'Something went wrong saving these settings. Please try again.';
-}
 
 // The reference implementation for a Tier-2 write dialog (requirements-modules.md §4). No staging
 // layer: the edited model lives only in this component and Save is one POST in one server-side
@@ -170,7 +159,7 @@ export class ModuleSettingsDialog {
     } catch (error) {
       // Never close on a failed write: without a staging layer there is no queue to recover the
       // user's input from, so the dialog stays open with everything they typed intact (R7).
-      this.saveError.set(extractErrorDetail(error));
+      this.saveError.set(detailOf(error, 'Something went wrong saving these settings. Please try again.'));
     } finally {
       this.saving.set(false);
     }

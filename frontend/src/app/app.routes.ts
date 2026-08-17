@@ -82,6 +82,34 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/mbse/functions/functions').then((m) => m.Functions),
       },
+      // The Access views (spec §10.2). sec-access-manager only — each screen self-checks the
+      // role and renders a refusal panel in place rather than redirecting (frontend/CLAUDE.md
+      // §8), so there is no canActivate guard here; the sidenav already hides these links from
+      // anyone without the role.
+      { path: 'access', pathMatch: 'full', redirectTo: 'access/categories' },
+      {
+        path: 'access/categories',
+        loadComponent: () =>
+          import('./features/access/categories/access-categories').then((m) => m.AccessCategories),
+      },
+      {
+        path: 'access/grants',
+        loadComponent: () => import('./features/access/grants/access-grants').then((m) => m.AccessGrants),
+      },
+      {
+        path: 'access/containers',
+        loadComponent: () =>
+          import('./features/access/containers/access-containers').then((m) => m.AccessContainers),
+      },
+      {
+        path: 'access/unassigned',
+        loadComponent: () =>
+          import('./features/access/unassigned/access-unassigned').then((m) => m.AccessUnassigned),
+      },
+      {
+        path: 'access/defaults',
+        loadComponent: () => import('./features/access/defaults/access-defaults').then((m) => m.AccessDefaults),
+      },
       {
         path: '**',
         loadComponent: () => import('./layout/shell/not-found').then((m) => m.NotFound),

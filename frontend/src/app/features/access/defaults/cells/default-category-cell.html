@@ -1,0 +1,14 @@
+<!-- The selection is bound on the options, not as [value] on the select — see
+     ModuleLevelCell's own template for why: Angular applies the select's bindings before the
+     @for produces its options, and [value] would silently fall back to the first one. -->
+<select
+  class="sec-default-category-cell__select"
+  [class.sec-default-category-cell__select--dirty]="dirty()"
+  [attr.aria-label]="label()"
+  (change)="onChange($any($event.target).value)"
+>
+  <option value="" [selected]="selected() === ''">Not assigned</option>
+  @for (option of options(); track option.ref) {
+    <option [value]="option.ref" [selected]="option.ref === selected()">{{ option.name }}</option>
+  }
+</select>

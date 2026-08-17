@@ -41,12 +41,14 @@ public object TableCypher {
     // ORDER BY the three sort keys, never objectNumber: the outline number does not sort correctly
     // as a string, which is the entire reason the sort key exists (R3). The keys stay server-side —
     // the geometry needs them to know what came before what, and the client is never handed one.
-    public const val MODULE_TABLES: String = """
+    public val MODULE_TABLES: String = """
         CYPHER 25
         MATCH (t:$DOORS_TABLE {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT t:$DELETED
+        WHERE NOT t:$DELETED AND ${AccessCypher.visible("t")}
         OPTIONAL MATCH (t)-[:$CHILD]->(r)
+          WHERE ${AccessCypher.visible("r")}
         OPTIONAL MATCH (r)-[:$CHILD]->(c)
+          WHERE ${AccessCypher.visible("c")}
         RETURN t.$ID                  AS tableItemId,
                t['$DOORS_ID']         AS tableDoorsId,
                t['$OBJECT_NUMBER']    AS tableObjectNumber,
@@ -75,10 +77,12 @@ public object TableCypher {
      * lets the caller tell "resolved structurally" from "resolved by property" and raise
      * `ORPHAN_TABLE_MEMBER` when neither answers.
      */
-    public const val RESOLVE_TABLE: String = """
+    public val RESOLVE_TABLE: String = """
         CYPHER 25
         MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
+        WHERE ${AccessCypher.visible("i")}
         OPTIONAL MATCH (t:$DOORS_TABLE)-[:$CHILD*0..2]->(i)
+          WHERE ${AccessCypher.visible("t")}
         WITH i, t
         ORDER BY t.$SORT_KEY
         RETURN i.$MODULE_URL AS moduleUrl,

@@ -1,6 +1,7 @@
 package com.sec.api.routes
 
 import com.sec.api.ApiPaths
+import com.sec.api.dto.ImportScheduleDto
 import com.sec.api.dto.ImportStartedDto
 import com.sec.api.dto.toDto
 import com.sec.api.dto.toSse
@@ -8,6 +9,7 @@ import com.sec.api.respondProblem
 import com.sec.importer.ImportEvent
 import com.sec.importer.ImportRun
 import com.sec.importer.ImportRunService
+import com.sec.importer.ImportScheduler
 import com.sec.importer.StartResult
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respond
@@ -34,18 +36,49 @@ import kotlin.time.Duration.Companion.seconds
  * | `GET` | `/import/runs/{runId}` | the run resource — reconnect and late-join read this |
  * | `DELETE` | `/import/runs/{runId}` | request cancellation → `202` |
  * | `GET` | `/import/runs/{runId}/events` | the SSE stream |
+ * | `GET` | `/import/{importerId}/schedule` | when the next scheduled run is, if there is one |
  *
  * Nothing here is admin-guarded yet, and that is a gap with a name: spec §14.1 wants every
  * admin-only route wrapped from day one, and this backend has no `security/Authorization.kt`. It is
  * one seam to add across all routes at once rather than a JIRA-shaped one added here — see ADR 0014.
  */
-public fun Route.importRoutes(service: ImportRunService) {
+public fun Route.importRoutes(
+    service: ImportRunService,
+    // Source-agnostic, like the rest of this file: which importers are on a schedule at all is a
+    // wiring-time decision made in Application.kt, not something this route file knows about any
+    // one source (ADR 0018). Empty when nothing is scheduled.
+    schedulers: Map<String, ImportScheduler> = emptyMap(),
+) {
 
     route(ApiPaths.IMPORT) {
 
         get("/importers") {
             call.respond(
                 service.importers().map { job -> job.toDto(service.activeRunId(job.importerId)) },
+            )
+        }
+
+        /**
+         * Whether [importerId] re-runs itself, and when it next will.
+         *
+         * `scheduled: false` for an importer with no scheduler is the ordinary answer, not a `404`
+         * — most importers do not have one, and that is a fact about this deployment's
+         * configuration, not a missing resource.
+         */
+        get("/{importerId}/schedule") {
+            val importerId = call.parameters["importerId"].orEmpty()
+            val scheduler = schedulers[importerId]
+
+            call.respond(
+                if (scheduler == null) {
+                    ImportScheduleDto(scheduled = false)
+                } else {
+                    ImportScheduleDto(
+                        scheduled = true,
+                        nextRunAt = scheduler.nextRunAt().toString(),
+                        intervalMinutes = scheduler.interval.toMinutes().toInt(),
+                    )
+                },
             )
         }
 

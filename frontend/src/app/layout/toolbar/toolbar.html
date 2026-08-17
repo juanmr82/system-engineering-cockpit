@@ -28,7 +28,25 @@
     <mat-icon svgIcon="account-circle" />
   </button>
   <mat-menu #userMenu="matMenu">
-    <button mat-menu-item disabled>Signed in</button>
-    <button mat-menu-item>Sign out</button>
+    @if (user(); as u) {
+      <button mat-menu-item disabled class="sec-toolbar__user-name">{{ u.displayName }}</button>
+      <button mat-menu-item disabled class="sec-toolbar__user-detail">{{ u.email }}</button>
+      <button mat-menu-item disabled class="sec-toolbar__user-detail">
+        Roles: {{ u.roles.length ? u.roles.join(', ') : 'None' }}
+      </button>
+      <!-- "Why can I not see this module" is answered by this list nine times out of ten
+           (CLAUDE.md §9) — a user in no group sees an application with nothing in it, by design
+           (R8), and this is where they find out why. -->
+      <button mat-menu-item disabled class="sec-toolbar__user-detail">
+        @if (u.groups.length) {
+          Groups: {{ u.groups.join(', ') }}
+        } @else {
+          Not in any group — nothing is visible yet
+        }
+      </button>
+      <button mat-menu-item (click)="signOut()">Sign out</button>
+    } @else {
+      <button mat-menu-item disabled>Signed in</button>
+    }
   </mat-menu>
 </mat-toolbar>

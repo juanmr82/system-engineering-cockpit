@@ -12,9 +12,10 @@ import com.sec.domain.Prop.ID
 // imported one by one so the templates stay short and the Cypher stays readable; `${'$'}` is a
 // query *parameter*, which is a different thing entirely.
 public object ItemCypher {
-    public const val FIND_BY_ID: String = """
+    public val FIND_BY_ID: String = """
         CYPHER 25
         MATCH (n:$SE_ITEM { $ID: ${'$'}id })
+        WHERE ${AccessCypher.visible("n")}
         RETURN n
         LIMIT 1
     """

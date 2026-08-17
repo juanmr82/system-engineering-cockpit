@@ -1,0 +1,63 @@
+@if (checkingAccess()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (!canManage()) {
+  <sec-refusal-panel title="Containers" />
+} @else {
+  <div class="sec-access-containers">
+    <header class="sec-access-containers__header">
+      <p class="sec-access-containers__eyebrow">Access</p>
+      <h1 class="sec-access-containers__title">Containers</h1>
+    </header>
+
+    @if (api.containers.isLoading() && !api.containers.hasValue()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (api.containers.error()) {
+      <div class="sec-access-containers__error" role="alert">
+        <p>Couldn't load containers.</p>
+        <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else if (allRows().length === 0) {
+      <sec-empty-state
+        title="Nothing imported yet"
+        description="Every imported module, project and document appears here, whatever its category — assign or change one at any time."
+      />
+    } @else {
+      <div class="sec-access-containers__bar">
+        <mat-form-field appearance="outline" class="sec-access-containers__search" subscriptSizing="dynamic">
+          <input
+            matInput
+            type="text"
+            placeholder="Search"
+            aria-label="Search containers"
+            [value]="search()"
+            (input)="search.set($any($event.target).value)"
+          />
+        </mat-form-field>
+
+        <p class="sec-access-containers__stats">
+          <span><b>{{ filtered().length }}</b> shown</span>
+          <span><b>{{ allRows().length }}</b> containers</span>
+        </p>
+      </div>
+
+      @if (actionError(); as message) {
+        <p class="sec-access-containers__error" role="alert">{{ message }}</p>
+      }
+
+      @if (filtered().length === 0) {
+        <p class="sec-access-containers__no-match">No containers match "{{ search() }}".</p>
+      } @else {
+        <div class="sec-access-containers__table-scroll sec-grid sec-grid--middle">
+          <ag-grid-angular
+            class="sec-access-containers__grid"
+            [gridOptions]="gridOptions"
+            [columnDefs]="columnDefs"
+            [rowData]="filtered()"
+            [context]="cellContext"
+            [getRowId]="getRowId"
+          />
+        </div>
+      }
+    }
+  </div>
+}

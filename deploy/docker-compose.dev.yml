@@ -15,6 +15,22 @@ services:
       - sec-neo4j-data:/data
       - sec-neo4j-logs:/logs
 
+  # ADR 0016 / ADR 0017 / docs/KEYCLOAK_SETUP.md. Imports the committed realm export so the realm,
+  # the sec-backend client, the four roles and the three test users are identical for everyone —
+  # nobody clicks through the admin console to stand this up. Port 8081, not 8080: the backend
+  # already owns 8080, and KEYCLOAK_SETUP.md §2's dev redirect URI assumes this exact mapping.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: sec-keycloak-dev
+    command: start-dev --import-realm
+    ports:
+      - "8081:8080"
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: "${SEC_KEYCLOAK_ADMIN_PASSWORD:?set SEC_KEYCLOAK_ADMIN_PASSWORD before starting}"
+    volumes:
+      - ./keycloak/sec-realm.json:/opt/keycloak/data/import/sec-realm.json:ro
+
 volumes:
   sec-neo4j-data:
   sec-neo4j-logs:

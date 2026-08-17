@@ -65,27 +65,38 @@ public object ReviewCypher {
     // module stopped containing. DOORS deleted it and left this link behind. So `resolved` stays
     // true and the row still shows what it points at — what changes is that the link itself is the
     // defect, and the only fix is in DOORS (ADR 0012).
+    // Every reference is filtered at *both* ends (spec §7): a link whose far end this caller may
+    // not see is absent from the row entirely — not struck through, not "unresolved", not counted
+    // among the row's Issues. The predicate therefore sits inside each pattern comprehension's own
+    // WHERE, which is the easiest place in this file to forget it: filtering only the outer MATCH
+    // would still disclose a hidden object's DOORS id and the url of the module it belongs to.
+    //
     // NOT o:$DELETED throughout: an object DOORS deleted is not part of the module any more, and
     // a module listing that still contained it would be showing a document DOORS does not have.
     // It stays in the graph only as the far end of the links DOORS left behind, and it is reached
     // from those links -- never by listing the module (ADR 0012).
-    public const val MODULE_OBJECTS: String = """
+    //
+    // `val`, not `const val`: the ACL clause below is a function call (AccessCypher.visible), not
+    // a compile-time constant, so this statement can only be computed once at object-init time
+    // rather than at compile time. Every name in it — including the ones the predicate embeds —
+    // is still a single interpolated constant (ADR 0010); only the *mechanism* differs.
+    public val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         WITH o
         ORDER BY o.$SORT_KEY
         SKIP ${'$'}skip
         LIMIT ${'$'}limit
         WITH o,
-             [(o)-[:$REFERS_TO]->(out:$SE_ITEM) | {
+             [(o)-[:$REFERS_TO]->(out:$SE_ITEM) WHERE ${AccessCypher.visible("out")} | {
                  ref: out.$ID,
                  id: CASE WHEN out:$UNDEFINED THEN null ELSE coalesce(out.$DOORS_ID, out.$NAME) END,
                  resolved: NOT out:$UNDEFINED,
                  deleted: out:$DELETED,
                  moduleUrl: out.$MODULE_URL
              }] AS outgoing,
-             [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) | {
+             [(o)<-[:$REFERS_TO]-(inc:$SE_ITEM) WHERE ${AccessCypher.visible("inc")} | {
                  ref: inc.$ID,
                  id: CASE WHEN inc:$UNDEFINED THEN null ELSE coalesce(inc.$DOORS_ID, inc.$NAME) END,
                  resolved: NOT inc:$UNDEFINED,
@@ -117,10 +128,10 @@ public object ReviewCypher {
      * `appliesToLabels` is read, never assumed: a policy that applies to everything is a policy
      * nobody can reason about (CLAUDE.md R2). The default matches the one the write path stores.
      */
-    public const val MANDATORY_POLICIES: String = """
+    public val MANDATORY_POLICIES: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
-        WHERE p.$RULE = '$MANDATORY_RULE'
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$POLICY_FOR]->(p:$META:$POLICY)
+        WHERE p.$RULE = '$MANDATORY_RULE' AND ${AccessCypher.visible("m")}
         RETURN p.$ATTRIBUTE_NAME                                    AS attributeName,
                coalesce(p.$APPLIES_TO_LABELS, ['$DOORS_REQUIREMENT']) AS appliesToLabels
     """
@@ -129,27 +140,31 @@ public object ReviewCypher {
     // than joined per reference. An unresolved target names a module that has usually *not* been
     // imported, in which case there is no name to find and the UI says "Not yet imported" without
     // one — but when the module is present, naming it is what makes the message actionable (§5.1).
-    public const val MODULE_NAMES: String = """
+    public val MODULE_NAMES: String = """
         CYPHER 25
         UNWIND ${'$'}moduleIds AS moduleId
         MATCH (m:$DOORS_MODULE {$ID: moduleId})
+        WHERE ${AccessCypher.visible("m")}
         RETURN m.$ID AS id, m.$NAME AS name
     """
 
     // Counted separately from the page so the client can show "n of m" without holding every row.
-    public const val COUNT_MODULE_OBJECTS: String = """
+    // `val`, not `const val` — same reason as MODULE_OBJECTS above.
+    public val COUNT_MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
-        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED
+        WHERE NOT o:$DOORS_MODULE AND NOT o:$DELETED AND ${AccessCypher.visible("o")}
         RETURN count(o) AS total
     """
 
     // One item for the detail panel (§7). The module is returned as its __name so the panel can
     // render __moduleUrl as a link labelled with the module's name, per the R5 alias map.
-    public const val ITEM_DETAIL: String = """
+    public val ITEM_DETAIL: String = """
         CYPHER 25
         MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
+        WHERE ${AccessCypher.visible("i")}
         OPTIONAL MATCH (m:$DOORS_MODULE {$ID: i.$MODULE_URL})
+          WHERE ${AccessCypher.visible("m")}
         RETURN i          AS item,
                labels(i)  AS labels,
                m.$NAME    AS moduleName,
@@ -157,9 +172,10 @@ public object ReviewCypher {
         LIMIT 1
     """
 
-    public const val ITEM_TRACES_OUT: String = """
+    public val ITEM_TRACES_OUT: String = """
         CYPHER 25
-        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})-[:$REFERS_TO]->(t:$SE_ITEM)
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})-[:$REFERS_TO]->(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("i")} AND ${AccessCypher.visible("t")}
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
@@ -169,9 +185,10 @@ public object ReviewCypher {
         LIMIT ${'$'}limit
     """
 
-    public const val ITEM_TRACES_IN: String = """
+    public val ITEM_TRACES_IN: String = """
         CYPHER 25
-        MATCH (:$SE_ITEM {$ID: ${'$'}itemId})<-[:$REFERS_TO]-(t:$SE_ITEM)
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})<-[:$REFERS_TO]-(t:$SE_ITEM)
+        WHERE ${AccessCypher.visible("i")} AND ${AccessCypher.visible("t")}
         RETURN t.$ID        AS ref,
                CASE WHEN t:$UNDEFINED THEN null ELSE coalesce(t.$DOORS_ID, t.$NAME) END AS id,
                NOT t:$UNDEFINED         AS resolved,
@@ -188,10 +205,11 @@ public object ReviewCypher {
     // already has a note updates that node instead of gaining a second one. __metaId is only set
     // ON CREATE, so re-saving a comment never rewrites its identity, and __createdBy/__createdAt
     // survive every later edit.
-    public const val UPSERT_COMMENTS: String = """
+    public val UPSERT_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}comments AS c
         MATCH (i:$SE_ITEM {$ID: c.itemId})
+        WHERE ${AccessCypher.visible("i")}
         MERGE (i)-[:$NOTE_ON]->(n:$META:$NOTE)
           ON CREATE SET n.$META_ID   = c.metaId,
                         n.$CREATED_BY = ${'$'}user,
@@ -205,19 +223,21 @@ public object ReviewCypher {
 
     // Clearing a comment deletes the node rather than storing "", so MATCH (m:__Meta) stays a true
     // inventory of what the application knows (§5.2).
-    public const val DELETE_COMMENTS: String = """
+    public val DELETE_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
-        MATCH (:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        WHERE ${AccessCypher.visible("i")}
         DETACH DELETE n
     """
 
     // Read back after the write so the client can clear its dirty marks without reloading the
     // table (§8): the server, not the client, decides what was stored.
-    public const val READ_COMMENTS: String = """
+    public val READ_COMMENTS: String = """
         CYPHER 25
         UNWIND ${'$'}itemIds AS itemId
         MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        WHERE ${AccessCypher.visible("i")}
         RETURN i.$ID        AS ref,
                n.$META_ID   AS metaId,
                n.$TEXT      AS text,
@@ -226,9 +246,10 @@ public object ReviewCypher {
 
     // --- Attribute settings (Tier 2, Shape B) ---------------------------------------------------
 
-    public const val EXISTING_ATTRIBUTE_SETTINGS: String = """
+    public val EXISTING_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE ${AccessCypher.visible("m")}
         RETURN s.$ATTRIBUTE_NAME AS name,
                coalesce(s.$VISIBLE, false)      AS visible,
                coalesce(s.$VERIFICATION, false) AS verification,
@@ -239,9 +260,10 @@ public object ReviewCypher {
 
     // One node per (module, attributeName) — MERGE on attributeName is what enforces it, since
     // Community has no composite constraint to lean on.
-    public const val UPSERT_ATTRIBUTE_SETTINGS: String = """
+    public val UPSERT_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
         MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})
+        WHERE ${AccessCypher.visible("m")}
         UNWIND ${'$'}settings AS row
         MERGE (m)-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING {$ATTRIBUTE_NAME: row.attributeName})
           ON CREATE SET s.$META_ID    = row.metaId,
@@ -258,10 +280,10 @@ public object ReviewCypher {
 
     // An attribute set back to all-false carries no information, so its node goes rather than
     // lingering as a row of false — same reasoning as an emptied comment.
-    public const val DELETE_ATTRIBUTE_SETTINGS: String = """
+    public val DELETE_ATTRIBUTE_SETTINGS: String = """
         CYPHER 25
-        MATCH (:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
-        WHERE s.$ATTRIBUTE_NAME IN ${'$'}names
+        MATCH (m:$DOORS_MODULE {$ID: ${'$'}moduleId})-[:$ATTRIBUTE_SETTING_FOR]->(s:$META:$ATTRIBUTE_SETTING)
+        WHERE s.$ATTRIBUTE_NAME IN ${'$'}names AND ${AccessCypher.visible("m")}
         DETACH DELETE s
     """
 }

@@ -9,6 +9,7 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessSet
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.RequirementCardProjection
@@ -185,8 +186,8 @@ class DependencyGraphFeatureTest {
 
     /** The Tier-2 configuration the bands read: system levels on two of the three modules. */
     private suspend fun configure() {
-        metaWriter.saveModuleSettings(systemModule, SystemLevelChange.Set("L1"))
-        metaWriter.saveModuleSettings(segmentModule, SystemLevelChange.Set("L2"))
+        metaWriter.saveModuleSettings(systemModule, SystemLevelChange.Set("L1"), access = AccessSet.SEES_ALL)
+        metaWriter.saveModuleSettings(segmentModule, SystemLevelChange.Set("L2"), access = AccessSet.SEES_ALL)
         // The component module is deliberately left unclassified: everything in it has to land in
         // the "No system level set" band, and never be folded into a real level (§4.1).
     }
@@ -199,7 +200,14 @@ class DependencyGraphFeatureTest {
         maxNodes: Int = 300,
     ) = runBlocking {
         assertNotNull(
-            projection.getGraph(listOf(seed), depth, direction, levels, maxNodes),
+            projection.getGraph(
+                listOf(seed),
+                AccessSet.SEES_ALL,
+                depth = depth,
+                direction = direction,
+                levelStrategy = levels,
+                maxNodes = maxNodes,
+            ),
             "no graph for $seed",
         )
     }
@@ -418,7 +426,7 @@ class DependencyGraphFeatureTest {
     /** A hand-edited reference is a 404, not an empty picture presented as an answer. */
     @Test
     fun `an unknown seed has no graph`() {
-        val result = runBlocking { projection.getGraph(listOf("no-such-object")) }
+        val result = runBlocking { projection.getGraph(listOf("no-such-object"), access = AccessSet.SEES_ALL) }
 
         assertNull(result)
     }

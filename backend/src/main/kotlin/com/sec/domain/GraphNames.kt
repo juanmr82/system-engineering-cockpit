@@ -95,6 +95,26 @@ public object Rel {
     // Shape C — a reified user-drawn link
     public const val LINK_FROM: String = "__linkFrom"
     public const val LINK_TO: String = "__linkTo"
+
+    // Shape D — membership in a shared set (ADR 0016 §6.1). A bare relationship, not reified: the
+    // authorization predicate runs on every read of every view, and membership carries no payload
+    // for R2's reification to be buying anything.
+    public const val IN_ACCESS_CATEGORY: String = "__inAccessCategory"
+    public const val MAY_READ: String = "__mayRead"
+
+    // AccessReconciler's own bookkeeping (access-control.md §8.3), not annotation and not a grant.
+    /** `:__AccessDefault` -> `:__AccessCategory` — which category a never-categorised container
+     *  or, for a containerless source, a never-categorised item gets. */
+    public const val ASSIGNS: String = "__assigns"
+
+    /**
+     * Marks a container (or, containerless, an item) the reconciler has already seeded once, so a
+     * category an access manager deliberately removed is never re-applied by a later import — the
+     * seed step checks for this before checking for a default (§8.3: "seeded once, never re-seeded").
+     * Points at the `:__AccessCategory` it was seeded with, so the fact is also readable, not just
+     * a marker.
+     */
+    public const val ACCESS_SEEDED: String = "__accessSeeded"
 }
 
 /**
@@ -157,10 +177,35 @@ public object NodeLabel {
     public const val ATTRIBUTE_SETTING: String = "__AttributeSetting"
     public const val LINK: String = "__Link"
 
+    /**
+     * The category a `:SEItem` is tagged into (R8, ADR 0016). Carries `:__Meta` too — the category
+     * itself is Shape D's reified node; only *membership* in it is the bare relationship
+     * [Rel.IN_ACCESS_CATEGORY] describes.
+     */
+    public const val ACCESS_CATEGORY: String = "__AccessCategory"
+
     /** Every Tier-2 label, second-label first. Used by the Cypher guard test. */
     public val meta: Set<String> = setOf(
-        META, NOTE, TAG, REVIEW, FLAG, CLASSIFICATION, POLICY, ATTRIBUTE_SETTING, LINK,
+        META, NOTE, TAG, REVIEW, FLAG, CLASSIFICATION, POLICY, ATTRIBUTE_SETTING, LINK, ACCESS_CATEGORY,
     )
+
+    /**
+     * The mirror of one Keycloak group, keyed on the exact path the `groups` claim carries.
+     *
+     * Deliberately **not** `:__Meta` (ADR 0016 §6.2): it anchors to the identity directory, not to
+     * the imported graph, so `MATCH (m:__Meta) DETACH DELETE m` must not remove it — deleting all
+     * Tier-2 data must leave every grant intact, not silently regrant everyone on the next login.
+     */
+    public const val GROUP: String = "__Group"
+
+    /**
+     * A source's default category for a container type it has never categorised — one node per
+     * `(sourceId, containerLabel)` (access-control.md §4.1, §8.3).
+     *
+     * Deliberately **not** `:__Meta` either, and for the same reason as [GROUP] (ADR 0016 §6.2): it
+     * anchors to a source, not to the imported graph, so the `:__Meta` wipe must leave it standing.
+     */
+    public const val ACCESS_DEFAULT: String = "__AccessDefault"
 }
 
 /**
@@ -234,6 +279,9 @@ public object MetaKind {
     public const val ATTRIBUTE_SETTING: String = "attributeSetting"
     public const val LINK: String = "link"
 
+    /** Shape D (ADR 0016 §6.1) — the reified half; membership itself is a bare relationship. */
+    public const val ACCESS_CATEGORY: String = "accessCategory"
+
     public val labels: Map<String, String> = mapOf(
         NOTE to NodeLabel.NOTE,
         TAG to NodeLabel.TAG,
@@ -243,6 +291,7 @@ public object MetaKind {
         POLICY to NodeLabel.POLICY,
         ATTRIBUTE_SETTING to NodeLabel.ATTRIBUTE_SETTING,
         LINK to NodeLabel.LINK,
+        ACCESS_CATEGORY to NodeLabel.ACCESS_CATEGORY,
     )
 
     public val all: Set<String> = labels.keys
@@ -295,6 +344,81 @@ public object MetaProp {
      * like in DOORS. The user-facing wording lives in `Aliases`.
      */
     public const val EXCLUDED_FROM_OPEN_POINTS: String = "excludedFromOpenPoints"
+
+    /** `:__AccessCategory` — stable, human-typed, unique: `doors-srd`, `jira-avionics`. */
+    public const val KEY: String = "key"
+
+    /** `:__AccessCategory` — what a user sees (R5: the only place this wording is stored). */
+    public const val NAME: String = "name"
+
+    /** `:__AccessCategory` — free text, shown in the Access views. */
+    public const val DESCRIPTION: String = "description"
+
+    /** `:__AccessCategory` — granted to every group with no explicit `__mayRead` (R8, §8.4).
+     *  Never a bypass: still a category, still granted, just to all of them at once. */
+    public const val EVERY_GROUP: String = "everyGroup"
+}
+
+/**
+ * Properties on the [Rel.IN_ACCESS_CATEGORY] relationship itself (access-control.md §4.1, §8.1).
+ *
+ * Not a `:__Meta` payload — membership is a bare relationship (ADR 0016 §6.1), so these ride on
+ * the edge the same way [ImportRunProp] rides on a `:__ImportRun` node: un-prefixed, because the
+ * relationship type already says whose fact this is.
+ */
+public object AccessRelProp {
+    /** [AccessOrigin.DIRECT] or [AccessOrigin.INHERITED] — who may remove this tag. */
+    public const val ORIGIN: String = "origin"
+
+    /** The `__id` of the container an [AccessOrigin.INHERITED] tag came from. Absent when direct. */
+    public const val VIA: String = "via"
+}
+
+/** Values of [AccessRelProp.ORIGIN] (access-control.md §8.1). */
+public object AccessOrigin {
+    /** Written by a human in the Access views, or by the reconciler's seed step — either way, not
+     *  retracted by [AccessOrigin.INHERITED]'s own removal rule (§8.3). */
+    public const val DIRECT: String = "direct"
+
+    /** Written by the reconciler's propagate step; retracted the moment its container's own
+     *  [DIRECT] tag for the same category is gone. */
+    public const val INHERITED: String = "inherited"
+}
+
+/**
+ * Properties of a [NodeLabel.ACCESS_DEFAULT] node — the reconciler's seed source (§8.3).
+ *
+ * Un-prefixed inside a `__`-labelled node, the same convention [GroupProp] and [ImportRunProp]
+ * use.
+ */
+public object AccessDefaultProp {
+    /** The [com.sec.importer.ImportJob.importerId] this default belongs to — `"doors"`, `"jira"`. */
+    public const val SOURCE_ID: String = "sourceId"
+
+    /** The container's [NodeLabel] value — or, for a containerless source, the item's own label. */
+    public const val CONTAINER_LABEL: String = "containerLabel"
+}
+
+/**
+ * Properties of a [NodeLabel.GROUP] node.
+ *
+ * Un-prefixed inside a `__`-labelled node, the same convention [ImportRunProp] uses: the label
+ * already says whose the node is. `:__Group` is not `:__Meta` (ADR 0016 §6.2), so these are
+ * declared separately from [MetaProp] rather than folded into it.
+ */
+public object GroupProp {
+    /** The exact string the `groups` claim carries, e.g. `/SEC/Thermal`. Owns the uniqueness
+     *  constraint — a rename creates a new group with no grants (access-control.md §16.5). */
+    public const val KEY: String = "key"
+
+    /** What an access manager sees; defaults to [KEY] until renamed. */
+    public const val NAME: String = "name"
+
+    /** Bypasses category membership entirely (§16 Q3/Q4) — granted by hand, never by import. */
+    public const val SEES_ALL: String = "seesAll"
+
+    public const val FIRST_SEEN_AT: String = "firstSeenAt"
+    public const val LAST_SEEN_AT: String = "lastSeenAt"
 }
 
 /** Values of controlled vocabularies stored in a meta payload. Wording comes from [Aliases]. */

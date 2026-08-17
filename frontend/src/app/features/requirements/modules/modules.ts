@@ -1,5 +1,4 @@
 import { Component, computed, debounced, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -11,7 +10,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AgGridAngular } from 'ag-grid-angular';
 import type { ColDef, GridApi, GridReadyEvent, IRowNode } from 'ag-grid-community';
 import { secGridOptions } from '../../../core/grid/sec-grid';
-import type { ProblemDetails } from '../../../core/error/problem-details';
+import { detailOf } from '../../../core/error/problem-details';
 import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import { ModuleLevelCell } from './cells/module-level-cell';
@@ -25,16 +24,6 @@ import type {
   SearchableModuleRow,
   SystemLevelOption,
 } from './modules.model';
-
-function extractErrorDetail(error: unknown): string {
-  if (error instanceof HttpErrorResponse && error.error) {
-    const problem = error.error as Partial<ProblemDetails>;
-    if (problem.detail) {
-      return problem.detail;
-    }
-  }
-  return 'Something went wrong saving these system levels. Please try again.';
-}
 
 /**
  * Orders two system-level labels, keeping a module with no level at the end.
@@ -330,7 +319,7 @@ export class Modules {
         { duration: 4000 },
       );
     } catch (error) {
-      this.saveError.set(extractErrorDetail(error));
+      this.saveError.set(detailOf(error, 'Something went wrong saving these system levels. Please try again.'));
     } finally {
       this.saving.set(false);
     }

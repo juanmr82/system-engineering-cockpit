@@ -1,0 +1,20 @@
+@use 'mixins' as sec;
+
+.sec-assign-categories-dialog__hint {
+  @include sec.absent-text;
+
+  color: var(--sec-ink-2);
+  margin: 0 0 12px;
+}
+
+.sec-assign-categories-dialog__empty {
+  @include sec.absent-text;
+}
+
+.sec-assign-categories-dialog__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}

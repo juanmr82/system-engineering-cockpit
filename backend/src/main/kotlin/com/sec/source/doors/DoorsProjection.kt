@@ -13,7 +13,7 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ModuleCypher
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.executeRead
-import org.neo4j.driver.Query
+import com.sec.security.AccessSet
 import org.neo4j.driver.Record
 import org.neo4j.driver.types.Node
 
@@ -21,18 +21,26 @@ import org.neo4j.driver.types.Node
 // DOORS-specific may exist outside this package and the DOORS-specific API routes (CLAUDE.md §1).
 public class DoorsProjection(private val graphDriver: GraphDriver) {
 
-    public suspend fun listModules(limit: Int = 500): List<ModuleRowDto> =
-        graphDriver.executeRead(Query(ModuleCypher.LIST_MODULES, mapOf("limit" to limit))) { records ->
+    public suspend fun listModules(access: AccessSet, limit: Int = 500): List<ModuleRowDto> =
+        graphDriver.executeRead(ModuleCypher.LIST_MODULES, mapOf("limit" to limit), access) { records ->
             records.map { it.toModuleRowDto() }
         }
 
-    public suspend fun getModuleDetail(moduleId: String): ModuleDetailDto? =
-        graphDriver.executeRead(Query(ModuleCypher.MODULE_DETAIL, mapOf("moduleId" to moduleId))) { records ->
+    public suspend fun getModuleDetail(moduleId: String, access: AccessSet): ModuleDetailDto? =
+        graphDriver.executeRead(ModuleCypher.MODULE_DETAIL, mapOf("moduleId" to moduleId), access) { records ->
             records.firstOrNull()?.toModuleDetailDto(moduleId)
         }
 
-    public suspend fun moduleExists(moduleId: String): Boolean =
-        graphDriver.executeRead(Query(ModuleCypher.MODULE_EXISTS, mapOf("moduleId" to moduleId))) { records ->
+    /**
+     * Whether this caller can see a module at all — the `404` behind every module-scoped route, and
+     * the guard the three meta-write paths in `MetaWriter` share with them (§7's 404-vs-403 rule).
+     *
+     * Filtered, write path included, so a module cannot 404 on read and accept a write at the same
+     * time. That is a deliberate, bounded pull-forward of phase 5's anchor guard: phase 5 widens it
+     * to the individual anchors, and this closes the case where the *container* is invisible.
+     */
+    public suspend fun moduleExists(moduleId: String, access: AccessSet): Boolean =
+        graphDriver.executeRead(ModuleCypher.MODULE_EXISTS, mapOf("moduleId" to moduleId), access) { records ->
             records.isNotEmpty()
         }
 
@@ -43,22 +51,24 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
      * a missed name is an attribute the settings dialog cannot offer and the table therefore cannot
      * show. See ModuleCypher.DISCOVER_ATTRIBUTES for the measurement behind that.
      */
-    public suspend fun discoverAttributeNames(moduleId: String): List<String> =
+    public suspend fun discoverAttributeNames(moduleId: String, access: AccessSet): List<String> =
         graphDriver.executeRead(
-            Query(
-                ModuleCypher.DISCOVER_ATTRIBUTES,
-                mapOf("moduleUrl" to moduleId, "limit" to MAX_ATTRIBUTES),
-            ),
+            ModuleCypher.DISCOVER_ATTRIBUTES,
+            mapOf("moduleUrl" to moduleId, "limit" to MAX_ATTRIBUTES),
+            access,
         ) { records -> records.map { it.get("name").asString() } }
 
-    public suspend fun getExistingMandatoryAttributes(moduleId: String): Set<String> =
+    public suspend fun getExistingMandatoryAttributes(moduleId: String, access: AccessSet): Set<String> =
         graphDriver.executeRead(
-            Query(ModuleCypher.EXISTING_MANDATORY_POLICIES, mapOf("moduleId" to moduleId)),
+            ModuleCypher.EXISTING_MANDATORY_POLICIES, mapOf("moduleId" to moduleId), access,
         ) { records -> records.map { it.get("name").asString() }.toSet() }
 
-    public suspend fun getExistingAttributeSettings(moduleId: String): Map<String, AttributeFlags> =
+    public suspend fun getExistingAttributeSettings(
+        moduleId: String,
+        access: AccessSet,
+    ): Map<String, AttributeFlags> =
         graphDriver.executeRead(
-            Query(ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS, mapOf("moduleId" to moduleId)),
+            ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS, mapOf("moduleId" to moduleId), access,
         ) { records ->
             records.associate {
                 it.get("name").asString() to AttributeFlags(
@@ -77,10 +87,10 @@ public class DoorsProjection(private val graphDriver: GraphDriver) {
      * Attributes never configured default to all-false rather than being absent, so the dialog
      * shows every discovered attribute whether or not anyone has touched it.
      */
-    public suspend fun getModuleAttributes(moduleId: String): List<ModuleAttributeDto> {
-        val discovered = discoverAttributeNames(moduleId)
-        val mandatory = getExistingMandatoryAttributes(moduleId)
-        val settings = getExistingAttributeSettings(moduleId)
+    public suspend fun getModuleAttributes(moduleId: String, access: AccessSet): List<ModuleAttributeDto> {
+        val discovered = discoverAttributeNames(moduleId, access)
+        val mandatory = getExistingMandatoryAttributes(moduleId, access)
+        val settings = getExistingAttributeSettings(moduleId, access)
         return discovered.map { name ->
             val flags = settings[name]
             ModuleAttributeDto(

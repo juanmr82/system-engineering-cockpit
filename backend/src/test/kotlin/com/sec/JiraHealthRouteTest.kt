@@ -3,7 +3,9 @@ package com.sec
 import com.sec.config.JiraSettings
 import com.sec.config.Neo4jSettings
 import com.sec.graph.GraphDriver
+import com.sec.security.authenticatedClient
 import com.sec.source.jira.JiraHttpClient
+import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
@@ -12,6 +14,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import io.ktor.server.sessions.SessionStorageMemory
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlin.test.Test
@@ -34,7 +37,7 @@ class JiraHealthRouteTest {
 
     @Test
     fun `an unconfigured server reports not configured, and still answers 200`() = testApplication {
-        app(settings = JiraSettings(host = "", token = ""), jiraClient = null)
+        val client = app(settings = JiraSettings(host = "", token = ""), jiraClient = null)
 
         val response = client.get("/api/v1/jira/health")
 
@@ -46,7 +49,7 @@ class JiraHealthRouteTest {
 
     @Test
     fun `a working instance reports the resolved user`() = testApplication {
-        app(jiraClient = jiraClient(MYSELF_JSON))
+        val client = app(jiraClient = jiraClient(MYSELF_JSON))
 
         val body = client.get("/api/v1/jira/health").bodyAsText()
 
@@ -61,7 +64,7 @@ class JiraHealthRouteTest {
      */
     @Test
     fun `a rejected token reports configured but not reachable`() = testApplication {
-        app(jiraClient = jiraClient(status = HttpStatusCode.Unauthorized))
+        val client = app(jiraClient = jiraClient(status = HttpStatusCode.Unauthorized))
 
         val body = client.get("/api/v1/jira/health").bodyAsText()
 
@@ -76,7 +79,7 @@ class JiraHealthRouteTest {
      */
     @Test
     fun `no response ever contains the token`() = testApplication {
-        app(jiraClient = jiraClient(MYSELF_JSON))
+        val client = app(jiraClient = jiraClient(MYSELF_JSON))
 
         val body = client.get("/api/v1/jira/health").bodyAsText()
 
@@ -85,7 +88,7 @@ class JiraHealthRouteTest {
 
     @Test
     fun `the host is reported so the page can say which JIRA`() = testApplication {
-        app(jiraClient = jiraClient(MYSELF_JSON))
+        val client = app(jiraClient = jiraClient(MYSELF_JSON))
 
         assertTrue(client.get("/api/v1/jira/health").bodyAsText().contains(HOST))
     }
@@ -93,7 +96,7 @@ class JiraHealthRouteTest {
     /** A host pointing at an SSO portal: it answers, so "unreachable" alone would mislead. */
     @Test
     fun `a non-JIRA host is reported as answering but not like JIRA`() = testApplication {
-        app(jiraClient = jiraClient("<html>sign in</html>"))
+        val client = app(jiraClient = jiraClient("<html>sign in</html>"))
 
         val body = client.get("/api/v1/jira/health").bodyAsText()
 
@@ -103,12 +106,14 @@ class JiraHealthRouteTest {
 
     // -- harness --------------------------------------------------------------------------------
 
-    // `jiraClient`, not `client`: inside testApplication, `client` is the test's own HTTP client
-    // and shadowing it here would make every request in this file go somewhere surprising.
+    // Returns the authenticated client every test now needs (ADR 0017 wraps /jira/health like
+    // every other route): each test shadows the ambient `client` with `val client = app(...)`,
+    // so this stays the only place a session is seeded.
     private fun ApplicationTestBuilder.app(
         settings: JiraSettings = configured(),
         jiraClient: JiraHttpClient? = null,
-    ) {
+    ): HttpClient {
+        val sessionStorage = SessionStorageMemory()
         application {
             // The driver is never used: the Neo4j driver connects lazily and no request here
             // reaches a query. Same shape as ApplicationTest.
@@ -116,8 +121,10 @@ class JiraHealthRouteTest {
                 GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
                 settings,
                 jiraClient,
+                sessionStorage = sessionStorage,
             )
         }
+        return authenticatedClient(sessionStorage)
     }
 
     private fun jiraClient(json: String = "{}", status: HttpStatusCode = HttpStatusCode.OK) =

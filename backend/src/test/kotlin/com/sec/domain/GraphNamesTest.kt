@@ -1,5 +1,6 @@
 package com.sec.domain
 
+import com.sec.graph.cypher.AccessCypher
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
 import com.sec.graph.cypher.ImportRunCypher
@@ -13,6 +14,7 @@ import com.sec.graph.cypher.SystemCypher
 import com.sec.graph.cypher.TableCypher
 import com.sec.graph.cypher.WindchillCypher
 import com.sec.meta.MetaSchema
+import com.sec.security.AccessContainment
 import com.sec.source.doors.DoorsLabel
 import com.sec.source.doors.DoorsProp
 import com.sec.source.doors.DoorsRel
@@ -55,12 +57,15 @@ class GraphNamesTest {
     // Each source contributes its own names file and nothing edits another's (R3), so adding a
     // source is one term in each of these three sets.
     private val declaredLabels: Set<String> =
-        setOf(NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN) +
-            NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
+        setOf(
+            NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN,
+            NodeLabel.GROUP, NodeLabel.ACCESS_DEFAULT,
+        ) + NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
         Rel.CHILD, Rel.NOTE_ON, Rel.TAGGED_AS, Rel.REVIEW_OF, Rel.FLAG_ON, Rel.CLASSIFIED_AS,
         Rel.POLICY_FOR, Rel.ATTRIBUTE_SETTING_FOR, Rel.LINK_FROM, Rel.LINK_TO,
+        Rel.IN_ACCESS_CATEGORY, Rel.MAY_READ, Rel.ASSIGNS, Rel.ACCESS_SEEDED,
         DoorsRel.REFERS_TO,
     ) + JiraRel.all
 
@@ -129,12 +134,11 @@ class GraphNamesTest {
             JiraCypher.MERGE_PLACEHOLDERS, JiraCypher.MERGE_LINKS,
             JiraCypher.DELETE_STALE_LINKS, JiraCypher.MERGE_SUB_TASKS,
             JiraCypher.DELETE_STALE_SUB_TASKS,
-            JiraCypher.SWEEP_DELETED, JiraCypher.SWEEP_DECONFIGURED,
+            JiraCypher.SWEEP_DELETED,
             JiraCypher.DELETE_ORPHANED_ENTITIES, JiraCypher.DELETE_ORPHANED_PLACEHOLDERS,
             JiraCypher.COUNT_PLACEHOLDERS,
             JiraCypher.LIST_ISSUES_ASC, JiraCypher.LIST_ISSUES_DESC,
             JiraCypher.COUNT_ISSUES_MATCHING,
-            JiraCypher.LOAD_SETTINGS, JiraCypher.SAVE_SETTINGS,
             JiraCypher.LIST_FIELDS, JiraCypher.FIND_FIELDS,
             JiraCypher.LOAD_COLUMNS, JiraCypher.SAVE_COLUMNS,
             JiraCypher.LINK_NEIGHBOURS, JiraCypher.GRAPH_NODES,
@@ -153,6 +157,58 @@ class GraphNamesTest {
             *ImportRunCypher.SCHEMA.toTypedArray(),
         )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
+        // visible("o") stands in for every alias the predicate is actually called with — the name
+        // extraction below only cares which graph names appear in the produced text, not which
+        // alias they were bound to. propagate/retract/seed are read straight from
+        // AccessContainment.all so a new source's containment is checked the moment it is added,
+        // the same way a new Cypher file is caught by everyCypherFileIsCovered below.
+        add(
+            "AccessCypher",
+            AccessCypher.RESOLVE_GROUPS,
+            AccessCypher.visible("o"),
+            *AccessContainment.all.filterNot { it.containerless }
+                .flatMap { listOf(AccessCypher.propagate(it), AccessCypher.retract(it)) }
+                .toTypedArray(),
+            *AccessContainment.all.map { AccessCypher.seed(it) }.toTypedArray(),
+            // Categories (phase 6, §10.2 screen 1) — appended, so every index above is unchanged.
+            AccessCypher.CATEGORIES_WITH_COUNTS,
+            AccessCypher.CATEGORY_KEY_EXISTS,
+            AccessCypher.CREATE_CATEGORY,
+            AccessCypher.UPDATE_CATEGORY,
+            AccessCypher.CATEGORY_USAGE_COUNTS,
+            AccessCypher.DELETE_CATEGORY_IF_UNUSED,
+            // Groups & Grants (phase 6, §10.2 screen 2).
+            AccessCypher.GROUPS_WITH_GRANTS,
+            AccessCypher.GROUP_WITH_GRANTS,
+            AccessCypher.GROUP_EXISTS,
+            AccessCypher.UNKNOWN_CATEGORY_IDS,
+            AccessCypher.REPLACE_GRANTS,
+            AccessCypher.SET_SEES_ALL,
+            // Unassigned containers & direct categories (phase 6, §10.2 screen 3) — one
+            // unassignedContainers(...) call per distinct containerLabel group, same grouping
+            // AccessAdminService.listUnassignedContainers itself uses.
+            AccessCypher.EXISTS_BY_ID,
+            AccessCypher.REPLACE_DIRECT_CATEGORIES,
+            AccessCypher.DIRECT_CATEGORIES_OF,
+            *AccessContainment.all.filterNot { it.containerless }
+                .groupBy { it.containerLabel }
+                .map { (label, containments) ->
+                    AccessCypher.unassignedContainers(label, containments.map { it.memberMatch })
+                }
+                .toTypedArray(),
+            // Import defaults & summary (phase 6, §10.2 screen 4, §9).
+            AccessCypher.DEFAULTS_LIST,
+            AccessCypher.CLEAR_DEFAULT,
+            AccessCypher.SET_DEFAULT,
+            AccessCypher.SUMMARY_COUNTS,
+            // Containers (phase 6, §10.2 screen 5) — one containersWithCategories(...) call per
+            // distinct containerLabel, same grouping as the unassignedContainers(...) calls above.
+            *AccessContainment.all.filterNot { it.containerless }
+                .map { it.containerLabel }
+                .distinct()
+                .map { label -> AccessCypher.containersWithCategories(label) }
+                .toTypedArray(),
+        )
     }
 
     // -- the checks -------------------------------------------------------------------------
@@ -297,8 +353,51 @@ class GraphNamesTest {
             .map { it.fileName.toString() to it.readText() }
     }
 
-    private fun stripComments(source: String): String =
-        source.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, " ")
+    /**
+     * Comments out, code in — and **block comments nest**, which a regex cannot express.
+     *
+     * Kotlin nests block comments, so a KDoc paragraph that quotes the ACL marker — which
+     * `AccessCypher.visible`'s own doc does, and every comment explaining that marker will — is a
+     * single comment to the compiler. The non-greedy regex this replaced closed it at the marker's
+     * own closing delimiter instead, and everything after that point in the same KDoc was then
+     * scanned as if it were code. It failed on a sentence naming a `:__`-prefixed label in prose,
+     * which is exactly where this file's own doc says such names belong.
+     *
+     * A false positive here is worse than it looks: the cheapest way to silence it is to stop
+     * naming graph names in comments, which is the opposite of what ADR 0010 asks for.
+     *
+     * (Writing this very paragraph is how the nesting was confirmed: an earlier draft spelled the
+     * delimiters out, closed its own KDoc early, and would not compile.)
+     */
+    private fun stripComments(source: String): String {
+        val out = StringBuilder(source.length)
+        var depth = 0
+        var i = 0
+        while (i < source.length) {
+            when {
+                source.startsWith("/*", i) -> {
+                    depth++
+                    i += 2
+                }
+
+                depth > 0 && source.startsWith("*/", i) -> {
+                    depth--
+                    out.append(' ')
+                    i += 2
+                }
+
+                depth > 0 -> i++
+
+                source.startsWith("//", i) -> {
+                    out.append(' ')
+                    while (i < source.length && source[i] != '\n') i++
+                }
+
+                else -> out.append(source[i++])
+            }
+        }
+        return out.toString()
+    }
 
     private companion object {
         /**
@@ -307,10 +406,6 @@ class GraphNamesTest {
          * colon is what tells the two apart.
          */
         val LABEL_OR_TYPE = Regex(""":([A-Za-z_][A-Za-z0-9_]*)""")
-
-        /** KDoc and block comments — where these names are explained, and belong. */
-        val BLOCK_COMMENT = Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL)
-        val LINE_COMMENT = Regex("""//[^\n]*""")
 
         /** Any `__` name, wherever it appears: property access, map key, label or type. */
         val NAMESPACE_NAME = Regex("""__[A-Za-z][A-Za-z0-9_]*""")

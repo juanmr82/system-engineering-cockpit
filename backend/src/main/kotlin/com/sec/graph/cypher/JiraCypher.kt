@@ -6,7 +6,6 @@ import com.sec.domain.Prop.NAME as ITEM_NAME
 import com.sec.domain.Prop.SORT_KEY
 import com.sec.domain.Prop.ID
 import com.sec.source.jira.JiraAppProp.FIELD_IDS
-import com.sec.source.jira.JiraAppProp.PROJECT_KEYS
 import com.sec.source.jira.JiraAppProp.UPDATED_AT
 import com.sec.source.jira.JiraAppProp.UPDATED_BY
 import com.sec.source.jira.JiraLabel.COLUMN_CONFIG as JIRA_COLUMN_CONFIG
@@ -15,7 +14,6 @@ import com.sec.source.jira.JiraLabel.ISSUE as JIRA_ISSUE
 import com.sec.source.jira.JiraLabel.ISSUE_TYPE as JIRA_ISSUE_TYPE
 import com.sec.source.jira.JiraLabel.PROJECT as JIRA_PROJECT
 import com.sec.source.jira.JiraLabel.PROJECTION as JIRA_PROJECTION
-import com.sec.source.jira.JiraLabel.SETTINGS as JIRA_SETTINGS
 import com.sec.source.jira.JiraLabel.STATUS as JIRA_STATUS
 import com.sec.source.jira.JiraLinkProp.LINK_ID
 import com.sec.source.jira.JiraLinkProp.TYPE_NAME
@@ -435,49 +433,23 @@ public object JiraCypher {
     // -- Phase 5: the sweep -------------------------------------------------------------------
 
     /**
-     * Phase 5 — issues deleted in JIRA.
+     * Phase 5 — issues deleted in JIRA (ADR 0018).
      *
      * **The highest-consequence statement in this feature**, because a seen set that is wrong by
-     * omission is indistinguishable from a project that has been emptied. The caller must refuse to
+     * omission is indistinguishable from every issue actually being gone. The caller must refuse to
      * run this at all unless phase 3 completed; see [com.sec.source.jira.JiraImporter].
      *
-     * Scoped by `__projectKey`, the one denormalisation in the design, which exists precisely so
-     * this is an index lookup rather than a traversal per issue. The stub exclusion is redundant —
-     * a stub has no `__projectKey` to match — and stated anyway: a stub can carry a user's
-     * annotation, and deleting one is not recoverable by re-running the import.
-     *
-     * The projection goes with the issue. It is derived data owned by this importer, so leaving one
-     * behind would leave a companion no query can reach.
+     * There is no project scope any more: the importer's own JQL has none, so "not in `$seenIds`"
+     * already covers an issue JIRA deleted and an issue the token can no longer see — the importer
+     * cannot tell those apart, and under RBAC-is-the-gate (R8) it does not need to. The projection
+     * goes with the issue. It is derived data owned by this importer, so leaving one behind would
+     * leave a companion no query can reach.
      */
     public const val SWEEP_DELETED: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         WHERE NOT i:$UNDEFINED
-          AND i.$PROJECT_KEY IN ${'$'}configuredKeys
           AND NOT i.$ID IN ${'$'}seenIds
-        OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
-        DETACH DELETE i, p
-        RETURN count(*) AS deleted
-    """
-
-    /**
-     * Phase 5 — issues of a project that is no longer configured (spec §12, R4).
-     *
-     * A separate statement from [SWEEP_DELETED] rather than a widened one, because the two answer
-     * different questions and the run summary has to be able to say which happened: an issue that
-     * vanished from JIRA is news, and an issue that left because somebody unticked its project is
-     * not. Same shape, two counters, two sentences.
-     *
-     * `IS NOT NULL` is what keeps a stub out of it — and, less obviously, an issue that arrived
-     * without a project key at all. Deleting that one because it cannot prove where it belongs
-     * would be losing data for being unreadable.
-     */
-    public const val SWEEP_DECONFIGURED: String = """
-        CYPHER 25
-        MATCH (i:$JIRA_ISSUE)
-        WHERE NOT i:$UNDEFINED
-          AND i.$PROJECT_KEY IS NOT NULL
-          AND NOT i.$PROJECT_KEY IN ${'$'}configuredKeys
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
         DETACH DELETE i, p
         RETURN count(*) AS deleted
@@ -611,9 +583,10 @@ public object JiraCypher {
      *    list, so `labels` — the field a person is most likely to search — is exactly the value that
      *    would fail the whole statement at runtime rather than at parse time.
      */
-    private const val ISSUE_FILTER: String = """
+    private val ISSUE_FILTER: String = """
         WHERE (${'$'}q IS NULL OR $MATCHES_ANY_FIELD)
           AND (${'$'}projectKeys IS NULL OR i.$PROJECT_KEY IN ${'$'}projectKeys)
+          AND ${AccessCypher.visible("i")}
     """
 
 
@@ -659,7 +632,7 @@ public object JiraCypher {
      * proxy, which does not exist yet, and returning `__id` under the name `issueTypeId` would hand
      * whoever builds it the resource URL where JIRA's own numeric id was meant to be.
      */
-    public const val LIST_ISSUES_ASC: String = """
+    public val LIST_ISSUES_ASC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
@@ -674,12 +647,13 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(n:$JIRA_ISSUE)
+                       WHERE ${AccessCypher.visible("n")} } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
     /** [LIST_ISSUES_ASC] with the direction reversed — see its note on why this is two statements. */
-    public const val LIST_ISSUES_DESC: String = """
+    public val LIST_ISSUES_DESC: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
@@ -694,7 +668,8 @@ public object JiraCypher {
                i.$ITEM_NAME                      AS name,
                (i:$UNDEFINED)                    AS unresolved,
                t.$ITEM_NAME                      AS issueTypeName,
-               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(:$JIRA_ISSUE) } AS linkCount,
+               COUNT { (i)-[:$LINKED_TO|$SUB_TASK_OF]-(n:$JIRA_ISSUE)
+                       WHERE ${AccessCypher.visible("n")} } AS linkCount,
                [k IN ${'$'}fieldIds | coalesce(p[k], i[k])] AS values
     """
 
@@ -704,34 +679,13 @@ public object JiraCypher {
      * A separate cheap count rather than `collect()`-ing the rows to size them, which would read
      * every issue in the database to tell a user there are 784 of them.
      */
-    public const val COUNT_ISSUES_MATCHING: String = """
+    public val COUNT_ISSUES_MATCHING: String = """
         CYPHER 25
         MATCH (i:$JIRA_ISSUE)
         OPTIONAL MATCH (i)-[:$PROJECTION]->(p:$JIRA_PROJECTION)
         WITH i, p
         $ISSUE_FILTER
         RETURN count(i) AS total
-    """
-
-    /**
-     * The configured project keys (spec §10.1).
-     *
-     * A singleton, and **application configuration rather than imported data** — which is why it is
-     * read and written by its own store and not by the importer's writer. Nothing about it is
-     * regenerable from JIRA: it is the question, not the answer.
-     */
-    public const val LOAD_SETTINGS: String = """
-        CYPHER 25
-        MATCH (s:$JIRA_SETTINGS {$ID: ${'$'}id})
-        RETURN s.$PROJECT_KEYS AS projectKeys
-    """
-
-    public const val SAVE_SETTINGS: String = """
-        CYPHER 25
-        MERGE (s:$JIRA_SETTINGS {$ID: ${'$'}id})
-        SET s.$PROJECT_KEYS = ${'$'}projectKeys,
-            s.$UPDATED_AT = ${'$'}updatedAt,
-            s.$UPDATED_BY = ${'$'}updatedBy
     """
 
     // -- the field catalogue and the chosen columns (spec §13.3, §13.4) ----------------------------
@@ -799,9 +753,8 @@ public object JiraCypher {
      * Replace the chosen columns.
      *
      * The whole list, never a merge: the order is part of the value, and a merge would have to
-     * invent a rule for where a newly ticked column goes — the same argument [SAVE_SETTINGS] makes
-     * about project keys. The fixed columns are never in it (spec §10.2); they are a backend
-     * constant precisely so a bad write cannot remove them.
+     * invent a rule for where a newly ticked column goes. The fixed columns are never in it
+     * (spec §10.2); they are a backend constant precisely so a bad write cannot remove them.
      */
     public const val SAVE_COLUMNS: String = """
         CYPHER 25
@@ -833,10 +786,11 @@ public object JiraCypher {
      * Ordered by `__sortKey` before the `LIMIT`, so the same issue always produces the same picture
      * — an unordered cap makes the diagram a property of the planner rather than of the data.
      */
-    public const val LINK_NEIGHBOURS: String = """
+    public val LINK_NEIGHBOURS: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (a:$JIRA_ISSUE {$ID: id})-[r:$LINKED_TO|$SUB_TASK_OF]-(b:$JIRA_ISSUE)
+        WHERE ${AccessCypher.visible("a")} AND ${AccessCypher.visible("b")}
         RETURN id                    AS fromId,
                b.$ID                 AS otherId,
                b.$SORT_KEY           AS sortKey,
@@ -860,10 +814,11 @@ public object JiraCypher {
      * projects is a fact about this issue, and hiding it would make the picture claim there is
      * nothing there.
      */
-    public const val GRAPH_NODES: String = """
+    public val GRAPH_NODES: String = """
         CYPHER 25
         UNWIND ${'$'}ids AS id
         MATCH (i:$JIRA_ISSUE {$ID: id})
+        WHERE ${AccessCypher.visible("i")}
         OPTIONAL MATCH (i)-[:$HAS_ISSUE_TYPE]->(t:$JIRA_ISSUE_TYPE)
         OPTIONAL MATCH (i)-[:$HAS_STATUS]->(s:$JIRA_STATUS)
         RETURN i.$ID          AS id,

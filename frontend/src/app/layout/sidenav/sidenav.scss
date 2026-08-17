@@ -48,3 +48,11 @@
   --mat-list-list-item-label-text-color: var(--sec-blue);
   --mat-list-list-item-label-text-weight: 600;
 }
+
+// The unassigned-container count (AccessBadgeService) — per-caller state overlaid onto one item,
+// never carried by the nav config itself.
+.sec-sidenav__badge {
+  @include sec.badge;
+
+  margin-left: 8px;
+}

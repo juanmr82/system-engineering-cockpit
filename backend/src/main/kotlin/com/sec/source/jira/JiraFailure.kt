@@ -53,27 +53,6 @@ public sealed class JiraFailure(
         JiraFailure("JIRA returned an unreadable response: $detail", cause)
 
     /**
-     * The import was asked to run with no projects selected.
-     *
-     * Refused rather than defaulted. An unbounded query over the whole instance would import
-     * hundreds of thousands of issues nobody asked for, and — worse — would make phase 5's sweep
-     * treat every project on the instance as configured (spec §8).
-     */
-    public class NoProjectsConfigured : JiraFailure(
-        "No JIRA projects are selected, so there is nothing to import.",
-    )
-
-    /**
-     * A configured project key is not a project key.
-     *
-     * This is the injection boundary: the keys are user-editable text interpolated into JQL. The
-     * bad ones are named, because the settings screen has to say which chip to fix.
-     */
-    public class InvalidProjectKey(public val keys: List<String>) : JiraFailure(
-        "Not valid JIRA project keys: ${keys.joinToString(", ")}",
-    )
-
-    /**
      * A chosen column names something that is not a JIRA field id.
      *
      * The second injection boundary of this feature, and the sharper one: a field id becomes a

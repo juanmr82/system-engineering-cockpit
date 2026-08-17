@@ -5,6 +5,7 @@ import com.sec.api.dto.JiraColumnDto
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
+import com.sec.security.AccessSet
 import com.sec.source.jira.JiraIssuesProjection
 import com.sec.source.jira.JiraIssuesProjection.SortDirection
 import com.sec.source.jira.JiraIssuesProjection.SortField
@@ -340,7 +341,7 @@ class JiraIssuesReadTest {
      */
     @Test
     fun `depth one draws the seed and its immediate links`() = runBlocking {
-        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+        val graph = graphs.graphOf(issueId(1), depth = 1, access = AccessSet.SEES_ALL)!!
 
         assertEquals(setOf("SCRUM-1", "SCRUM-2", "SCRUM-100"), graph.nodes.map { it.key }.toSet())
         assertTrue(graph.nodes.single { it.key == "SCRUM-1" }.seed)
@@ -350,7 +351,7 @@ class JiraIssuesReadTest {
     /** A second hop reaches what the neighbours are linked to, and no further. */
     @Test
     fun `depth two reaches the neighbours of the neighbours`() = runBlocking {
-        val keys = graphs.graphOf(issueId(1), depth = 2)!!.nodes.map { it.key }.toSet()
+        val keys = graphs.graphOf(issueId(1), depth = 2, access = AccessSet.SEES_ALL)!!.nodes.map { it.key }.toSet()
 
         assertEquals(setOf("SCRUM-1", "SCRUM-2", "SCRUM-10", "SCRUM-100"), keys)
     }
@@ -358,7 +359,7 @@ class JiraIssuesReadTest {
     /** The four things a node shows (§13.2), each from the place that holds a word rather than a blob. */
     @Test
     fun `a node carries its type, status, key and summary`() = runBlocking {
-        val seed = graphs.graphOf(issueId(1), depth = 1)!!.nodes.single { it.key == "SCRUM-1" }
+        val seed = graphs.graphOf(issueId(1), depth = 1, access = AccessSet.SEES_ALL)!!.nodes.single { it.key == "SCRUM-1" }
 
         assertEquals("Task", seed.typeName)
         assertEquals("In Progress", seed.statusName)
@@ -373,7 +374,7 @@ class JiraIssuesReadTest {
      */
     @Test
     fun `edges keep their direction and their type name`() = runBlocking {
-        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+        val graph = graphs.graphOf(issueId(1), depth = 1, access = AccessSet.SEES_ALL)!!
         val seed = Ref.encode(issueId(1))
 
         val relates = graph.edges.single { it.typeName == "Relates" }
@@ -393,7 +394,7 @@ class JiraIssuesReadTest {
      */
     @Test
     fun `a link outside the picture is counted on the node it belongs to`() = runBlocking {
-        val graph = graphs.graphOf(issueId(1), depth = 1)!!
+        val graph = graphs.graphOf(issueId(1), depth = 1, access = AccessSet.SEES_ALL)!!
 
         assertEquals(1, graph.nodes.single { it.key == "SCRUM-2" }.truncatedNeighbours)
         assertTrue(graph.truncated)
@@ -402,7 +403,7 @@ class JiraIssuesReadTest {
     /** An issue with no links is one node and no edges — not an error, and not an empty answer. */
     @Test
     fun `an issue with no links is still a graph`() = runBlocking {
-        val graph = graphs.graphOf(issueId(3), depth = 2)!!
+        val graph = graphs.graphOf(issueId(3), depth = 2, access = AccessSet.SEES_ALL)!!
 
         assertEquals(listOf("OTS-3"), graph.nodes.map { it.key })
         assertEquals(emptyList(), graph.edges)
@@ -412,7 +413,7 @@ class JiraIssuesReadTest {
     /** A hand-edited handle is a 404, never an empty picture presented as an answer. */
     @Test
     fun `an unknown issue has no graph at all`() = runBlocking {
-        assertNull(graphs.graphOf("https://jira.example.com/rest/api/2/issue/9999", depth = 1))
+        assertNull(graphs.graphOf("https://jira.example.com/rest/api/2/issue/9999", depth = 1, access = AccessSet.SEES_ALL))
     }
 
     /** The table's control is offered from this count, so it has to be the count of both directions. */
@@ -445,6 +446,7 @@ class JiraIssuesReadTest {
         // The route resolves these from the stored choice and the catalogue; here they are stated,
         // so a failure means the read path is wrong rather than that the catalogue is.
         columns = fieldIds.map { JiraColumnDto(fieldId = it, name = it) },
+        access = AccessSet.SEES_ALL,
     )
 
     /** The fixture's issues are `<host>/rest/api/2/issue/<n>`, which is what a `self` looks like. */

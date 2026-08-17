@@ -7,6 +7,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.WindchillCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import org.neo4j.driver.Query
 import org.neo4j.driver.Record
 
@@ -50,9 +51,9 @@ public class WindchillProjection(
      * The order is the server's and the view keeps it as the order *inside* a group. Re-sorting the
      * table by a column reorders the groups, never the versions within one — see the Documents view.
      */
-    public suspend fun listDocuments(): WindchillDocumentsDto =
+    public suspend fun listDocuments(access: AccessSet): WindchillDocumentsDto =
         graphDriver.executeRead(
-            Query(WindchillCypher.LIST_DOCUMENTS, mapOf("limit" to DOCUMENT_CAP)),
+            WindchillCypher.LIST_DOCUMENTS, mapOf("limit" to DOCUMENT_CAP), access,
         ) { records ->
             val rows = records.map(::row)
             WindchillDocumentsDto(

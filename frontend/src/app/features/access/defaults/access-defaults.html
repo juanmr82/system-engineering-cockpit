@@ -1,0 +1,58 @@
+@if (checkingAccess()) {
+  <mat-progress-bar mode="indeterminate" />
+} @else if (!canManage()) {
+  <sec-refusal-panel title="Defaults" />
+} @else {
+  <div class="sec-access-defaults">
+    <header class="sec-access-defaults__header">
+      <p class="sec-access-defaults__eyebrow">Access</p>
+      <h1 class="sec-access-defaults__title">Defaults</h1>
+    </header>
+
+    @if (api.defaults.isLoading() && !api.defaults.hasValue()) {
+      <mat-progress-bar mode="indeterminate" />
+    } @else if (api.defaults.error()) {
+      <div class="sec-access-defaults__error" role="alert">
+        <p>Couldn't load import defaults.</p>
+        <button mat-stroked-button type="button" (click)="retry()">Retry</button>
+      </div>
+    } @else {
+      <div class="sec-access-defaults__bar">
+        <p class="sec-access-defaults__hint">New containers of each type are visible to their default category.</p>
+
+        <button
+          mat-icon-button
+          type="button"
+          class="sec-access-defaults__action"
+          [matTooltip]="
+            dirtyCount() === 1 ? 'Save 1 import default' : 'Save ' + dirtyCount() + ' import defaults'
+          "
+          aria-label="Save import defaults"
+          [disabled]="!canSave()"
+          (click)="save()"
+        >
+          <mat-icon svgIcon="save" />
+          @if (dirtyCount() > 0) {
+            <span class="sec-access-defaults__badge" aria-hidden="true">{{ dirtyCount() }}</span>
+          }
+        </button>
+      </div>
+
+      @if (saveError(); as message) {
+        <p class="sec-access-defaults__error" role="alert">{{ message }}</p>
+      }
+
+      <div class="sec-access-defaults__table-scroll sec-grid sec-grid--middle">
+        <ag-grid-angular
+          class="sec-access-defaults__grid"
+          [gridOptions]="gridOptions"
+          [columnDefs]="columnDefs"
+          [rowData]="rows()"
+          [context]="cellContext"
+          [getRowId]="getRowId"
+          (gridReady)="onGridReady($event)"
+        />
+      </div>
+    }
+  </div>
+}

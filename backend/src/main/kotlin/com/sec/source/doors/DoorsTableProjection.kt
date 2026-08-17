@@ -8,6 +8,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.TableCypher
 import com.sec.graph.executeRead
+import com.sec.security.AccessSet
 import org.neo4j.driver.Query
 import org.neo4j.driver.Record
 
@@ -25,9 +26,9 @@ import org.neo4j.driver.Record
 public class DoorsTableProjection(private val graphDriver: GraphDriver) {
 
     /** Every table of one module, in document order. */
-    public suspend fun getModuleTables(moduleId: String): List<DoorsTableViewDto> {
+    public suspend fun getModuleTables(moduleId: String, access: AccessSet): List<DoorsTableViewDto> {
         val sources = graphDriver.executeRead(
-            Query(TableCypher.MODULE_TABLES, mapOf("moduleUrl" to moduleId)),
+            TableCypher.MODULE_TABLES, mapOf("moduleUrl" to moduleId), access,
         ) { records -> fold(records) }
 
         return sources.map(TableGeometry::assemble)
@@ -41,9 +42,9 @@ public class DoorsTableProjection(private val graphDriver: GraphDriver) {
      * [TableAnomalyKind.ORPHAN_TABLE_MEMBER] view: an object that is visibly part of a table and
      * has lost its table is a finding, and reporting it as "not found" would hide it.
      */
-    public suspend fun getTableFor(itemId: String): DoorsTableViewDto? {
+    public suspend fun getTableFor(itemId: String, access: AccessSet): DoorsTableViewDto? {
         val resolved = graphDriver.executeRead(
-            Query(TableCypher.RESOLVE_TABLE, mapOf("itemId" to itemId)),
+            TableCypher.RESOLVE_TABLE, mapOf("itemId" to itemId), access,
         ) { records ->
             records.firstOrNull()?.let { record ->
                 Resolution(
@@ -58,7 +59,7 @@ public class DoorsTableProjection(private val graphDriver: GraphDriver) {
         val tableId = resolved.tableItemId ?: resolved.fallbackTableItemId ?: return orphan(itemId)
         val moduleUrl = resolved.moduleUrl ?: return orphan(itemId)
 
-        return getModuleTables(moduleUrl).firstOrNull { it.ref == Ref.encode(tableId) }
+        return getModuleTables(moduleUrl, access).firstOrNull { it.ref == Ref.encode(tableId) }
             ?: orphan(itemId)
     }
 

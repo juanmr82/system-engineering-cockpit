@@ -189,6 +189,25 @@ this a knowledge tree rather than three catalogues sharing a database. Reify rat
 using a direct relationship, so the link carries author, rationale, and the link semantics
 the DXL discards — and so it is still removed by the single `:__Meta` delete query.
 
+**Shape D — membership in a shared set.**
+`(:SEItem)-[:__inAccessCategory]->(:__Meta:__AccessCategory)`
+
+| `__metaKind` | Label | Relationship | Payload |
+|---|---|---|---|
+| `accessCategory` | `:__AccessCategory` | `__inAccessCategory` | `key`, `name`, `description`, `everyGroup` |
+
+The inverse of Shape B: many anchors, one meta node. The **membership is a bare relationship and is
+not reified**, which is a departure from this rule's usual shape and is argued in ADR 0016 §6.1 —
+one node per (item, category) pair would be millions of nodes, and the predicate that reads them
+runs on every read of every view. Membership has no payload; the audit properties ride on the
+relationship.
+
+Two nodes in that feature are deliberately **not** `:__Meta` — `:__Group` and `:__AccessDefault` —
+for the reason given just below about saved queries: they do not hang off the imported graph. They
+have their own labels and their own delete query, and `MATCH (m:__Meta) DETACH DELETE m` keeps its
+contract unchanged. It also leaves an application in which nobody can see anything, which is the
+right direction to fail.
+
 **Explicitly not `:__Meta`:**
 
 - **Anything derivable** — counts, coverage percentages, statistics, policy-check results.
@@ -303,6 +322,16 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | a Windchill `Number` carried by more than one document | a **group header row** over its versions — bold, Airbus blue, on `--sec-heading-1`, the same ground a DOORS heading row uses and for the same reason (§8, third exception). It shows folder location, name and number and **no version and no state**, because those are exactly what the rows under it disagree about. Its own class (`sec-grid__row--group`), never the heading *level* scale — a document group has no outline depth. Versions sit under it newest first, indented; a number with one document gets no header at all (ADR 0015) |
 | a Windchill group header's version count | **n versions** — counted over the **whole** set, never the filtered one. Counting after a search would make headers appear and vanish as a reader typed, which reads as the data changing rather than as the view narrowing |
 
+| `:__AccessCategory` | **Access category** — its `name`, never its `key` |
+| `__inAccessCategory` | **Access**, in a container's or an item's settings; the list of category names. `origin: 'inherited'` renders as *from ‹container name›*, greyed and not editable there — the fix is on the container |
+| `:__Group` | **Group** — its `name`. Its `key` appears only in the Access views, where an administrator needs the exact string the token carries |
+| `__mayRead` | **May read** — the checkbox in the grants matrix |
+| `:__Group` `seesAll` | **Sees everything** — its own column, visually distinct, behind a confirmation |
+| `:__AccessCategory` `everyGroup` | **Any group** — *visible to any user who is in at least one group*. Never *public*: that word reads as *visible to everyone, including a user with no group*, which is exactly what it is not (R8) |
+| `:__AccessDefault` | **Import default** — *new ‹source› ‹containers› are visible to …* |
+| a container with no `origin: 'direct'` category | **Not yet assigned** — never *unassigned*, which reads as a fault rather than as work waiting |
+| `__metaKind: accessCategory`, `via`, `origin` | never shown |
+
 Controlled vocabularies and source-native field labels also live in `Aliases.kt`:
 
 | Stored | Shown as |
@@ -357,6 +386,38 @@ Consequences:
 This is a UI rule only. The backend keeps its single guarded meta write path (§5) —
 removing client-side staging must not produce a second server-side way to write `:__Meta`.
 
+### R8 — nothing leaves the backend that the caller may not see
+
+Every object in the graph is visible only to users whose groups have been granted one of its
+**access categories**. Identity and group membership come from Keycloak; which objects a group may
+read is ours and lives in the graph. The model is **ADR 0016**, the session is **ADR 0017**, and the
+implementation is `docs/features/access-control.md`. Three things bind every stack:
+
+- **One predicate, one function.** `AccessCypher.visible()` is the only way authorization reaches a
+  query, and `AccessGuardTest` fails the build when a Cypher statement touching `:SEItem` does not
+  carry it. A read path that must run unfiltered is named in the exemption list with a reason —
+  never by omission.
+- **An edge is visible only if both its endpoints are.** A link to an object the user cannot see is
+  absent: not struck through, not "unresolved", not counted in a `+n` badge, not named in a banner.
+  **Anything computed from the graph — a row, an edge, a count, a badge, an error message, an
+  absence — is computed from the graph that user can see.** There is no second graph.
+- **An unauthorized object is a `404`. An unauthorized capability is a `403`.** A `403` on an object
+  confirms it exists.
+
+Four consequences that are not obvious and are not bugs:
+
+- **An object nobody has categorised is invisible to everyone**, administrators included. That is
+  the correct state for a newly imported object, and the correct state after any failure. No code
+  path may widen visibility on error, and there is no permissive mode and no bypass flag.
+- **A user in no group sees nothing**, including the documents that are "visible to everyone" —
+  those are a category granted to every group, never a bypass. There is no `if (public) return true`
+  in this codebase.
+- **Capability and visibility are separate axes.** `sec-admin` administers; it does not see one
+  object more than its holder's groups allow. This will be reported as a bug at least once.
+- **Categories are attached by hand to containers only** — a module, a project — and propagated to
+  their contents by a machine-owned reconciler. That is what makes one decision cover 984 objects,
+  and what makes undoing it cover them too.
+
 ### Where a given piece of state lives
 
 Four stores, and the boundaries are not negotiable. When you need to persist something
@@ -369,6 +430,8 @@ new, place it here **before** writing code.
 | **Business annotation (Tier 2)** | Neo4j, `:__Meta` nodes | **the API, on an explicit save in the dialog or table that owns the data** | comments, mandatory-attribute rules, system level, review status |
 | Application configuration | **backend config file**, git-versioned | a developer, at release | sidenav structure and order, feature flags |
 | Per-user UI preference | browser, client-side | the browser | sidenav collapsed, column widths, last route |
+| **Who may see what** (categories, grants, tags) | Neo4j, `:__AccessCategory` / `:__Group` | **the API, on a save by a `sec-access-manager`** | which groups may read which module |
+| **Who a user is, and what they may do** | **Keycloak** — never the graph, never a config file | the IdP, with the company IdP brokered behind it later | group membership, `sec-admin` |
 
 The line between the last three is the one that gets blurred. Test it with two questions:
 *does a user change it during normal work?* → Tier 2. *Is it the same for everyone and
@@ -482,6 +545,8 @@ Pin these in the root `pom.xml` and `package.json`. Do not float versions.
 | echarts | **6.1.0**, exact | Apache-2.0. The **only** charting implementation — see ADR 0008 and §6. Pinned exactly for the same reason ag-grid is. Imported through `shared/charts/echarts-core`, never from `'echarts'` wholesale |
 | ngx-echarts | **22.0.0**, exact | Apache-2.0, matched major to Angular. The standalone `NgxEchartsDirective` only; `NgxEchartsModule` is in the package and is never imported |
 | elkjs | **0.11.0**, exact | EPL-2.0. The **only** graph-layout implementation — see ADR 0011. Loaded solely inside `features/requirements/graph/layout/elk.worker.ts`, so it never enters the initial bundle; it is CommonJS, hence the one entry in `allowedCommonJsDependencies`. Pinned exactly for the same reason ag-grid and echarts are |
+| Keycloak | **26.x**, or whatever the company runs | The IdP. SEC depends on **three claims and nothing else**: `sub`, `groups`, `realm_access.roles`. No Admin API, no service account, no group sync — `docs/KEYCLOAK_SETUP.md`. Group membership is administered in **our own realm and stays there**; brokering moves authentication and the user id outward, nothing else (ADR 0016 §3.1) |
+| `ktor-server-auth`, `ktor-server-auth-jwt`, `ktor-server-sessions` | `${ktor.version}` | The backend is the OIDC client (ADR 0017). `auth-jwt` brings the JWKS machinery transitively — **do not add a separate JWT or OIDC library**. Every artifact is `${ktor.version}`: one version, one decision |
 | Python | **3.11+** | importers |
 
 Frontend quality gate — these exist so `npm run lint` and `npm test` are real (§11):
@@ -495,6 +560,10 @@ Frontend quality gate — these exist so `npm run lint` and `npm test` are real 
 
 There is **no static analysis on the backend yet** (ktlint/detekt). It needs its own decision —
 `explicitApi()` already carries some of the weight, and adding a formatter is a separate call.
+
+**The frontend gains no dependency for authentication.** The browser holds no token and needs no
+OIDC library, because the backend is the OIDC client (ADR 0017). A pull request adding
+`angular-auth-oidc-client`, `keycloak-js` or a JWT decoder has misread the architecture.
 
 Before adding *any* dependency not in these tables, check whether the platform already
 provides it. Prefer fewer libraries over convenience wrappers.
@@ -568,8 +637,11 @@ See **`docs/adr/0015`** — the whole design is there, and it is short. What mus
 
 Read this before designing anything that assumes a normal database.
 
-- **No role-based access control.** There is exactly one credential: the service account.
-  User identity, authorization and read-only enforcement live entirely in the Ktor layer.
+- **No role-based access control, and that is now load-bearing.** There is exactly one credential:
+  the service account. User identity, authorization, per-object visibility and read-only enforcement
+  live entirely in the Ktor layer — Enterprise's fine-grained security would have done part of this
+  and does not exist here. Every read path carries the visibility predicate itself (R8, ADR 0016).
+  A query that reaches the driver unfiltered is a query that returns everything, to anyone.
 - **No property-existence or key constraints.** "Every node has `__name`" cannot be
   enforced by the database. The importer guarantees it; a validation query re-checks it;
   the frontend still treats it defensively.
@@ -667,6 +739,8 @@ user data, on properties whose names contain spaces and umlauts.
   (`neo4j-image.version`) and passed to the test as a system property, so it sits next to every
   other version rather than inside a test file.
 - Any feature that writes Tier 2 has the byte-identical-anchor test from R2.
+- Any new read path is covered by the visibility matrix test, or named in `AccessGuardTest`'s
+  exemption list with a reason (R8).
 - Any decision that took real thought gets a short ADR in `docs/adr/`.
 - Update this file if you changed something it describes.
 
@@ -686,3 +760,12 @@ user data, on properties whose names contain spaces and umlauts.
 - Change the identity scheme, the label model, or the meta model.
 - Make anything DOORS-specific outside `importers/.../doors/`, `source/doors/`, and the
   DOORS-specific API routes.
+- Add a read path that does not carry the visibility predicate, or add an entry to its exemption
+  list, without saying why in the review (R8).
+- Return a count, badge, banner or error message computed over objects the caller cannot see (R8).
+- Add a bypass, a permissive mode, or a developer flag that turns authorization off. There is none,
+  on purpose — a switch that turns authorization off is a switch that will be found on in
+  production (`docs/features/access-control.md` §12).
+- Give the frontend a token, an OIDC library, or anything to decode (ADR 0017).
+- Call the Keycloak Admin API, or make SEC depend on any Keycloak concept beyond the three claims
+  (ADR 0016 §2).

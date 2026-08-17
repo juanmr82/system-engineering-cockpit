@@ -524,6 +524,12 @@ populate?" with `keys(i)`, exactly as the DOORS schema does in its §5.1.
 
 ## 8. The JQL query
 
+> **Superseded 2026-08-16 by ADR 0018.** There is no persisted project list any more — RBAC is the
+> gate (R8): the importer brings in everything the configured token can see, and access categories
+> decide who may read it. The query below is fixed, with no user-editable clause and therefore no
+> injection boundary left to guard in this section. Kept here as the historical record of the
+> pre-ADR-0018 design; read the ADR for the current shape.
+
 Built server-side, from the persisted project list (§10.1) plus fixed parts. The frontend
 never sends JQL.
 
@@ -679,6 +685,9 @@ importing both directions creates duplicate truth.
 All app-owned, all `__`-prefixed, all singletons for now (R2 + the RBAC seam in §14.1).
 
 ### 10.1 `__JiraSettings`
+
+> **Superseded 2026-08-16 by ADR 0018 — this node is deleted, not merely unused.** There is no
+> persisted project list any more; RBAC is the gate. Kept here as the historical record.
 
 ```cypher
 MERGE (s:__JiraSettings {__id: 'jira-settings'})
@@ -897,6 +906,11 @@ Runs after **all** pages are in, never per page — a link's target may live on 
 
 ### Phase 5 — Sweep
 
+> **Superseded 2026-08-16 by ADR 0018.** With no project allow-list, the `__projectKey IN
+> $configuredKeys` scope below no longer applies and the `deletedByConfig` counter is gone — one
+> statement, `NOT i.__id IN $seenIds`, covers both what this section called "deleted-in-JIRA" and
+> "de-configured": under RBAC-is-the-gate the importer cannot and need not tell them apart.
+
 ```cypher
 MATCH (i:JiraIssue)
 WHERE i.__projectKey IN $configuredKeys
@@ -1066,6 +1080,12 @@ The persisted `fieldIds` may reference fields that no longer exist in JIRA.
   like a bug.
 
 ### 13.5 JIRA settings page (`/settings/jira`)
+
+> **Point 2 superseded 2026-08-16 by ADR 0018.** There is no project picker any more — RBAC is the
+> gate. Point 2 below is the historical record of the pre-ADR-0018 design. The page's current shape:
+> Connection (now also listing what the token can see, as a diagnostic, per ADR 0018), Columns,
+> Import (now showing the next scheduled run alongside the manual trigger, and never disabled for
+> lack of configured projects).
 
 Sections, top to bottom:
 
@@ -1387,7 +1407,10 @@ The feature is done when, against the real instance:
   endpoints and multiply the payload; add them as a later phase if needed.
 - Incremental import (`AND updated > lastRunTime`). Tempting, but it cannot detect
   deletions, so it must always be paired with a periodic full run. Revisit when issue
-  counts pass ~20 k; the phase structure already accommodates it.
+  counts pass ~20 k; the phase structure already accommodates it. **The periodic full run
+  itself arrived in ADR 0018 (2026-08-16)** — `ImportScheduler` re-runs the (now
+  project-unfiltered) import on an interval; the incremental variant considered here is
+  still not built, and remains the thing to revisit at ~20 k issues.
 - Sprint/board (Agile) data — that is `/rest/agile/1.0`, a different API surface.
 - Per-user column configurations. The `__JiraColumnConfig` singleton becomes
   `(:__JiraColumnConfig)<-[:__hasColumnConfig]-(:__User)` when RBAC lands; nothing else

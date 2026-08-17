@@ -9,6 +9,12 @@
             <map>
               <entry key="SEC_NEO4J_PASSWORD" value="admin1234" />
               <entry key="SEC_NEO4J_USER" value="neo4j" />
+              <!-- Matches deploy/keycloak/sec-realm.json's sec-backend client secret exactly. -->
+              <entry key="SEC_OIDC_CLIENT_SECRET" value="sec-backend-dev-secret" />
+              <!-- ng serve runs on :4200; Keycloak only ever redirects to the backend's own
+                   registered callback URL (:8080), so the backend hands the browser onward to
+                   this origin itself after the callback and after logout (ADR 0017). -->
+              <entry key="SEC_AUTH_FRONTEND_URL" value="http://localhost:4200" />
             </map>
           </option>
           <option name="jreName" value="#USE_PROJECT_JDK" />

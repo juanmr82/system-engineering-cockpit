@@ -1,0 +1,67 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-access-containers {
+  @include sec.page-shell;
+}
+
+.sec-access-containers__header {
+  flex: none;
+}
+
+.sec-access-containers__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-access-containers__title {
+  @include sec.view-title;
+}
+
+.sec-access-containers__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-access-containers__search {
+  flex: 1 1 260px;
+
+  --mat-form-field-container-height: 34px;
+}
+
+.sec-access-containers__stats {
+  @include sec.stat-readout;
+}
+
+.sec-access-containers__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sec-access-containers__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-access-containers__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.sec-access-containers__no-match {
+  @include sec.absent-text;
+}

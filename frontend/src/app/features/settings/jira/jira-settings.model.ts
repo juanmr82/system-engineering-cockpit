@@ -17,19 +17,11 @@ export interface JiraHealth {
   readonly host: string;
 }
 
-/** One project this JIRA offers. Fetched live and never stored — the *keys* are what we keep. */
+/**
+ * One project the configured token can currently see (ADR 0018) — a read-only diagnostic, fetched
+ * live and never stored. There is no configured subset any more: the importer brings in all of them.
+ */
 export interface JiraProject {
   readonly key: string;
   readonly name: string;
-}
-
-/**
- * The configured projects, and the query they produce.
- *
- * The JQL preview is derived by the server on every read and is the single best debugging aid in
- * the feature: it is exactly what the next import will send.
- */
-export interface JiraProjectSettings {
-  readonly projectKeys: readonly string[];
-  readonly jql: string | null;
 }

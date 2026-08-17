@@ -37,7 +37,6 @@ public class JiraImporter(
     private val settings: JiraSettings,
     private val client: JiraHttpClient,
     private val writer: JiraGraphWriter,
-    private val settingsStore: JiraSettingsStore,
 ) : ImportJob {
 
     override val importerId: String = ID
@@ -79,9 +78,6 @@ public class JiraImporter(
 
         /** Phase 2's catalogue, kept for phase 3 — see [JiraFieldCatalogue] on why it is advisory. */
         var catalogue: JiraFieldCatalogue = JiraFieldCatalogue.EMPTY
-
-        /** Read once in preflight, used by phases 3 and 5. The sweep's scope *is* this list. */
-        var projectKeys: List<String> = emptyList()
 
         /** How many stubs stood before this run touched anything — half of `unresolvedResolved`. */
         var unresolvedAtStart: Int = 0
@@ -127,10 +123,6 @@ public class JiraImporter(
      * bound will get its time zone when phase 3 arrives. Taking that from the JVM default would
      * shift the snapshot boundary by hours whenever the server and the service sit in different
      * zones (spec §8).
-     *
-     * Project keys are checked here now that phase 3 exists, and **before** anything is written:
-     * spec §8 refuses an unbounded import outright, so finding out after the schema and two
-     * catalogues have been written would be finding out late.
      */
     private suspend fun preflight(context: ImportContext, state: RunState) {
         context.phase(PREFLIGHT)
@@ -149,10 +141,6 @@ public class JiraImporter(
             context.warn("JIRA reported a time zone this server does not recognise (${me.timeZone}); using UTC.")
             ZoneOffset.UTC
         }
-
-        state.projectKeys = settingsStore.projectKeys()
-        JiraJql.validate(state.projectKeys).getOrElse { throw it }
-        context.log("Configured projects: ${state.projectKeys.joinToString(", ")}")
 
         context.params(
             mapOf(
@@ -254,7 +242,7 @@ public class JiraImporter(
         context.phase(ISSUES)
         context.ensureActive()
 
-        val jql = JiraJql.build(state.projectKeys, Instant.now(), state.zone).getOrElse { throw it }
+        val jql = JiraJql.build(Instant.now(), state.zone)
 
         // On the run record, because when an import returns something unexpected the first question
         // is always what was actually asked for (spec §8).
@@ -387,20 +375,14 @@ public class JiraImporter(
         }
 
         val before = writer.issueCounts().issues
-        val counts = writer.sweep(state.projectKeys, state.seenIds)
+        val counts = writer.sweep(state.seenIds)
 
         context.setCount(Counter.DELETED, counts.deleted.toLong())
-        context.setCount(Counter.DELETED_BY_CONFIG, counts.deletedByConfig.toLong())
         context.progress(1, 1)
 
         if (counts.deleted > 0) context.log("${counts.deleted} issue(s) no longer in JIRA were removed")
-        if (counts.deletedByConfig > 0) {
-            context.log(
-                "${counts.deletedByConfig} issue(s) removed because their project is no longer selected",
-            )
-        }
 
-        val removed = counts.deleted + counts.deletedByConfig
+        val removed = counts.deleted
         if (before > 0 && removed * PERCENT > before * MASS_DELETE_PERCENT) {
             context.warn(
                 "This import removed $removed of $before issues — more than $MASS_DELETE_PERCENT %. " +
@@ -447,9 +429,8 @@ public class JiraImporter(
         public const val UNRESOLVED_CREATED: String = "unresolvedCreated"
         public const val UNRESOLVED_RESOLVED: String = "unresolvedResolved"
 
-        /** Issues JIRA no longer returns. Kept apart from [DELETED_BY_CONFIG] — different news. */
+        /** Issues JIRA no longer returns, or that the configured token can no longer see. */
         public const val DELETED: String = "deleted"
-        public const val DELETED_BY_CONFIG: String = "deletedByConfig"
     }
 
     public companion object {

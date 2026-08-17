@@ -19,7 +19,7 @@ import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.executeRead
-import org.neo4j.driver.Query
+import com.sec.security.AccessSet
 import org.neo4j.driver.Record
 import org.neo4j.driver.Value
 
@@ -41,13 +41,13 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
      * Returns null when [moduleId] names a module that does not exist, so the route can answer
      * 404 rather than an empty page of zeroes.
      */
-    public suspend fun getStatistics(moduleId: String?): RequirementStatisticsDto? {
-        val modules = modulesInScope(moduleId)
+    public suspend fun getStatistics(moduleId: String?, access: AccessSet): RequirementStatisticsDto? {
+        val modules = modulesInScope(moduleId, access)
         if (moduleId != null && modules.isEmpty()) {
             return null
         }
 
-        val perModule = modules.map { module -> module.statistics() }
+        val perModule = modules.map { module -> module.statistics(access) }
 
         return RequirementStatisticsDto(
             census = CensusDto(
@@ -78,9 +78,9 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
      * findings afterwards (§7.2). Filtering the edge set first would be faster and would hide
      * exactly the loops worth finding: one that leaves a module and comes back.
      */
-    public suspend fun getCycles(moduleId: String?): CyclesResponseDto {
+    public suspend fun getCycles(moduleId: String?, access: AccessSet): CyclesResponseDto {
         val edges = graphDriver.executeRead(
-            Query(StatisticsCypher.ALL_TRACE_EDGES, mapOf("limit" to MAX_EDGES)),
+            StatisticsCypher.ALL_TRACE_EDGES, mapOf("limit" to MAX_EDGES), access,
         ) { records ->
             records.map { Cycles.Edge(it.get("fromId").asString(""), it.get("toId").asString("")) }
         }
@@ -90,7 +90,7 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
             return CyclesResponseDto(emptyList(), edges.size, edges.size >= MAX_EDGES)
         }
 
-        val members = loopMembers(loops.flatMap { it.members }.distinct())
+        val members = loopMembers(loops.flatMap { it.members }.distinct(), access)
         val visible = loops.filter { loop ->
             moduleId == null || loop.members.any { members[it]?.moduleId == moduleId }
         }
@@ -120,12 +120,11 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
         val danglingTargets: List<DanglingTargetDto>,
     )
 
-    private suspend fun modulesInScope(moduleId: String?): List<ModuleInScope> =
+    private suspend fun modulesInScope(moduleId: String?, access: AccessSet): List<ModuleInScope> =
         graphDriver.executeRead(
-            Query(
-                StatisticsCypher.MODULES_IN_SCOPE,
-                mapOf("moduleId" to moduleId, "limit" to MAX_MODULES),
-            ),
+            StatisticsCypher.MODULES_IN_SCOPE,
+            mapOf("moduleId" to moduleId, "limit" to MAX_MODULES),
+            access,
         ) { records ->
             records.map {
                 ModuleInScope(
@@ -136,14 +135,14 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
             }
         }
 
-    private suspend fun ModuleInScope.statistics(): ModuleResult {
-        val policies = mandatoryPolicies(id)
+    private suspend fun ModuleInScope.statistics(access: AccessSet): ModuleResult {
+        val policies = mandatoryPolicies(id, access)
         // One read, two answers: both roles live on the same :__AttributeSetting nodes, so asking
         // separately would be two round trips for one row set.
-        val settings = attributeSettings(id)
+        val settings = attributeSettings(id, access)
         val verificationAttributes = settings.named { it.get("verification") }
         val excludedFromOpenPoints = settings.named { it.get("excludedFromOpenPoints") }
-        val total = objectCount(id)
+        val total = objectCount(id, access)
 
         // "Above L0" is read from the module, because a requirement carries no level of its own.
         // L0 has nothing above it to refine, so the orphan question does not apply to it.
@@ -152,17 +151,16 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
 
         val tally = Tally()
         graphDriver.executeRead(
-            Query(
-                StatisticsCypher.MODULE_OBJECTS,
-                mapOf("moduleUrl" to id, "limit" to MAX_OBJECTS_PER_MODULE),
-            ),
+            StatisticsCypher.MODULE_OBJECTS,
+            mapOf("moduleUrl" to id, "limit" to MAX_OBJECTS_PER_MODULE),
+            access,
         ) { records ->
             records.forEach {
                 tally.add(it, policies, verificationAttributes, excludedFromOpenPoints, parentageApplies)
             }
         }
 
-        val dangling = danglingTargets(id)
+        val dangling = danglingTargets(id, access)
 
         return ModuleResult(
             dto = ModuleStatisticsDto(
@@ -301,9 +299,12 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
 
     // Reused verbatim from ReviewCypher: a second copy of this statement would be a second
     // definition of what a mandatory attribute is (§3.2).
-    private suspend fun mandatoryPolicies(moduleId: String): List<DoorsChecks.MandatoryPolicy> =
+    private suspend fun mandatoryPolicies(
+        moduleId: String,
+        access: AccessSet,
+    ): List<DoorsChecks.MandatoryPolicy> =
         graphDriver.executeRead(
-            Query(ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId)),
+            ReviewCypher.MANDATORY_POLICIES, mapOf("moduleId" to moduleId), access,
         ) { records ->
             records.map {
                 DoorsChecks.MandatoryPolicy(
@@ -320,26 +321,25 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
      * proves verification, and which the TBD / TBC scan must skip — and a method per role would be
      * a round trip per role over one row set.
      */
-    private suspend fun attributeSettings(moduleId: String): List<Record> =
+    private suspend fun attributeSettings(moduleId: String, access: AccessSet): List<Record> =
         graphDriver.executeRead(
-            Query(ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS, mapOf("moduleId" to moduleId)),
+            ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS, mapOf("moduleId" to moduleId), access,
         ) { records -> records.toList() }
 
     /** The attribute names whose row has [flag] set. */
     private fun List<Record>.named(flag: (Record) -> Value): Set<String> =
         filter { flag(it).asBoolean(false) }.mapTo(linkedSetOf()) { it.get("name").asString("") }
 
-    private suspend fun objectCount(moduleId: String): Int =
+    private suspend fun objectCount(moduleId: String, access: AccessSet): Int =
         graphDriver.executeRead(
-            Query(StatisticsCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId)),
+            StatisticsCypher.COUNT_MODULE_OBJECTS, mapOf("moduleUrl" to moduleId), access,
         ) { records -> records.firstOrNull()?.get("total")?.asInt() ?: 0 }
 
-    private suspend fun danglingTargets(moduleId: String): List<DanglingTargetDto> =
+    private suspend fun danglingTargets(moduleId: String, access: AccessSet): List<DanglingTargetDto> =
         graphDriver.executeRead(
-            Query(
-                StatisticsCypher.DANGLING_TARGET_MODULES,
-                mapOf("moduleUrl" to moduleId, "limit" to MAX_MODULES),
-            ),
+            StatisticsCypher.DANGLING_TARGET_MODULES,
+            mapOf("moduleUrl" to moduleId, "limit" to MAX_MODULES),
+            access,
         ) { records ->
             records.mapNotNull { record ->
                 record.optionalString("id")?.let {
@@ -348,9 +348,9 @@ public class StatisticsProjection(private val graphDriver: GraphDriver) {
             }
         }
 
-    private suspend fun loopMembers(ids: List<String>): Map<String, LoopMember> =
+    private suspend fun loopMembers(ids: List<String>, access: AccessSet): Map<String, LoopMember> =
         graphDriver.executeRead(
-            Query(StatisticsCypher.LOOP_MEMBERS, mapOf("ids" to ids)),
+            StatisticsCypher.LOOP_MEMBERS, mapOf("ids" to ids), access,
         ) { records -> records.associate { it.get("id").asString("") to it.toLoopMember() } }
 
     private class LoopMember(val moduleId: String?, val dto: LoopMemberDto)

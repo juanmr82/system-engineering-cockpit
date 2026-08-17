@@ -6,7 +6,7 @@ import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.executeRead
-import org.neo4j.driver.Query
+import com.sec.security.AccessSet
 
 /**
  * The Breakdown tab's read model (docs/requirement-breakdown-tree.md).
@@ -39,12 +39,13 @@ public class BreakdownProjection(
      */
     public suspend fun getBreakdown(
         itemId: String,
+        access: AccessSet,
         maxDepth: Int = DEFAULT_MAX_DEPTH,
         maxNodes: Int = DEFAULT_MAX_NODES,
     ): BreakdownResponseDto? {
-        val walk = walk(itemId, maxDepth, maxNodes)
+        val walk = walk(itemId, access, maxDepth, maxNodes)
 
-        val nodes = cardProjection.loadCards(walk.known)
+        val nodes = cardProjection.loadCards(walk.known, access)
         // The walk always admits the starting id, so its absence here means no such object rather
         // than an empty neighbourhood — which is a 404, not an empty tree.
         if (itemId !in nodes) {
@@ -95,8 +96,15 @@ public class BreakdownProjection(
      * "what decomposes it" and has to start from those roots, not from the selected item — which
      * is what makes the response the full forest rather than the selected item's own neighbourhood,
      * so the panel never needs a second request to expand a sibling branch (§6).
+     *
+     * **Both bounds are computed over the visible graph and cannot be otherwise** (R8, spec §7). The
+     * two edge statements filter *both* endpoints, so an object this caller may not see never becomes
+     * a row here at all: it is never admitted, never counts toward [maxNodes], and never makes
+     * `truncated` true. That is what keeps "the branch simply ends" true — no ellipsis, no count, no
+     * "loops back to" — rather than the tree reporting that it stopped early because of a node the
+     * reader is not allowed to know exists.
      */
-    private suspend fun walk(itemId: String, maxDepth: Int, maxNodes: Int): Walk {
+    private suspend fun walk(itemId: String, access: AccessSet, maxDepth: Int, maxNodes: Int): Walk {
         val known = linkedSetOf(itemId)
         val edges = LinkedHashSet<Edge>()
         var truncated = false
@@ -123,7 +131,7 @@ public class BreakdownProjection(
         var frontier = listOf(itemId)
         var depth = 0
         while (frontier.isNotEmpty() && depth < maxDepth) {
-            val rows = readEdges(BreakdownCypher.EDGES_UP, frontier, edgeLimit)
+            val rows = readEdges(BreakdownCypher.EDGES_UP, frontier, edgeLimit, access)
             if (rows.size.toLong() >= edgeLimit) {
                 truncated = true
             }
@@ -174,7 +182,7 @@ public class BreakdownProjection(
         var downFrontier = roots.toList()
         depth = 0
         while (downFrontier.isNotEmpty() && depth < maxDepth) {
-            val rows = readEdges(BreakdownCypher.EDGES_DOWN, downFrontier, edgeLimit)
+            val rows = readEdges(BreakdownCypher.EDGES_DOWN, downFrontier, edgeLimit, access)
             if (rows.size.toLong() >= edgeLimit) {
                 truncated = true
             }
@@ -199,8 +207,13 @@ public class BreakdownProjection(
         return Walk(known = known, edges = edges, roots = roots.toList(), truncated = truncated)
     }
 
-    private suspend fun readEdges(statement: String, ids: List<String>, limit: Long): List<EdgeRow> =
-        graphDriver.executeRead(Query(statement, mapOf("ids" to ids, "limit" to limit))) { records ->
+    private suspend fun readEdges(
+        statement: String,
+        ids: List<String>,
+        limit: Long,
+        access: AccessSet,
+    ): List<EdgeRow> =
+        graphDriver.executeRead(statement, mapOf("ids" to ids, "limit" to limit), access) { records ->
             records.map { record ->
                 EdgeRow(
                     from = record.get("fromId").asString(),
