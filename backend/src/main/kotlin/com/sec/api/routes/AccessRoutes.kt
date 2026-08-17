@@ -8,8 +8,12 @@ import com.sec.api.dto.AccessCategoryListResponseDto
 import com.sec.api.dto.AccessReconcileResponseDto
 import com.sec.api.dto.AccessReconcileSourceDto
 import com.sec.api.dto.CreateAccessCategoryRequestDto
+import com.sec.api.dto.AccessDefaultDto
+import com.sec.api.dto.AccessDefaultsResponseDto
+import com.sec.api.dto.AccessSummaryDto
 import com.sec.api.dto.GroupListResponseDto
 import com.sec.api.dto.GroupWithGrantsDto
+import com.sec.api.dto.SaveAccessDefaultsRequestDto
 import com.sec.api.dto.SaveDirectCategoriesRequestDto
 import com.sec.api.dto.SaveDirectCategoriesResponseDto
 import com.sec.api.dto.SaveGrantsRequestDto
@@ -20,10 +24,12 @@ import com.sec.api.dto.UpdateAccessCategoryRequestDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
 import com.sec.domain.AccessCategorySummary
+import com.sec.domain.AccessDefaultEntry
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
 import com.sec.domain.GroupWithGrants
 import com.sec.domain.Ref
+import com.sec.domain.SaveDefaultsOutcome
 import com.sec.domain.SaveDirectCategoriesOutcome
 import com.sec.domain.SaveGrantsOutcome
 import com.sec.domain.SetSeesAllOutcome
@@ -271,6 +277,65 @@ public fun Route.accessRoutes(reconciler: AccessReconciler, adminService: Access
                 call.handleSaveDirectCategories(adminService::saveItemCategories)
             }
         }
+
+        route("/defaults") {
+            get {
+                call.respond(AccessDefaultsResponseDto(adminService.listDefaults().map { it.toDto() }))
+            }
+
+            put {
+                val principal = call.principal<SecPrincipal>()
+                    ?: error("${ApiPaths.ACCESS_DEFAULTS} ran without a principal despite the session guard")
+                val body = call.receive<SaveAccessDefaultsRequestDto>()
+
+                val malformed = body.defaults.mapNotNull { it.categoryRef }.filter { Ref.decodeOrNull(it) == null }
+                if (malformed.isNotEmpty()) {
+                    return@put call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Invalid reference",
+                        "Some category references in this request are not readable. Reload and try again.",
+                        ProblemType.VALIDATION,
+                    )
+                }
+                val entries = body.defaults.map {
+                    AccessDefaultEntry(it.sourceId, it.containerLabel, it.categoryRef?.let(Ref::decodeOrNull))
+                }
+
+                when (val outcome = adminService.saveDefaults(entries, user = principal.auditName)) {
+                    is SaveDefaultsOutcome.UnknownSourceContainerPair ->
+                        call.respondProblem(
+                            HttpStatusCode.BadRequest,
+                            "Unknown source or container type",
+                            "'${outcome.pairs.joinToString { (s, c) -> "$s/$c" }}' is not a registered " +
+                                "source and container type.",
+                            ProblemType.VALIDATION,
+                        )
+
+                    is SaveDefaultsOutcome.UnknownCategories ->
+                        call.respondProblem(
+                            HttpStatusCode.BadRequest,
+                            "Unknown category",
+                            "${outcome.categoryIds.size} of the categories in this request no longer exist. " +
+                                "Reload and try again.",
+                            ProblemType.VALIDATION,
+                        )
+
+                    is SaveDefaultsOutcome.Saved ->
+                        call.respond(AccessDefaultsResponseDto(outcome.defaults.map { it.toDto() }))
+                }
+            }
+        }
+
+        get("/summary") {
+            val summary = adminService.summary()
+            call.respond(
+                AccessSummaryDto(
+                    categoryCount = summary.categoryCount,
+                    groupCount = summary.groupCount,
+                    unassignedContainerCount = summary.unassignedContainerCount,
+                ),
+            )
+        }
     }
 }
 
@@ -319,6 +384,12 @@ private fun AccessCategorySummary.toDto(): AccessCategoryDto = AccessCategoryDto
     everyGroup = everyGroup,
     objectCount = objectCount,
     groupCount = groupCount,
+)
+
+private fun AccessDefaultEntry.toDto(): AccessDefaultDto = AccessDefaultDto(
+    sourceId = sourceId,
+    containerLabel = containerLabel,
+    categoryRef = categoryId?.let { Ref.encode(it) },
 )
 
 private fun UnassignedContainer.toDto(): UnassignedContainerDto = UnassignedContainerDto(

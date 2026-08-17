@@ -167,6 +167,13 @@ class AccessGuardTest {
                     AccessCypher.unassignedContainers(label, containments.map { it.memberMatch })
                 }
                 .toTypedArray(),
+            // Import defaults & summary (phase 6, §10.2 screen 4, §9) — indices 28-31. None touch
+            // a filtered label: :__AccessDefault, :__AccessCategory and :__Group are all outside
+            // filteredLabels.
+            AccessCypher.DEFAULTS_LIST,
+            AccessCypher.CLEAR_DEFAULT,
+            AccessCypher.SET_DEFAULT,
+            AccessCypher.SUMMARY_COUNTS,
         )
     }
 

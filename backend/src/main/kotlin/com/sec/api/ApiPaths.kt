@@ -181,6 +181,16 @@ public object ApiPaths {
     public const val ACCESS_ITEMS: String = "$ACCESS/items"
 
     /**
+     * The Import defaults screen (spec §10.2 screen 4): `GET`/`PUT`, per `(sourceId,
+     * containerLabel)`. Empty is a legitimate, and the default, answer — a pair with no
+     * `:__AccessDefault` node yet is still a row here, `categoryRef: null`.
+     */
+    public const val ACCESS_DEFAULTS: String = "$ACCESS/defaults"
+
+    /** Counts for the Access dashboard (spec §9), computed on read (R2) — never stored. */
+    public const val ACCESS_SUMMARY: String = "$ACCESS/summary"
+
+    /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and
      * decoded in exactly one place by the route parameter converter.
      */

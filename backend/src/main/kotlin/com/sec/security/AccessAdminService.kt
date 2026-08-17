@@ -1,9 +1,12 @@
 package com.sec.security
 
 import com.sec.domain.AccessCategorySummary
+import com.sec.domain.AccessDefaultEntry
+import com.sec.domain.AccessSummary
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
 import com.sec.domain.GroupWithGrants
+import com.sec.domain.SaveDefaultsOutcome
 import com.sec.domain.SaveDirectCategoriesOutcome
 import com.sec.domain.SaveGrantsOutcome
 import com.sec.domain.SetSeesAllOutcome
@@ -285,6 +288,78 @@ public class AccessAdminService(
             Query(AccessCypher.DIRECT_CATEGORIES_OF, mapOf("anchorId" to anchorId)),
         ) { records -> records.single().get("categoryIds").asList { it.asString() } }
         return SaveDirectCategoriesOutcome.Saved(saved)
+    }
+
+    // -- Import defaults (spec §9, §10.2 screen 4) ----------------------------------------------
+
+    public suspend fun listDefaults(): List<AccessDefaultEntry> {
+        val stored = graphDriver.executeRead(Query(AccessCypher.DEFAULTS_LIST)) { records ->
+            records.associate { record ->
+                (record.get("sourceId").asString() to record.get("containerLabel").asString()) to
+                    record.get("categoryId").asString(null)
+            }
+        }
+        // Every known (sourceId, containerLabel) pair, not only the ones with a :__AccessDefault
+        // node already — "empty is the default answer" (spec §10.2) is a row, not an absence.
+        return AccessContainment.all.map { it.sourceId to it.containerLabel }.distinct().map { pair ->
+            AccessDefaultEntry(sourceId = pair.first, containerLabel = pair.second, categoryId = stored[pair])
+        }
+    }
+
+    public suspend fun saveDefaults(entries: List<AccessDefaultEntry>, user: String): SaveDefaultsOutcome {
+        val known = AccessContainment.all.map { it.sourceId to it.containerLabel }.toSet()
+        val unknownPairs = entries.map { it.sourceId to it.containerLabel }.filterNot { it in known }
+        if (unknownPairs.isNotEmpty()) {
+            return SaveDefaultsOutcome.UnknownSourceContainerPair(unknownPairs)
+        }
+
+        val categoryIds = entries.mapNotNull { it.categoryId }
+        if (categoryIds.isNotEmpty()) {
+            val unknownCategories = graphDriver.executeRead(
+                Query(AccessCypher.UNKNOWN_CATEGORY_IDS, mapOf("categoryIds" to categoryIds)),
+            ) { records -> records.single().get("unknown").asList { it.asString() } }
+            if (unknownCategories.isNotEmpty()) {
+                return SaveDefaultsOutcome.UnknownCategories(unknownCategories)
+            }
+        }
+
+        val queries = entries.map { entry ->
+            if (entry.categoryId == null) {
+                Query(
+                    AccessCypher.CLEAR_DEFAULT,
+                    mapOf("sourceId" to entry.sourceId, "containerLabel" to entry.containerLabel),
+                )
+            } else {
+                Query(
+                    AccessCypher.SET_DEFAULT,
+                    mapOf(
+                        "sourceId" to entry.sourceId,
+                        "containerLabel" to entry.containerLabel,
+                        "categoryId" to entry.categoryId,
+                    ),
+                )
+            }
+        }
+        graphDriver.executeWrite(queries)
+        accessResolver.invalidate()
+
+        return SaveDefaultsOutcome.Saved(listDefaults())
+    }
+
+    // -- Summary (spec §9) -----------------------------------------------------------------------
+
+    public suspend fun summary(): AccessSummary {
+        val (categoryCount, groupCount) = graphDriver.executeRead(
+            Query(AccessCypher.SUMMARY_COUNTS),
+        ) { records ->
+            val record = records.single()
+            record.get("categoryCount").asLong(0) to record.get("groupCount").asLong(0)
+        }
+        // Reuses the same per-containerLabel aggregation the Unassigned screen itself calls,
+        // rather than a second statement duplicating it.
+        val unassignedContainerCount = listUnassignedContainers(source = null, q = null).size.toLong()
+
+        return AccessSummary(categoryCount, groupCount, unassignedContainerCount)
     }
 
     private fun Record.toUnassignedContainer(): UnassignedContainer = UnassignedContainer(

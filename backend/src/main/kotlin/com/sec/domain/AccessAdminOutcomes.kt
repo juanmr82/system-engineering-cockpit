@@ -85,3 +85,28 @@ public sealed interface SaveDirectCategoriesOutcome {
 
     public data class UnknownCategories(public val categoryIds: List<String>) : SaveDirectCategoriesOutcome
 }
+
+/** One row of the Import defaults screen (spec §10.2 screen 4) — "new ‹source› ‹containers› are
+ *  visible to …". [categoryId] is null for "empty," the legitimate, and the default, answer. */
+public data class AccessDefaultEntry(
+    public val sourceId: String,
+    public val containerLabel: String,
+    public val categoryId: String?,
+)
+
+public sealed interface SaveDefaultsOutcome {
+    public data class Saved(public val defaults: List<AccessDefaultEntry>) : SaveDefaultsOutcome
+
+    /** A `(sourceId, containerLabel)` pair not in [com.sec.security.AccessContainment.all] — a
+     *  client may only set a default for a source/container type this backend actually has. */
+    public data class UnknownSourceContainerPair(public val pairs: List<Pair<String, String>>) : SaveDefaultsOutcome
+
+    public data class UnknownCategories(public val categoryIds: List<String>) : SaveDefaultsOutcome
+}
+
+/** Counts for the Access dashboard (spec §9), computed on read (R2) — never stored. */
+public data class AccessSummary(
+    public val categoryCount: Long,
+    public val groupCount: Long,
+    public val unassignedContainerCount: Long,
+)

@@ -108,3 +108,30 @@ public data class SaveDirectCategoriesRequestDto(
 public data class SaveDirectCategoriesResponseDto(
     public val categoryRefs: List<String>,
 )
+
+/** One row of the Import defaults screen (spec §10.2 screen 4) — "new ‹source› ‹containers› are
+ *  visible to …". A null [categoryRef] is empty, the legitimate and default answer. */
+@Serializable
+public data class AccessDefaultDto(
+    public val sourceId: String,
+    public val containerLabel: String,
+    public val categoryRef: String?,
+)
+
+@Serializable
+public data class AccessDefaultsResponseDto(
+    public val defaults: List<AccessDefaultDto>,
+)
+
+@Serializable
+public data class SaveAccessDefaultsRequestDto(
+    public val defaults: List<AccessDefaultDto>,
+)
+
+/** Counts for the Access dashboard (spec §9), computed on read (R2). */
+@Serializable
+public data class AccessSummaryDto(
+    public val categoryCount: Long,
+    public val groupCount: Long,
+    public val unassignedContainerCount: Long,
+)

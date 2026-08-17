@@ -488,4 +488,65 @@ public object AccessCypher {
         OPTIONAL MATCH (n)-[:$IN_ACCESS_CATEGORY {$ORIGIN: '$DIRECT'}]->(cat:$ACCESS_CATEGORY)
         RETURN collect(cat.$META_ID) AS categoryIds
     """
+
+    // -- Import defaults (spec §9, §10.2 screen 4) — AccessAdminService, phase 6 ---------------
+
+    /**
+     * Every `:__AccessDefault` that has ever been set, with the category it assigns if any. The
+     * service merges this against the full `(sourceId, containerLabel)` set from
+     * [com.sec.security.AccessContainment.all] so a pair nobody has configured yet still appears,
+     * `categoryId: null` — "empty is the default answer" (spec §10.2), not an absent row.
+     */
+    public val DEFAULTS_LIST: String = """
+        CYPHER 25
+        MATCH (def:$ACCESS_DEFAULT)
+        OPTIONAL MATCH (def)-[:$ASSIGNS]->(cat:$ACCESS_CATEGORY)
+        RETURN def.$SOURCE_ID AS sourceId, def.$CONTAINER_LABEL AS containerLabel, cat.$META_ID AS categoryId
+    """
+
+    /**
+     * "New ‹source› ‹containers› are visible to nobody" — the null default, chosen by clearing
+     * whatever `:__assigns` edge exists. `:__AccessDefault` has no uniqueness constraint of its
+     * own (composite key, Community has nothing to lean on — same reasoning [MetaSchema] already
+     * states), so `MERGE` on both properties is the only way to address one.
+     */
+    public val CLEAR_DEFAULT: String = """
+        CYPHER 25
+        MERGE (def:$ACCESS_DEFAULT {$SOURCE_ID: ${'$'}sourceId, $CONTAINER_LABEL: ${'$'}containerLabel})
+        WITH def
+        OPTIONAL MATCH (def)-[r:$ASSIGNS]->()
+        DELETE r
+    """
+
+    /** The chosen default category, replacing whatever was assigned before. */
+    public val SET_DEFAULT: String = """
+        CYPHER 25
+        MERGE (def:$ACCESS_DEFAULT {$SOURCE_ID: ${'$'}sourceId, $CONTAINER_LABEL: ${'$'}containerLabel})
+        WITH def
+        OPTIONAL MATCH (def)-[r:$ASSIGNS]->()
+        DELETE r
+        WITH def
+        MATCH (cat:$ACCESS_CATEGORY {$META_ID: ${'$'}categoryId})
+        MERGE (def)-[:$ASSIGNS]->(cat)
+    """
+
+    // -- Summary (spec §9) — the Access dashboard, computed on read (R2) -----------------------
+
+    /**
+     * Category and group counts for the Access summary. Written as two `COUNT {}` subquery
+     * expressions rather than `MATCH … WITH count() … MATCH … RETURN count()`: chaining two
+     * `MATCH`es through a `WITH` makes every non-aggregated column an implicit `GROUP BY` key, so
+     * zero groups in the graph would make the whole query return zero rows instead of one row
+     * reading `0` — exactly the shape a caller doing `records.single()` cannot survive. Each
+     * `COUNT {}` here is a standalone scalar subquery with no such row dependency between them.
+     *
+     * The unassigned-container count is not here: [AccessAdminService.summary] reuses
+     * [AccessAdminService.listUnassignedContainers] directly rather than duplicating its
+     * per-`containerLabel` aggregation in a second statement.
+     */
+    public val SUMMARY_COUNTS: String = """
+        CYPHER 25
+        RETURN COUNT { MATCH (c:$ACCESS_CATEGORY) } AS categoryCount,
+               COUNT { MATCH (g:$GROUP) } AS groupCount
+    """
 }

@@ -196,6 +196,11 @@ class GraphNamesTest {
                     AccessCypher.unassignedContainers(label, containments.map { it.memberMatch })
                 }
                 .toTypedArray(),
+            // Import defaults & summary (phase 6, §10.2 screen 4, §9).
+            AccessCypher.DEFAULTS_LIST,
+            AccessCypher.CLEAR_DEFAULT,
+            AccessCypher.SET_DEFAULT,
+            AccessCypher.SUMMARY_COUNTS,
         )
     }
 
