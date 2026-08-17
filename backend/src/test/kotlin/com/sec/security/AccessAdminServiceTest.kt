@@ -1,8 +1,10 @@
 package com.sec.security
 
 import com.sec.config.Neo4jSettings
+import com.sec.domain.AccessDefaultEntry
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
+import com.sec.domain.SaveDefaultsOutcome
 import com.sec.domain.SaveDirectCategoriesOutcome
 import com.sec.domain.SaveGrantsOutcome
 import com.sec.domain.SetSeesAllOutcome
@@ -311,6 +313,98 @@ class AccessAdminServiceTest {
         assertIs<SaveDirectCategoriesOutcome.AnchorNotFound>(
             service.saveItemCategories("no-such-item", listOf(catA), user = "test"),
         )
+    }
+
+    // -- Import defaults & summary ------------------------------------------------------------
+
+    @Test
+    fun `listDefaults returns every known source-container pair, empty by default`(): Unit = runBlocking {
+        val defaults = service.listDefaults()
+
+        val pairs = defaults.map { it.sourceId to it.containerLabel }.toSet()
+        assertEquals(
+            setOf("doors" to "DOORSModule", "jira" to "JiraProject", "windchill" to "WindchillDocument"),
+            pairs,
+            "doors and doors.placeholders share one pair — three distinct pairs, not four",
+        )
+        assertTrue(defaults.all { it.categoryId == null }, "no :__AccessDefault node yet — every row reads empty")
+    }
+
+    @Test
+    fun `saveDefaults sets a default and it round-trips through listDefaults, other pairs untouched`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+
+        val outcome = assertIs<SaveDefaultsOutcome.Saved>(
+            service.saveDefaults(listOf(AccessDefaultEntry("doors", "DOORSModule", catA)), user = "test"),
+        )
+
+        val byPair = outcome.defaults.associateBy { it.sourceId to it.containerLabel }
+        assertEquals(catA, byPair.getValue("doors" to "DOORSModule").categoryId)
+        assertEquals(null, byPair.getValue("jira" to "JiraProject").categoryId, "untouched pair stays empty")
+
+        val reread = service.listDefaults().associateBy { it.sourceId to it.containerLabel }
+        assertEquals(catA, reread.getValue("doors" to "DOORSModule").categoryId, "persisted, not just echoed back")
+    }
+
+    @Test
+    fun `saveDefaults with a null categoryId clears a previously set default`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        service.saveDefaults(listOf(AccessDefaultEntry("doors", "DOORSModule", catA)), user = "test")
+
+        service.saveDefaults(listOf(AccessDefaultEntry("doors", "DOORSModule", null)), user = "test")
+
+        val reread = service.listDefaults().associateBy { it.sourceId to it.containerLabel }
+        assertEquals(null, reread.getValue("doors" to "DOORSModule").categoryId)
+    }
+
+    @Test
+    fun `saveDefaults reports an unknown source-container pair and changes nothing`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+
+        val outcome = service.saveDefaults(listOf(AccessDefaultEntry("cameo", "CameoElement", catA)), user = "test")
+
+        val unknown = assertIs<SaveDefaultsOutcome.UnknownSourceContainerPair>(outcome)
+        assertEquals(listOf("cameo" to "CameoElement"), unknown.pairs)
+        assertTrue(service.listDefaults().all { it.categoryId == null }, "rejected before any write")
+    }
+
+    @Test
+    fun `saveDefaults reports unknown categories`(): Unit = runBlocking {
+        val outcome = service.saveDefaults(
+            listOf(AccessDefaultEntry("doors", "DOORSModule", "no-such-category")),
+            user = "test",
+        )
+
+        val unknown = assertIs<SaveDefaultsOutcome.UnknownCategories>(outcome)
+        assertEquals(listOf("no-such-category"), unknown.categoryIds)
+    }
+
+    @Test
+    fun `summary reports zero counts when the graph is empty`(): Unit = runBlocking {
+        // The regression case for SUMMARY_COUNTS's COUNT {} rewrite: a chained
+        // MATCH...WITH count()...MATCH...RETURN count() would return zero rows (not one row of
+        // zeros) here, which records.single() cannot survive. This is what proves that fix live.
+        val summary = service.summary()
+
+        assertEquals(0L, summary.categoryCount)
+        assertEquals(0L, summary.groupCount)
+        assertEquals(0L, summary.unassignedContainerCount)
+    }
+
+    @Test
+    fun `summary counts categories, groups and unassigned containers together`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        createOne("cat-b", "B", "", everyGroup = false)
+        grantToGroup(catA, "/SEC/Thermal")
+        seedGroup("/SEC/Avionics")
+        seedDoorsModule("mod-unassigned", "Unassigned SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+        seedDoorsModule("mod-assigned", "Assigned SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = catA)
+
+        val summary = service.summary()
+
+        assertEquals(2L, summary.categoryCount)
+        assertEquals(2L, summary.groupCount)
+        assertEquals(1L, summary.unassignedContainerCount)
     }
 
     // -- fixtures ---------------------------------------------------------------------------
