@@ -11,6 +11,7 @@ import { AuthStore } from '../../../core/auth/auth-store';
 import { Role } from '../../../core/auth/roles';
 import { detailOf } from '../../../core/error/problem-details';
 import { RefusalPanel } from '../../../shared/refusal-panel/refusal-panel';
+import { sourceLabel } from '../../../shared/text/source-label';
 import { AccessApiService } from '../access-api.service';
 import type { AccessCategory, AccessDefault } from '../access.model';
 import { DefaultCategoryCell } from './cells/default-category-cell';
@@ -88,7 +89,7 @@ export class AccessDefaults {
       headerName: 'Source',
       pinned: 'left',
       width: 140,
-      valueGetter: (params) => params.data?.sourceId ?? '',
+      valueGetter: (params) => (params.data ? sourceLabel(params.data.sourceId) : ''),
     },
     {
       colId: 'containerLabel',

@@ -14,6 +14,7 @@ import { detailOf } from '../../../core/error/problem-details';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import { RefusalPanel } from '../../../shared/refusal-panel/refusal-panel';
 import { normalize } from '../../../shared/text/normalize';
+import { sourceLabel } from '../../../shared/text/source-label';
 import { AccessApiService } from '../access-api.service';
 import { AccessBadgeService } from '../access-badge.service';
 import type { UnassignedContainer } from '../access.model';
@@ -91,13 +92,16 @@ export class AccessUnassigned {
       colId: 'sourceId',
       headerName: 'Source',
       width: 140,
-      valueGetter: (params) => params.data?.sourceId ?? '',
+      valueGetter: (params) => (params.data ? sourceLabel(params.data.sourceId) : ''),
     },
     {
       colId: 'invisibleItemCount',
       headerName: 'Invisible items',
       width: 150,
-      type: 'rightAligned',
+      // Not `type: 'rightAligned'` — see `.sec-grid__header-cell--right`'s own comment: it drops
+      // `sec-grid__header-cell` from the header rather than combining with it.
+      headerClass: 'sec-grid__header-cell sec-grid__header-cell--right',
+      cellClass: 'sec-grid__cell sec-grid__cell--right',
       valueGetter: (params) => params.data?.invisibleItemCount ?? 0,
     },
   ];
@@ -153,6 +157,10 @@ export class AccessUnassigned {
       await Promise.all(sources.map((sourceId) => this.api.reconcileSource(sourceId)));
 
       this.api.unassignedContainers.reload();
+      // The Containers screen (spec §10.2 screen 5) reads the same underlying state through its
+      // own, separately-cached resource — the same staleness this screen's own write leaves
+      // behind there that screen 5's write leaves here, found live while driving both on screen.
+      this.api.containers.reload();
       this.accessBadge.refresh();
       this.gridApi?.deselectAll();
 

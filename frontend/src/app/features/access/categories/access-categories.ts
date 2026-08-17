@@ -102,14 +102,18 @@ export class AccessCategories {
       colId: 'objectCount',
       headerName: 'Objects',
       width: 110,
-      type: 'rightAligned',
+      // Not `type: 'rightAligned'` — see `.sec-grid__header-cell--right`'s own comment: it drops
+      // `sec-grid__header-cell` from the header rather than combining with it.
+      headerClass: 'sec-grid__header-cell sec-grid__header-cell--right',
+      cellClass: 'sec-grid__cell sec-grid__cell--right',
       valueGetter: (params) => params.data?.objectCount ?? 0,
     },
     {
       colId: 'groupCount',
       headerName: 'Groups',
       width: 110,
-      type: 'rightAligned',
+      headerClass: 'sec-grid__header-cell sec-grid__header-cell--right',
+      cellClass: 'sec-grid__cell sec-grid__cell--right',
       valueGetter: (params) => params.data?.groupCount ?? 0,
     },
     {

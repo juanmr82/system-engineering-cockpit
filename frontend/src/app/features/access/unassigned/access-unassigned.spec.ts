@@ -126,7 +126,7 @@ describe('AccessUnassigned', () => {
 
     it('lists every container with its source and invisible-item count', () => {
       expect(renderedText()).toContain('SRD');
-      expect(renderedText()).toContain('doors');
+      expect(renderedText()).toContain('DOORS');
       expect(renderedText()).toContain('12');
       expect(renderedText()).toContain('Avionics Board');
       expect(renderedText()).toContain('2 not assigned');
@@ -180,6 +180,9 @@ describe('AccessUnassigned', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       httpTesting.expectOne('/api/v1/access/containers?state=unassigned').flush({ containers: [] });
+      // The Containers screen (spec §10.2 screen 5) reads the same state through its own,
+      // separately-cached resource — this reload keeps it from going stale after this write too.
+      httpTesting.expectOne('/api/v1/access/containers?state=all').flush({ containers: [] });
       httpTesting.expectOne('/api/v1/access/summary').flush({ categoryCount: 1, groupCount: 0, unassignedContainerCount: 0 });
       await settleGrid(fixture);
 

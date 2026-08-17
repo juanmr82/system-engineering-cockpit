@@ -119,10 +119,10 @@ describe('AccessDefaults', () => {
     // "Empty is the default answer" (spec §10.2) — every known (sourceId, containerLabel) pair
     // is a row, whether or not a :__AccessDefault node exists for it yet.
     it('lists every known source-container pair, empty rendering as "Not assigned"', () => {
-      expect(renderedText()).toContain('doors');
+      expect(renderedText()).toContain('DOORS');
       expect(renderedText()).toContain('DOORSModule');
-      expect(renderedText()).toContain('jira');
-      expect(renderedText()).toContain('windchill');
+      expect(renderedText()).toContain('JIRA');
+      expect(renderedText()).toContain('Windchill');
       expect(selectFor('doors', 'DOORSModule').value).toBe('');
       expect(selectFor('jira', 'JiraProject').value).toBe('Y2F0LTE');
     });

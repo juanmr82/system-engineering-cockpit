@@ -130,6 +130,19 @@
   line-height: 1.35;
 }
 
+// A numeric column's header, alongside `.sec-grid__header-cell` (never in place of it — see
+// `.sec-grid__cell--right`'s own comment for why the two combine rather than swap). ag-grid's own
+// `type: 'rightAligned'` sets `headerClass: 'ag-right-aligned-header'`, and merging a column type
+// into a colDef **replaces** `headerClass` rather than combining it with `defaultColDef`'s — so a
+// column declaring only `type: 'rightAligned'` silently loses `sec-grid__header-cell` and every
+// right-aligned header in the app rendered in sentence case, unaligned, next to headers that were
+// upper-cased and tracked. `ag-cell-label-container` is ag-grid's own flex row for the label plus
+// its sort icon — public in the sense that every header has one, not an internal we are guessing
+// at the shape of.
+.sec-grid__header-cell--right .ag-cell-label-container {
+  justify-content: flex-end;
+}
+
 // Every cell, via `SEC_GRID_DEFAULT_COL_DEF.cellClass`.
 //
 // **`line-height` is the load-bearing declaration.** ag-grid centres a single line of text by
@@ -147,6 +160,16 @@
 
   // Requirement tables read as data, not prose (CLAUDE.md §8).
   font-variant-numeric: tabular-nums;
+}
+
+// A numeric cell — a count, alongside `.sec-grid__cell`, never in place of it: `type:
+// 'rightAligned'` alone drops `sec-grid__cell` from the header the same way it drops it here,
+// which would have taken `line-height`, `padding-block` and `overflow-wrap` with it. `text-align`
+// covers a plain-text cell; `.sec-grid__cell--custom` cells are flex rows, so `justify-content`
+// covers a custom renderer that also wants its content at the trailing edge.
+.sec-grid__cell--right {
+  text-align: right;
+  justify-content: flex-end;
 }
 
 // A cell holding our own markup — a chip, a control, a stack of links — rather than the text

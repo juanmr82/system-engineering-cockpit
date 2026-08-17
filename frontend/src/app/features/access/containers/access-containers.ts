@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import { RefusalPanel } from '../../../shared/refusal-panel/refusal-panel';
 import { normalize } from '../../../shared/text/normalize';
+import { sourceLabel } from '../../../shared/text/source-label';
 import { AccessApiService } from '../access-api.service';
 import { AccessBadgeService } from '../access-badge.service';
 import type { ContainerCategories } from '../access.model';
@@ -98,7 +99,7 @@ export class AccessContainers {
       colId: 'sourceId',
       headerName: 'Source',
       width: 120,
-      valueGetter: (params) => params.data?.sourceId ?? '',
+      valueGetter: (params) => (params.data ? sourceLabel(params.data.sourceId) : ''),
     },
     {
       colId: 'categories',
@@ -170,6 +171,12 @@ export class AccessContainers {
       await this.api.saveContainerCategories(row.ref, { categoryRefs });
       await this.api.reconcileSource(row.sourceId);
       this.api.containers.reload();
+      // The Unassigned queue (spec §10.2 screen 3) reads the same underlying container/category
+      // state through its own, separately-cached resource — AccessApiService is a singleton, so a
+      // write made here leaves that resource stale until something reloads it. Without this, a
+      // client-side navigation to screen 3 right after a Clear or an Edit here shows the queue as
+      // it was before this write, not as it is now.
+      this.api.unassignedContainers.reload();
       this.accessBadge.refresh();
       this.snackBar.open('Categories updated', 'Dismiss', { duration: 4000 });
     } catch (error) {

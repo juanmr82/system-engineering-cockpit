@@ -118,7 +118,7 @@ describe('AccessContainers', () => {
 
     it('lists every container with its source and resolved category names, or "Not yet assigned"', () => {
       expect(renderedText()).toContain('SRD');
-      expect(renderedText()).toContain('doors');
+      expect(renderedText()).toContain('DOORS');
       expect(renderedText()).toContain('SRD Category');
       expect(renderedText()).toContain('Avionics Board');
       expect(renderedText()).toContain('Not yet assigned');
@@ -165,12 +165,15 @@ describe('AccessContainers', () => {
       await settle();
       await new Promise((resolve) => setTimeout(resolve, 0));
 
-      // Both containers.reload() and accessBadge.refresh() schedule a refetch rather than issuing
-      // one — the same trap named throughout this suite — so both requests have to be answered or
-      // the next settle() waits on one of them forever.
+      // containers.reload(), unassignedContainers.reload() and accessBadge.refresh() all schedule
+      // a refetch rather than issuing one — the same trap named throughout this suite — so every
+      // one of them has to be answered or the next settle() waits on it forever. The Unassigned
+      // queue reload keeps that screen's own separately-cached resource from going stale after a
+      // write made here — found live, driving both screens in the browser.
       httpTesting.expectOne('/api/v1/access/containers?state=all').flush({
         containers: [{ ...CONTAINERS[1], categoryRefs: ['Y2F0LTE'] }, CONTAINERS[0]],
       });
+      httpTesting.expectOne('/api/v1/access/containers?state=unassigned').flush({ containers: [] });
       httpTesting
         .expectOne('/api/v1/access/summary')
         .flush({ categoryCount: 1, groupCount: 0, unassignedContainerCount: 0 });
@@ -198,6 +201,9 @@ describe('AccessContainers', () => {
       httpTesting
         .expectOne('/api/v1/access/containers?state=all')
         .flush({ containers: [{ ...CONTAINERS[0], categoryRefs: [] }, CONTAINERS[1]] });
+      httpTesting.expectOne('/api/v1/access/containers?state=unassigned').flush({
+        containers: [{ ref: CONTAINERS[0].ref, sourceId: CONTAINERS[0].sourceId, name: CONTAINERS[0].name, invisibleItemCount: 1 }],
+      });
       httpTesting
         .expectOne('/api/v1/access/summary')
         .flush({ categoryCount: 1, groupCount: 0, unassignedContainerCount: 1 });

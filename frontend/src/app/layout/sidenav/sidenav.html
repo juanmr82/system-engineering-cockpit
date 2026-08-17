@@ -10,9 +10,9 @@
           [routerLink]="item.route"
           routerLinkActive="sec-sidenav__item--active"
         >
-          {{ item.label }}
+          <span matListItemTitle>{{ item.label }}</span>
           @if (item.badge) {
-            <span class="sec-sidenav__badge">{{ item.badge }}</span>
+            <span matListItemMeta class="sec-sidenav__badge">{{ item.badge }}</span>
           }
         </a>
       }
