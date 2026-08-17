@@ -4,6 +4,7 @@ import com.sec.api.ApiPaths
 import com.sec.api.dto.AuthMeDto
 import com.sec.api.dto.LogoutResponseDto
 import com.sec.api.respondProblem
+import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.OidcLoginResult
 import com.sec.security.SecPrincipal
@@ -30,7 +31,7 @@ import io.ktor.server.sessions.set
  * the route tree's outer one — this file is where the "session required" line is actually drawn,
  * and it should be readable in one place.
  */
-public fun Route.authRoutes(oidc: Oidc) {
+public fun Route.authRoutes(oidc: Oidc, accessResolver: AccessResolver) {
     get(ApiPaths.AUTH_LOGIN) {
         val redirectTarget = call.request.queryParameters["redirect"]
         call.respondRedirect(oidc.authorizationRedirect(redirectTarget))
@@ -76,6 +77,7 @@ public fun Route.authRoutes(oidc: Oidc) {
         get(ApiPaths.AUTH_ME) {
             val principal = call.principal<SecPrincipal>()
                 ?: error("${ApiPaths.AUTH_ME} ran without a principal despite the session guard")
+            val access = accessResolver.resolve(principal.groups)
 
             call.respond(
                 AuthMeDto(
@@ -85,6 +87,8 @@ public fun Route.authRoutes(oidc: Oidc) {
                     roles = principal.roles.sorted(),
                     groups = principal.groups,
                     csrfToken = principal.csrfToken,
+                    seesAll = access.seesAll,
+                    categoryCount = access.categoryIds.size,
                 ),
             )
         }

@@ -102,7 +102,7 @@ public fun Application.configureRouting(
         // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
         // /health, /ready, and the two of /auth/* that create a session rather than needing one.
         healthRoutes(graphDriver)
-        authRoutes(oidc)
+        authRoutes(oidc, accessResolver)
 
         // Every other route needs a session (ADR 0017 §5) and the CSRF check on every non-GET
         // (§11). One wrapper, so a feature route file registered here is guarded whether or not
