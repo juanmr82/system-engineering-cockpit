@@ -32,6 +32,15 @@ const SEC_ICONS = {
   save: '/icons/save.svg',
   search: '/icons/search.svg',
   trash: '/icons/trash.svg',
+  // Collapsed sidenav rail glyphs, one per source family (frontend/CLAUDE.md §9). Stroke-drawn
+  // originals from docs/*.svg, recoloured from a hardcoded white to currentColor so they pick up
+  // the same ink/blue treatment as every other nav glyph instead of a bespoke colour.
+  doors: '/icons/doors.svg',
+  jira: '/icons/jira.svg',
+  windchill: '/icons/windchill.svg',
+  cameo: '/icons/cameo.svg',
+  // No source icon was supplied for Access; the Material "shield" glyph stands in for it.
+  shield: '/icons/shield.svg',
 } as const;
 
 // Use this in a template as <mat-icon svgIcon="gearbox" /> — the name is checked against the map.

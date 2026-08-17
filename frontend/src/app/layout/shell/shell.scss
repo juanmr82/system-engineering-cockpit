@@ -23,3 +23,36 @@
 .sec-shell router-outlet {
   display: none;
 }
+
+// The 64px-rail collapse (SidenavCollapseService) resizes the drawer via an inline width — this is
+// the one motion the sidenav owns (frontend/CLAUDE.md §8: functional motion only).
+//
+// Material's `MatDrawerContainer` only re-measures `mat-sidenav-content`'s own margin on a drawer
+// open/close toggle, a mode change, an RTL flip, or a viewport resize — never merely because an
+// already-`opened` `mode="side"` drawer's width changed, since `opened` never flips here. A first
+// attempt tried to override just that one margin from the template, expecting Angular's styling
+// precedence to fall back to Material's own (frozen-since-init, 280px) value once the override
+// went back to `null` — it does not fall back in practice: the margin stuck at 64px after
+// expanding, because Material's host binding never got the chance to reassert it. Stating both
+// states outright here, unconditionally, needs no such fallback: `!important` is the one legitimate
+// use for it, since only that beats a framework's own runtime-set inline style.
+.sec-shell mat-sidenav {
+  transition: width 0.2s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.sec-shell mat-sidenav-content {
+  margin-left: var(--sec-sidenav-width) !important;
+  transition: margin-left 0.2s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+.sec-shell.sec-shell--collapsed mat-sidenav-content {
+  margin-left: 64px !important;
+}

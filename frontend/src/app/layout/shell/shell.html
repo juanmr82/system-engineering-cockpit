@@ -1,6 +1,6 @@
 <sec-toolbar />
-<mat-sidenav-container class="sec-shell">
-  <mat-sidenav mode="side" [opened]="true">
+<mat-sidenav-container class="sec-shell" [class.sec-shell--collapsed]="collapse.collapsed()">
+  <mat-sidenav mode="side" [opened]="true" [style.width.px]="collapse.collapsed() ? 64 : null">
     <sec-sidenav />
   </mat-sidenav>
   <mat-sidenav-content>

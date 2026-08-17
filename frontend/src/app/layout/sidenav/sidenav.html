@@ -1,21 +1,76 @@
-<nav class="sec-sidenav" aria-label="Primary">
-  <sec-logo />
-  @for (group of groups(); track group.key) {
-    <div class="sec-sidenav__group-label">{{ group.label }}</div>
-    <mat-nav-list>
-      @for (item of group.items; track item.key) {
-        <a
-          mat-list-item
-          class="sec-sidenav__item"
-          [routerLink]="item.route"
-          routerLinkActive="sec-sidenav__item--active"
-        >
-          <span matListItemTitle>{{ item.label }}</span>
-          @if (item.badge) {
-            <span matListItemMeta class="sec-sidenav__badge">{{ item.badge }}</span>
-          }
-        </a>
+<nav class="sec-sidenav" [class.sec-sidenav--collapsed]="collapse.collapsed()" aria-label="Primary">
+  <div class="sec-sidenav__header">
+    @if (!collapse.collapsed()) {
+      <sec-logo />
+    }
+    <button
+      mat-icon-button
+      type="button"
+      class="sec-sidenav__toggle"
+      [matTooltip]="collapse.collapsed() ? 'Expand navigation' : 'Collapse navigation'"
+      [attr.aria-label]="collapse.collapsed() ? 'Expand navigation' : 'Collapse navigation'"
+      (click)="collapse.toggle()"
+    >
+      <mat-icon svgIcon="chevron-down" />
+    </button>
+  </div>
+
+  @if (!collapse.collapsed()) {
+    @for (group of groups(); track group.key) {
+      <div class="sec-sidenav__group-label">{{ group.label }}</div>
+      <mat-nav-list>
+        @for (item of group.items; track item.key) {
+          <a
+            mat-list-item
+            class="sec-sidenav__item"
+            [routerLink]="item.route"
+            routerLinkActive="sec-sidenav__item--active"
+          >
+            <span matListItemTitle>{{ item.label }}</span>
+            @if (item.badge) {
+              <span matListItemMeta class="sec-sidenav__badge">{{ item.badge }}</span>
+            }
+          </a>
+        }
+      </mat-nav-list>
+    }
+  } @else {
+    <ul class="sec-sidenav__rail">
+      @for (group of groups(); track group.key) {
+        <li>
+          <button
+            mat-icon-button
+            type="button"
+            class="sec-sidenav__rail-item"
+            [class.sec-sidenav__rail-item--active]="isGroupActive(group)"
+            [matMenuTriggerFor]="flyout"
+            [matTooltip]="group.label"
+            matTooltipPosition="right"
+            [attr.aria-label]="group.label"
+          >
+            <mat-icon [svgIcon]="groupIcon(group)" />
+          </button>
+
+          <mat-menu #flyout="matMenu" xPosition="after">
+            <div class="sec-sidenav__flyout">
+              <div class="sec-sidenav__flyout-label">{{ group.label }}</div>
+              @for (item of group.items; track item.key) {
+                <a
+                  mat-menu-item
+                  class="sec-sidenav__flyout-item"
+                  [routerLink]="item.route"
+                  routerLinkActive="sec-sidenav__flyout-item--active"
+                >
+                  <span>{{ item.label }}</span>
+                  @if (item.badge) {
+                    <span class="sec-sidenav__badge">{{ item.badge }}</span>
+                  }
+                </a>
+              }
+            </div>
+          </mat-menu>
+        </li>
       }
-    </mat-nav-list>
+    </ul>
   }
 </nav>

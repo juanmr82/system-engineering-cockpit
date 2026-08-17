@@ -56,3 +56,97 @@
 
   margin-left: 8px;
 }
+
+// --- The 64px masthead ------------------------------------------------------------------------
+// sec-logo carries its own height and navy rail when expanded; collapsed, sec-logo is hidden so
+// this box states the same 64px/rail itself — the masthead line never jumps when the drawer
+// resizes, only the toggle button's position within it does.
+.sec-sidenav__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  border-bottom: var(--sec-rail) solid var(--sec-blue);
+}
+
+.sec-sidenav--collapsed .sec-sidenav__header {
+  justify-content: center;
+}
+
+.sec-sidenav__toggle {
+  flex-shrink: 0;
+  margin-right: 8px;
+
+  // chevron-down doubles as the collapse/expand affordance, turned 90° from its usual downward
+  // "open a disclosure" reading: left when expanded (this is the direction collapsing goes),
+  // right when collapsed (the direction expanding goes back).
+  mat-icon {
+    transition: transform 0.2s ease;
+    transform: rotate(90deg);
+  }
+}
+
+.sec-sidenav--collapsed .sec-sidenav__toggle {
+  margin-right: 0;
+
+  mat-icon {
+    transform: rotate(-90deg);
+  }
+}
+
+// --- The collapsed icon rail ------------------------------------------------------------------
+// One button per source family (frontend/CLAUDE.md §9); default icon colour and hover state layer
+// already come from the global icon-button overrides in styles/_theme.scss; only the on-hover icon
+// recolour and the active wash are added here, to match the expanded list's own active treatment.
+.sec-sidenav__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 0;
+  list-style: none;
+}
+
+.sec-sidenav__rail-item:hover {
+  --mat-icon-button-icon-color: var(--sec-blue);
+}
+
+.sec-sidenav__rail-item--active {
+  --mat-icon-button-icon-color: var(--sec-blue);
+
+  background: color-mix(in srgb, var(--sec-blue-pale) 30%, white);
+}
+
+// --- The rail's flyout submenu ------------------------------------------------------------------
+// Opens on click only (MatMenuTrigger's own default toggle — click again to close); hovering the
+// icon shows its matTooltip instead. An earlier hover-opens-the-menu version made the flyout
+// flicker open/closed, because MatMenuTrigger's click handler unconditionally toggles and a mouse
+// click fires `mouseenter` immediately before `click` on the very first hover.
+.sec-sidenav__flyout {
+  min-width: 200px;
+  padding: 4px 0;
+}
+
+.sec-sidenav__flyout-label {
+  padding: 8px 16px 6px;
+  color: var(--sec-blue);
+  font-size: var(--sec-text-label);
+  font-weight: 600;
+  letter-spacing: var(--sec-tracking-label);
+  text-transform: uppercase;
+}
+
+.sec-sidenav__flyout-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sec-sidenav__flyout-item--active {
+  --mat-menu-item-label-text-color: var(--sec-blue);
+
+  font-weight: 600;
+  background: color-mix(in srgb, var(--sec-blue-pale) 30%, white);
+}
