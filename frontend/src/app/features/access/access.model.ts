@@ -40,3 +40,31 @@ export interface UpdateAccessCategoryRequest {
   readonly description?: string;
   readonly everyGroup?: boolean;
 }
+
+/** One row of the Grants screen's matrix (spec §10.2 screen 2) — every `:__Group` ever seen,
+ *  with its own grants and `seesAll`. The matrix itself is built client-side from this plus
+ *  every category, never server-shaped, per spec §9's "saving is per row" wording. */
+export interface GroupWithGrants {
+  readonly ref: string;
+  readonly key: string;
+  readonly name: string;
+  readonly seesAll: boolean;
+  readonly categoryRefs: string[];
+  readonly firstSeenAt: string;
+  readonly lastSeenAt: string;
+}
+
+export interface GroupListResponse {
+  readonly groups: GroupWithGrants[];
+}
+
+/** The WHOLE grant set for one group, one transaction (R7) — never a delta. */
+export interface SaveGrantsRequest {
+  readonly categoryRefs: string[];
+}
+
+/** `seesAll` only — a deliberately separate write from the grant set (spec §9: "audited
+ *  loudly"), never batched into a row's pending-grants buffer. */
+export interface SetSeesAllRequest {
+  readonly seesAll: boolean;
+}

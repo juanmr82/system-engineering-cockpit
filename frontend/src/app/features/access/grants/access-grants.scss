@@ -1,0 +1,51 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-access-grants {
+  @include sec.page-shell;
+}
+
+.sec-access-grants__header {
+  flex: none;
+}
+
+.sec-access-grants__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-access-grants__title {
+  @include sec.view-title;
+}
+
+.sec-access-grants__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sec-access-grants__key-cell {
+  @include sec.mono;
+}
+
+.sec-access-grants__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-access-grants__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}

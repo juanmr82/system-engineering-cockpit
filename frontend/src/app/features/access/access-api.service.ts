@@ -7,6 +7,10 @@ import type {
   AccessCategory,
   AccessCategoryListResponse,
   CreateAccessCategoryRequest,
+  GroupListResponse,
+  GroupWithGrants,
+  SaveGrantsRequest,
+  SetSeesAllRequest,
   UpdateAccessCategoryRequest,
 } from './access.model';
 
@@ -41,5 +45,20 @@ export class AccessApiService {
 
   deleteCategory(ref: string): Promise<void> {
     return firstValueFrom(this.http.delete<void>(`/api/v1/access/categories/${ref}`));
+  }
+
+  // -- Groups & Grants (spec §10.2 screen 2) --------------------------------------------------
+
+  readonly groups = httpResource<GroupListResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/groups' : undefined,
+  );
+
+  saveGrants(ref: string, body: SaveGrantsRequest): Promise<GroupWithGrants> {
+    return firstValueFrom(this.http.put<GroupWithGrants>(`/api/v1/access/groups/${ref}/grants`, body));
+  }
+
+  /** A deliberately separate write from `saveGrants` (spec §9: "audited loudly"). */
+  setSeesAll(ref: string, body: SetSeesAllRequest): Promise<GroupWithGrants> {
+    return firstValueFrom(this.http.patch<GroupWithGrants>(`/api/v1/access/groups/${ref}`, body));
   }
 }

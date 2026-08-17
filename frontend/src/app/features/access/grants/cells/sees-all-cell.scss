@@ -1,0 +1,12 @@
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  // Visually distinct from an ordinary grant checkbox (spec §9) — this one control bypasses
+  // every category grant, and it wears the Tier-2 accent colour for the same reason a review
+  // comment's own accent marks application data rather than DOORS truth.
+  --mdc-checkbox-selected-icon-color: var(--sec-highlight-meta);
+  --mdc-checkbox-selected-hover-icon-color: var(--sec-highlight-meta);
+  --mdc-checkbox-selected-focus-icon-color: var(--sec-highlight-meta);
+}

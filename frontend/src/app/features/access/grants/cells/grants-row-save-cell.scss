@@ -1,0 +1,17 @@
+@use 'mixins' as sec;
+
+:host {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button {
+  @include sec.compact-icon-button;
+}
+
+// Unsaved grants wear the Tier-2 accent, the same colour Modules' own save button does while
+// dirty (modules.scss's --sec-modules__action--save).
+button:not(:disabled) {
+  color: var(--sec-highlight-meta);
+}
