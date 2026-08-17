@@ -3,6 +3,63 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-17 (session 33) — phase 6's backend is done, steps 4–6
+
+Branch **`feature/access-control`**, continuing session 32's backend steps 1–3 (categories, groups
+& grants, unassigned queue — all committed and docker-verified already). This session finished the
+rest of the backend half of phase 6 per `/home/juanmrc/.claude/plans/sorted-baking-sparkle.md`.
+
+| Step | Change | Commit |
+|---|---|---|
+| 4 (follow-up) | 7 docker-tagged `AccessAdminServiceTest` cases for `listDefaults`/`saveDefaults`/`summary` — the zero-graph `summary` case is what actually exercises `SUMMARY_COUNTS`'s `COUNT {}` rewrite, previously committed unverified | `b9e35e2` |
+| 5 | `/auth/me` gains `seesAll`/`categoryCount`, resolved via `AccessResolver.resolve(principal.groups)` the same way every filtered read path already does. Documented on the DTO field that `categoryCount` reads `0` for a `seesAll` caller by design (`AccessSet.SEES_ALL` carries no `categoryIds`) | `a650a11` |
+| 6 | `GET /api/v1/config/navigation` — new `NavigationSettings` loader (absent `navigation.groups` means empty, same contract as an unconfigured Windchill host), served with the same `Cache-Control: max-age=3600` `/system-levels` uses. `application.yaml` gains the `access` group (Categories/Grants/Not assigned/Defaults), matching `frontend/CLAUDE.md` §9's sidenav diagram exactly — no `role` field, since nav-item visibility stays a frontend decision | `f74522d` |
+
+### A real gap found and fixed while touching step 6
+
+`RoleGuardTest`'s `everyWriteRouteIsAccountedFor` completeness check had **never been extended**
+for any of the `/access/*` write routes phase 6 steps 1–4 already shipped (categories, groups/
+grants, containers/items, defaults) — nine routes total, silently unchecked since session 32. Added
+all nine to both the `administrative` table and `WRITE_ROUTES`, and fixed a missing `PATCH` case in
+the test's own `HttpClient.call` dispatcher that the new `PATCH` routes exposed (it only had `GET`/
+`POST`/`PUT`/`DELETE`). Also added `GET /api/v1/config/navigation` to both guard tests' sample lists.
+
+### One environment oddity, resolved and not a real bug
+
+A phantom `com.sec.ProbeTest` — no such source file exists anywhere in the repo — was reported by
+surefire mid-session with a `NoSuchMethodError` against `configureApp$default`'s old signature. A
+`mvn clean` made it vanish permanently; almost certainly a stale compiled class from something
+outside this session (an IDE-generated scratch test, most likely) surviving in `target/test-classes`
+across incremental builds. Not investigated further since it does not reproduce after clean and no
+source file ever existed to explain it — worth a `clean` first if it reappears, not a code fix.
+
+### Verified
+
+- `mvn -pl backend -am test` — **367/367** (post-clean baseline; the pre-clean run that included the
+  phantom `ProbeTest` is not the real count).
+- `mvn -Pdocker -pl backend -am test` — **212/212**, up from 205 at session 32's close (+7 step-4
+  follow-up cases).
+- Not run this session: frontend lint/test/build — no frontend file touched.
+- Every step committed individually per this branch's own convention; nothing left uncommitted.
+
+### Resume here
+
+**All of phase 6's backend (steps 1–6) is done.** What's left is entirely frontend (steps 7–14 of
+the plan file) plus the manual on-screen acceptance pass:
+
+1. **Step 7, shell/guards** — `core/auth/roles.ts`, the `seesAll`/`categoryCount` signals on
+   `AuthStore`, the shared `detailOf` error-consolidation, and the refusal-panel component. Build
+   this first; every other frontend step depends on it.
+2. **Steps 8–11, the four Access screens** — Categories, Grants (the per-row-save renderer is the
+   one genuinely novel piece), Unassigned (depends on Categories; exercises the summary badge),
+   Defaults.
+3. **Steps 12–13** — `app.routes.ts` wiring, full `npm run lint && npm test && npm run build`, then
+   the manual acceptance pass as `sec-dev-user`/`sec-dev-admin`: take a freshly imported module from
+   invisible to visible using only the Access UI.
+4. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
+   `invalidate()` calls close the phase-2 staleness gap live (no backend restart needed); the
+   dedicated `AccessAcceptanceTest.kt` described in the plan's Testing section.
+
 ## State as of 2026-08-17 (session 32) — one of phase 6's open questions closed; DOORS-upload sketched, not started
 
 Branch **`feature/access-control`**, no code changed this session — docs only, both already
