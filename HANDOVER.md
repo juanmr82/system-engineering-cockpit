@@ -3,11 +3,50 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-17 (session 33) — phase 6's backend is done, steps 4–6
+## State as of 2026-08-17 (session 33) — phase 6's backend is done (steps 4–6), frontend shell/guards done (step 7)
 
 Branch **`feature/access-control`**, continuing session 32's backend steps 1–3 (categories, groups
 & grants, unassigned queue — all committed and docker-verified already). This session finished the
-rest of the backend half of phase 6 per `/home/juanmrc/.claude/plans/sorted-baking-sparkle.md`.
+rest of the backend half of phase 6, then started the frontend, per
+`/home/juanmrc/.claude/plans/sorted-baking-sparkle.md`.
+
+### Step 7 (frontend shell/guards) — done, commit `3ad498a`
+
+`AuthenticatedUser`/`AuthStore` gain `seesAll`/`categoryCount`; new `core/auth/roles.ts` mirrors
+the backend's `Role` object; five near-identical `extractErrorDetail`/`detailOf` copies collapsed
+into one `core/error/problem-details.ts:detailOf(cause, fallback)`; new
+`shared/refusal-panel/` built on `EmptyState`, the same way `NotFound` already is;
+`nav-group.ts` gains the `access` group matching step 6's `application.yaml` entry; sidenav
+role-filters via a small key→role map and overlays the unassigned-container badge from a new
+`AccessBadgeService`. **Two real, independent bugs fixed while touching `navigation.service.ts`**:
+an unguarded `resource.value()` that threw instead of falling back on a fetch failure, and a wire-
+shape mismatch — the backend wraps navigation as `{ groups: [...] }` (`NavigationResponseDto`),
+not a bare array, so the frontend was silently iterating `undefined` on every real (non-fallback)
+response. Neither was caught by any existing test because no test exercised the real endpoint's
+shape before this session added one.
+
+**A test-harness trap worth recording before anyone writes another `httpResource` spec in this
+codebase**: `ApplicationRef.whenStable()` does not resolve while an `HttpTestingController` request
+is in flight, and a request only leaves flight when the test calls `.flush()` on it — so
+`TestBed.tick(); await appRef.whenStable(); /* then */ httpTesting.expectOne(...).flush(...)` is a
+**deadlock**, not just a race, whenever the tick causes a new request to fire. The fix is the order
+already used by `auth-store.spec.ts` and now copied into `access-badge.service.spec.ts` /
+`sidenav.spec.ts`: flush synchronously right after the tick, *then* await stability. Cost real time
+to diagnose — the symptom was two 5-second test timeouts that, because Angular's Vitest runner
+defaults `--isolate` to `false` ("to align with the Karma/Jasmine experience"), cascaded into
+`TestBed.configureTestingModule` failures in unrelated spec files that happened to share a worker
+with the hung ones. **If a spec file's failure output points at an unrelated file's `TestBed`
+setup, suspect a deadlocked async test upstream in file order before suspecting the unrelated
+file.** Also simplified `AccessBadgeService`'s own two tests to stub `AuthStore` with a plain
+`signal()`-backed fake rather than driving it through a second live `httpResource` — chaining two
+real resources' reactivity added complexity the deadlock fix didn't actually need.
+
+None of the four Access screens exist yet and `app.routes.ts` is untouched — an Access sidenav
+link today lands on the catch-all `NotFound` page, which is the expected state at this point in
+the build order (steps 8–11 build the screens, step 12 wires the routes).
+
+Verified: lint clean, **282/282** tests (up from 273 baseline), build green — run twice to confirm
+the deadlock fix actually eliminated the flakiness rather than masking it.
 
 | Step | Change | Commit |
 |---|---|---|
@@ -44,19 +83,22 @@ source file ever existed to explain it — worth a `clean` first if it reappears
 
 ### Resume here
 
-**All of phase 6's backend (steps 1–6) is done.** What's left is entirely frontend (steps 7–14 of
-the plan file) plus the manual on-screen acceptance pass:
+**Backend (steps 1–6) and frontend shell/guards (step 7) are both done.** What's left:
 
-1. **Step 7, shell/guards** — `core/auth/roles.ts`, the `seesAll`/`categoryCount` signals on
-   `AuthStore`, the shared `detailOf` error-consolidation, and the refusal-panel component. Build
-   this first; every other frontend step depends on it.
-2. **Steps 8–11, the four Access screens** — Categories, Grants (the per-row-save renderer is the
+1. **Steps 8–11, the four Access screens** — Categories, Grants (the per-row-save renderer is the
    one genuinely novel piece), Unassigned (depends on Categories; exercises the summary badge),
-   Defaults.
-3. **Steps 12–13** — `app.routes.ts` wiring, full `npm run lint && npm test && npm run build`, then
-   the manual acceptance pass as `sec-dev-user`/`sec-dev-admin`: take a freshly imported module from
-   invisible to visible using only the Access UI.
-4. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
+   Defaults. `features/access/access.model.ts` today only has `AccessSummary` — extend it with
+   each screen's own DTOs as it is built, mirroring `backend/.../api/dto/AccessDtos.kt` exactly
+   (already fully read this session, see the plan file for the shape-by-shape mapping).
+   `category-dialog.ts` should follow `module-settings-dialog.ts`'s Signal Forms pattern
+   (`form(signal(model))`, seed via `effect()`+`model.set()`) — read that file before starting,
+   it is the reference implementation the plan names explicitly.
+2. **Steps 12–13** — `app.routes.ts` wiring (four lazy routes under `/access/*`, matching how
+   `jira/issues`+`jira/kids` are wired today — no new pattern), full
+   `npm run lint && npm test && npm run build`, then the manual acceptance pass as
+   `sec-dev-user`/`sec-dev-admin`: take a freshly imported module from invisible to visible using
+   only the Access UI.
+3. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
    `invalidate()` calls close the phase-2 staleness gap live (no backend restart needed); the
    dedicated `AccessAcceptanceTest.kt` described in the plan's Testing section.
 
