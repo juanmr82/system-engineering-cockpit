@@ -153,6 +153,20 @@ class AccessGuardTest {
             AccessCypher.UNKNOWN_CATEGORY_IDS,
             AccessCypher.REPLACE_GRANTS,
             AccessCypher.SET_SEES_ALL,
+            // Unassigned containers & direct categories (phase 6, §10.2 screen 3) — indices 23-27.
+            // EXISTS_BY_ID, REPLACE_DIRECT_CATEGORIES and DIRECT_CATEGORIES_OF match their anchor
+            // unlabeled, so none of them touch a filtered label either; the two
+            // unassignedContainers(...) calls (one per distinct containerLabel group — DOORSModule,
+            // JiraProject) are exempt for a real reason, given below.
+            AccessCypher.EXISTS_BY_ID,
+            AccessCypher.REPLACE_DIRECT_CATEGORIES,
+            AccessCypher.DIRECT_CATEGORIES_OF,
+            *AccessContainment.all.filterNot { it.containerless }
+                .groupBy { it.containerLabel }
+                .map { (label, containments) ->
+                    AccessCypher.unassignedContainers(label, containments.map { it.memberMatch })
+                }
+                .toTypedArray(),
         )
     }
 
@@ -249,6 +263,15 @@ class AccessGuardTest {
             "counts after a rename rather than assuming them unchanged",
         "AccessCypher[15]" to "same §13 exemption as [11] — the delete confirmation's pre-empt " +
             "counts, and the 409 message's counts if the frontend's check is ever stale",
+        // Unassigned containers (§10.2 screen 3) — one entry per distinct containerLabel group,
+        // in the same order AccessAdminService.listUnassignedContainers groups them: DOORSModule
+        // first (doors + doorsPlaceholders share it), then JiraProject.
+        "AccessCypher[26]" to "access-control.md §16.2a — the unassigned queue is deliberately " +
+            "exempt from visible(): an access manager who cannot yet grant themselves a category " +
+            "could otherwise never find the container to grant one to. Container-level metadata " +
+            "only (name, source, an invisible-item count), never a contained item; already " +
+            "sec-access-manager-gated (Routes.kt), same shape as POST /access/reconcile",
+        "AccessCypher[27]" to "same §16.2a exemption as [26], for the JiraProject group",
     )
 
     // -- the checks -----------------------------------------------------------------------------

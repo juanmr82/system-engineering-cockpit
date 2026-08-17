@@ -184,6 +184,18 @@ class GraphNamesTest {
             AccessCypher.UNKNOWN_CATEGORY_IDS,
             AccessCypher.REPLACE_GRANTS,
             AccessCypher.SET_SEES_ALL,
+            // Unassigned containers & direct categories (phase 6, §10.2 screen 3) — one
+            // unassignedContainers(...) call per distinct containerLabel group, same grouping
+            // AccessAdminService.listUnassignedContainers itself uses.
+            AccessCypher.EXISTS_BY_ID,
+            AccessCypher.REPLACE_DIRECT_CATEGORIES,
+            AccessCypher.DIRECT_CATEGORIES_OF,
+            *AccessContainment.all.filterNot { it.containerless }
+                .groupBy { it.containerLabel }
+                .map { (label, containments) ->
+                    AccessCypher.unassignedContainers(label, containments.map { it.memberMatch })
+                }
+                .toTypedArray(),
         )
     }
 

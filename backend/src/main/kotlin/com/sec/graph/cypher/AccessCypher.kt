@@ -27,6 +27,7 @@ import com.sec.domain.Prop.CREATED_BY
 import com.sec.domain.Prop.ID
 import com.sec.domain.Prop.META_ID
 import com.sec.domain.Prop.META_KIND
+import com.sec.domain.Prop.NAME
 import com.sec.domain.Prop.SCHEMA_VERSION
 import com.sec.domain.Prop.UPDATED_AT
 import com.sec.domain.Prop.UPDATED_BY
@@ -388,5 +389,103 @@ public object AccessCypher {
         RETURN g.$GROUP_KEY AS key, g.$GROUP_NAME AS name, g.$SEES_ALL AS seesAll,
                g.$FIRST_SEEN_AT AS firstSeenAt, g.$LAST_SEEN_AT AS lastSeenAt,
                collect(cat.$META_ID) AS categoryIds
+    """
+
+    // -- Unassigned containers & direct categories (spec §9, §10.2 screen 3) — phase 6 ---------
+
+    /**
+     * Every container of [containerLabel] with no direct category, and how many of its members
+     * carry no category at all — the Unassigned queue's rows for one containment group.
+     *
+     * **Deliberately exempt from [visible]**, per §16.2a: an access manager who cannot yet grant
+     * themselves a category could otherwise never find the container to grant one to. It returns
+     * container-level metadata only — never a contained item — which is what keeps the exemption
+     * narrow.
+     *
+     * [memberMatches] is every [Containment.memberMatch] that shares [containerLabel] — DOORS
+     * modules are both `doors.objects` and `doors.placeholders` (§16.1a), and counting only one
+     * would either double-list the module or drop its placeholders from the count. Each match gets
+     * its own `CALL (c) { }` unit subquery, summed in the final `RETURN`, rather than a single
+     * pattern with an `OR` — the match patterns are shaped differently per source (a property match
+     * vs. a traversed edge) and a union of counts is simpler than a union of patterns.
+     *
+     * `${'$'}sourceId` is bound rather than interpolated even though it is the same literal for
+     * every row a call returns: every containment sharing one [containerLabel] shares one
+     * `sourceId` today (DOORS is the only source with more than one containment, and both of its
+     * containments are `sourceId: "doors"`), so this is data the caller already knows, not
+     * something the query decides.
+     */
+    public fun unassignedContainers(containerLabel: String, memberMatches: List<String>): String {
+        val calls = memberMatches.mapIndexed { i, match ->
+            """
+            CALL (c) {
+              MATCH $match
+              WHERE NOT EXISTS { (o)-[:$IN_ACCESS_CATEGORY]->() }
+              RETURN count(o) AS n$i
+            }
+            """.trimIndent()
+        }.joinToString("\n")
+        val sum = memberMatches.indices.joinToString(" + ") { "n$it" }
+
+        return """
+            CYPHER 25
+            MATCH (c:$containerLabel)
+            WHERE NOT EXISTS { (c)-[:$IN_ACCESS_CATEGORY {$ORIGIN: '$DIRECT'}]->() }
+            $calls
+            RETURN ${'$'}sourceId AS sourceId, c.$ID AS containerId, c.$NAME AS name,
+                   ($sum) AS invisibleItemCount
+            ORDER BY c.$NAME
+            """.trimIndent()
+    }
+
+    /**
+     * Whether *any* node — of any label — carries this `__id`. Unlabeled and unfiltered on
+     * purpose: the container/item category writes below check only that the anchor exists, never
+     * the caller's own visibility, for the same reason [unassignedContainers] is exempt from
+     * [visible] — the caller found this id through the unassigned queue precisely because they
+     * cannot yet see it any other way.
+     */
+    public val EXISTS_BY_ID: String = """
+        CYPHER 25
+        MATCH (n {$ID: ${'$'}id})
+        RETURN count(n) AS n
+    """
+
+    /**
+     * The whole *direct* category set for one anchor — a container or, via the same statement, the
+     * single-item escape hatch (spec §8.1) — replaced in one transaction (R7).
+     *
+     * A container's outgoing `__inAccessCategory` edges are always `origin: 'direct'` by
+     * construction (inheritance only ever flows container → member, never onto the container
+     * itself), so this one unlabeled-anchor pair serves `PUT /access/containers/{ref}/categories`
+     * and `PUT /access/items/{ref}/categories` verbatim — there is no second version for items.
+     *
+     * `ON MATCH SET` promotes an existing `inherited` edge to `direct` when the caller re-requests
+     * the same category on an item that already carries it by inheritance — the escape hatch
+     * surviving reconcile (§8.1), not a duplicate edge. Its audit fields move to this write too:
+     * once a human has made the tag deliberate, its provenance is the grant, not the propagation
+     * that happened to create the edge first.
+     */
+    public val REPLACE_DIRECT_CATEGORIES: String = """
+        CYPHER 25
+        MATCH (n {$ID: ${'$'}anchorId})
+        OPTIONAL MATCH (n)-[r:$IN_ACCESS_CATEGORY {$ORIGIN: '$DIRECT'}]->(cat:$ACCESS_CATEGORY)
+        WHERE NOT cat.$META_ID IN ${'$'}categoryIds
+        DELETE r
+        WITH DISTINCT n
+        UNWIND ${'$'}categoryIds AS wanted
+        MATCH (cat:$ACCESS_CATEGORY {$META_ID: wanted})
+        MERGE (n)-[r:$IN_ACCESS_CATEGORY]->(cat)
+          ON CREATE SET r.$ORIGIN = '$DIRECT', r.$CREATED_BY = ${'$'}user, r.$CREATED_AT = ${'$'}now
+          ON MATCH SET r.$ORIGIN = '$DIRECT', r.$CREATED_BY = ${'$'}user, r.$CREATED_AT = ${'$'}now
+    """
+
+    /** Read back after [REPLACE_DIRECT_CATEGORIES] — the anchor's direct categories only, same
+     *  "echo stored state" reasoning as [GROUP_WITH_GRANTS]. */
+    public val DIRECT_CATEGORIES_OF: String = """
+        CYPHER 25
+        MATCH (n {$ID: ${'$'}anchorId})
+        OPTIONAL MATCH (n)-[:$IN_ACCESS_CATEGORY {$ORIGIN: '$DIRECT'}]->(cat:$ACCESS_CATEGORY)
+        RETURN collect(cat.$META_ID) AS categoryIds
     """
 }

@@ -165,6 +165,22 @@ public object ApiPaths {
     public const val ACCESS_GROUPS: String = "$ACCESS/groups"
 
     /**
+     * The Unassigned queue (spec §10.2 screen 3): `GET ?state=unassigned&source=&q=` here,
+     * `PUT $ACCESS_CONTAINERS/{ref}/categories` for the whole direct set (R7). Deliberately exempt
+     * from the visibility predicate (`docs/features/access-control.md` §16.2a) — the one screen an
+     * access manager needs before they can grant themselves anything else.
+     */
+    public const val ACCESS_CONTAINERS: String = "$ACCESS/containers"
+
+    /**
+     * The single-item escape hatch (spec §8.1): `PUT $ACCESS_ITEMS/{ref}/categories`, the exact
+     * same write [ACCESS_CONTAINERS]'s categories route makes — see
+     * [com.sec.graph.cypher.AccessCypher.REPLACE_DIRECT_CATEGORIES]'s own doc comment for why one
+     * statement serves both anchor shapes.
+     */
+    public const val ACCESS_ITEMS: String = "$ACCESS/items"
+
+    /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and
      * decoded in exactly one place by the route parameter converter.
      */

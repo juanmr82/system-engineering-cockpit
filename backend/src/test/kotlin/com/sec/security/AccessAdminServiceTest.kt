@@ -3,6 +3,7 @@ package com.sec.security
 import com.sec.config.Neo4jSettings
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
+import com.sec.domain.SaveDirectCategoriesOutcome
 import com.sec.domain.SaveGrantsOutcome
 import com.sec.domain.SetSeesAllOutcome
 import com.sec.domain.UpdateCategoryOutcome
@@ -231,6 +232,87 @@ class AccessAdminServiceTest {
         )
     }
 
+    // -- Unassigned containers & direct categories -------------------------------------------
+
+    @Test
+    fun `listUnassignedContainers lists an uncategorised module and excludes a categorised one`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        seedDoorsModule("mod-unassigned", "Unassigned SRD", objectCount = 3, placeholderCount = 1, directCategoryMetaId = null)
+        seedDoorsModule("mod-assigned", "Assigned SRD", objectCount = 2, placeholderCount = 0, directCategoryMetaId = catA)
+
+        val unassigned = service.listUnassignedContainers(source = null, q = null)
+        val ids = unassigned.map { it.containerId }
+
+        assertTrue("mod-unassigned" in ids)
+        assertTrue("mod-assigned" !in ids, "carries a direct category — must not appear in the queue")
+        val row = unassigned.single { it.containerId == "mod-unassigned" }
+        assertEquals("doors", row.sourceId)
+        assertEquals(4L, row.invisibleItemCount, "3 objects + 1 placeholder — both containments summed (§16.1a)")
+    }
+
+    @Test
+    fun `listUnassignedContainers filters by source and by name`(): Unit = runBlocking {
+        seedDoorsModule("mod-unassigned", "Thermal SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+        seedJiraProject("proj-unassigned", "Avionics Board", issueCount = 2)
+
+        val doorsOnly = service.listUnassignedContainers(source = "doors", q = null)
+        assertEquals(listOf("mod-unassigned"), doorsOnly.map { it.containerId })
+
+        val byName = service.listUnassignedContainers(source = null, q = "avionics")
+        assertEquals(listOf("proj-unassigned"), byName.map { it.containerId })
+    }
+
+    @Test
+    fun `saveContainerCategories assigns a direct category and removes the module from the queue`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        seedDoorsModule("mod-1", "SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+
+        val outcome = assertIs<SaveDirectCategoriesOutcome.Saved>(
+            service.saveContainerCategories("mod-1", listOf(catA), user = "test"),
+        )
+        assertEquals(listOf(catA), outcome.categoryIds)
+        assertTrue(service.listUnassignedContainers(null, null).none { it.containerId == "mod-1" })
+    }
+
+    @Test
+    fun `saveContainerCategories reports not found for an unknown id`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        assertIs<SaveDirectCategoriesOutcome.AnchorNotFound>(
+            service.saveContainerCategories("no-such-module", listOf(catA), user = "test"),
+        )
+    }
+
+    @Test
+    fun `saveContainerCategories reports unknown categories`(): Unit = runBlocking {
+        seedDoorsModule("mod-1", "SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+
+        val outcome = service.saveContainerCategories("mod-1", listOf("no-such-category"), user = "test")
+
+        val unknown = assertIs<SaveDirectCategoriesOutcome.UnknownCategories>(outcome)
+        assertEquals(listOf("no-such-category"), unknown.categoryIds)
+    }
+
+    @Test
+    fun `saveItemCategories promotes an inherited category to direct rather than duplicating the edge`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        seedItemWithInheritedCategory("item-1", catA)
+
+        val outcome = assertIs<SaveDirectCategoriesOutcome.Saved>(
+            service.saveItemCategories("item-1", listOf(catA), user = "test"),
+        )
+
+        assertEquals(listOf(catA), outcome.categoryIds)
+        assertEquals(1L, inAccessCategoryEdgeCount("item-1", catA), "promoted in place, never duplicated")
+    }
+
+    @Test
+    fun `saveItemCategories reports not found for an unknown id`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        assertIs<SaveDirectCategoriesOutcome.AnchorNotFound>(
+            service.saveItemCategories("no-such-item", listOf(catA), user = "test"),
+        )
+    }
+
     // -- fixtures ---------------------------------------------------------------------------
 
     private suspend fun createOne(key: String, name: String, description: String, everyGroup: Boolean): String =
@@ -286,4 +368,113 @@ class AccessAdminServiceTest {
             ),
         ) { }
     }
+
+    /**
+     * A `CALL (m) { }` unit subquery around each `UNWIND range(1, n)`, not a bare `UNWIND` in the
+     * outer clause chain: `range(1, 0)` is empty, and an `UNWIND` over an empty list terminates the
+     * row stream it is part of — which would silently skip both the placeholder block and the
+     * category-linking `FOREACH` below it whenever a test passes `placeholderCount = 0`. A `CALL`
+     * subquery aggregates to exactly one row regardless of how many rows its `UNWIND` produced
+     * inside, so the outer row survives either way — the same reason the production
+     * `AccessCypher.propagate`/`retract`/`seed` all use the same shape.
+     */
+    private suspend fun seedDoorsModule(
+        moduleId: String,
+        name: String,
+        objectCount: Int,
+        placeholderCount: Int,
+        directCategoryMetaId: String?,
+    ) {
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                CREATE (m:DOORSModule:DOORSObject:SEItem {__id: ${'$'}mid, __name: ${'$'}name, __version: 'current'})
+                WITH m
+                CALL (m) {
+                  WITH m
+                  UNWIND range(1, ${'$'}objectCount) AS i
+                  CREATE (o:DOORSObject:DOORSRequirement:SEItem {
+                      __id: ${'$'}mid + '-obj-' + toString(i), __moduleUrl: ${'$'}mid, __name: 'R-' + toString(i),
+                      __version: 'current', __sortKey: toString(i), id: toString(i), objectNumber: toString(i),
+                      objectLevel: 1
+                  })
+                  RETURN count(*) AS created
+                }
+                CALL (m) {
+                  WITH m
+                  UNWIND range(1, ${'$'}placeholderCount) AS j
+                  CREATE (:__UNDEFINED:SEItem {__id: ${'$'}mid + '-ph-' + toString(j), __moduleUrl: ${'$'}mid})
+                  RETURN count(*) AS createdPh
+                }
+                WITH m
+                OPTIONAL MATCH (cat:__AccessCategory {__metaId: ${'$'}categoryId})
+                FOREACH (_ IN CASE WHEN cat IS NOT NULL THEN [1] ELSE [] END |
+                    CREATE (m)-[:__inAccessCategory {
+                        origin: 'direct', __createdBy: 'test', __createdAt: '2026-01-01T00:00:00Z'
+                    }]->(cat)
+                )
+                """.trimIndent(),
+                mapOf(
+                    "mid" to moduleId,
+                    "name" to name,
+                    "objectCount" to objectCount,
+                    "placeholderCount" to placeholderCount,
+                    "categoryId" to directCategoryMetaId,
+                ),
+            ),
+        ) { }
+    }
+
+    private suspend fun seedJiraProject(projectId: String, name: String, issueCount: Int) {
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                CREATE (p:JiraProject:SEItem {__id: ${'$'}pid, __name: ${'$'}name, __version: 'current'})
+                WITH p
+                CALL (p) {
+                  WITH p
+                  UNWIND range(1, ${'$'}issueCount) AS i
+                  CREATE (:JiraIssue:SEItem {
+                      __id: ${'$'}pid + '-issue-' + toString(i), __name: 'Issue ' + toString(i),
+                      __version: 'current'
+                  })-[:inProject]->(p)
+                }
+                """.trimIndent(),
+                mapOf("pid" to projectId, "name" to name, "issueCount" to issueCount),
+            ),
+        ) { }
+    }
+
+    private suspend fun seedItemWithInheritedCategory(itemId: String, metaId: String) {
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                MATCH (c:__AccessCategory {__metaId: ${'$'}metaId})
+                CREATE (o:DOORSObject:DOORSRequirement:SEItem {
+                    __id: ${'$'}itemId, __moduleUrl: 'admin-test-module', __name: 'R-1',
+                    __version: 'current', __sortKey: '1', id: '1', objectNumber: '1', objectLevel: 1
+                })
+                CREATE (o)-[:__inAccessCategory {
+                    origin: 'inherited', __createdBy: 'system', __createdAt: '2026-01-01T00:00:00Z'
+                }]->(c)
+                """.trimIndent(),
+                mapOf("itemId" to itemId, "metaId" to metaId),
+            ),
+        ) { }
+    }
+
+    private suspend fun inAccessCategoryEdgeCount(itemId: String, metaId: String): Long =
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                MATCH (o {__id: ${'$'}itemId})-[r:__inAccessCategory]->(c:__AccessCategory {__metaId: ${'$'}metaId})
+                RETURN count(r) AS n
+                """.trimIndent(),
+                mapOf("itemId" to itemId, "metaId" to metaId),
+            ),
+        ) { records -> records.single().get("n").asLong() }
 }

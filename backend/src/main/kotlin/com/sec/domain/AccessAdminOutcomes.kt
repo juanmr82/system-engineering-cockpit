@@ -64,3 +64,24 @@ public sealed interface SetSeesAllOutcome {
 
     public data object GroupNotFound : SetSeesAllOutcome
 }
+
+/** One row of the Unassigned queue (spec §10.2 screen 3) — a container with no direct category,
+ *  and how many of its members carry none at all. */
+public data class UnassignedContainer(
+    public val containerId: String,
+    public val sourceId: String,
+    public val name: String,
+    public val invisibleItemCount: Long,
+)
+
+/**
+ * Shared by `PUT /access/containers/{ref}/categories` and `PUT /access/items/{ref}/categories`
+ * (spec §8.1's escape hatch) — the anchor's direct category set, replaced whole (R7).
+ */
+public sealed interface SaveDirectCategoriesOutcome {
+    public data class Saved(public val categoryIds: List<String>) : SaveDirectCategoriesOutcome
+
+    public data object AnchorNotFound : SaveDirectCategoriesOutcome
+
+    public data class UnknownCategories(public val categoryIds: List<String>) : SaveDirectCategoriesOutcome
+}

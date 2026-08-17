@@ -10,8 +10,12 @@ import com.sec.api.dto.AccessReconcileSourceDto
 import com.sec.api.dto.CreateAccessCategoryRequestDto
 import com.sec.api.dto.GroupListResponseDto
 import com.sec.api.dto.GroupWithGrantsDto
+import com.sec.api.dto.SaveDirectCategoriesRequestDto
+import com.sec.api.dto.SaveDirectCategoriesResponseDto
 import com.sec.api.dto.SaveGrantsRequestDto
 import com.sec.api.dto.SetSeesAllRequestDto
+import com.sec.api.dto.UnassignedContainerDto
+import com.sec.api.dto.UnassignedContainersResponseDto
 import com.sec.api.dto.UpdateAccessCategoryRequestDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
@@ -20,8 +24,10 @@ import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
 import com.sec.domain.GroupWithGrants
 import com.sec.domain.Ref
+import com.sec.domain.SaveDirectCategoriesOutcome
 import com.sec.domain.SaveGrantsOutcome
 import com.sec.domain.SetSeesAllOutcome
+import com.sec.domain.UnassignedContainer
 import com.sec.domain.UpdateCategoryOutcome
 import com.sec.security.AccessAdminService
 import com.sec.security.AccessContainment
@@ -229,6 +235,79 @@ public fun Route.accessRoutes(reconciler: AccessReconciler, adminService: Access
                 }
             }
         }
+
+        route("/containers") {
+            // ?state=unassigned is the only state this screen has today (spec §10.2 screen 3);
+            // named as a query parameter rather than assumed, so a second state has somewhere to
+            // go without a route change.
+            get {
+                val state = call.request.queryParameters["state"] ?: "unassigned"
+                if (state != "unassigned") {
+                    return@get call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Unknown state",
+                        "'state' must be 'unassigned', not '$state'.",
+                        ProblemType.VALIDATION,
+                    )
+                }
+                val source = call.request.queryParameters["source"]
+                val q = call.request.queryParameters["q"]
+                call.respond(
+                    UnassignedContainersResponseDto(
+                        adminService.listUnassignedContainers(source, q).map { it.toDto() },
+                    ),
+                )
+            }
+
+            put("/{ref}/categories") {
+                call.handleSaveDirectCategories(adminService::saveContainerCategories)
+            }
+        }
+
+        route("/items") {
+            // The single-item escape hatch (spec §8.1) — the exact same write as the containers
+            // route above, on an item instead of a container.
+            put("/{ref}/categories") {
+                call.handleSaveDirectCategories(adminService::saveItemCategories)
+            }
+        }
+    }
+}
+
+private suspend fun ApplicationCall.handleSaveDirectCategories(
+    write: suspend (anchorId: String, categoryIds: List<String>, user: String) -> SaveDirectCategoriesOutcome,
+) {
+    val anchorId = decodeRef() ?: return respondInvalidRef()
+    val principal = principal<SecPrincipal>()
+        ?: error("${request.local.uri} ran without a principal despite the session guard")
+    val body = receive<SaveDirectCategoriesRequestDto>()
+
+    val malformed = body.categoryRefs.filter { Ref.decodeOrNull(it) == null }
+    if (malformed.isNotEmpty()) {
+        return respondProblem(
+            HttpStatusCode.BadRequest,
+            "Invalid reference",
+            "Some category references in this request are not readable. Reload and try again.",
+            ProblemType.VALIDATION,
+        )
+    }
+    val categoryIds = body.categoryRefs.mapNotNull { Ref.decodeOrNull(it) }
+
+    when (val outcome = write(anchorId, categoryIds, principal.auditName)) {
+        is SaveDirectCategoriesOutcome.AnchorNotFound ->
+            respondProblem(HttpStatusCode.NotFound, "Not found", "No object or container for this reference.")
+
+        is SaveDirectCategoriesOutcome.UnknownCategories ->
+            respondProblem(
+                HttpStatusCode.BadRequest,
+                "Unknown category",
+                "${outcome.categoryIds.size} of the categories in this request no longer exist. " +
+                    "Reload and try again.",
+                ProblemType.VALIDATION,
+            )
+
+        is SaveDirectCategoriesOutcome.Saved ->
+            respond(SaveDirectCategoriesResponseDto(outcome.categoryIds.map { Ref.encode(it) }))
     }
 }
 
@@ -240,6 +319,13 @@ private fun AccessCategorySummary.toDto(): AccessCategoryDto = AccessCategoryDto
     everyGroup = everyGroup,
     objectCount = objectCount,
     groupCount = groupCount,
+)
+
+private fun UnassignedContainer.toDto(): UnassignedContainerDto = UnassignedContainerDto(
+    ref = Ref.encode(containerId),
+    sourceId = sourceId,
+    name = name,
+    invisibleItemCount = invisibleItemCount,
 )
 
 private fun GroupWithGrants.toDto(): GroupWithGrantsDto = GroupWithGrantsDto(

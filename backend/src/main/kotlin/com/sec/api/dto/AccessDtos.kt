@@ -81,3 +81,30 @@ public data class SaveGrantsRequestDto(
 public data class SetSeesAllRequestDto(
     public val seesAll: Boolean,
 )
+
+/** One row of the Unassigned queue (spec §10.2 screen 3). `ref` is the container's `__id` handle —
+ *  the same kind of reference every other item/module route already uses. */
+@Serializable
+public data class UnassignedContainerDto(
+    public val ref: String,
+    public val sourceId: String,
+    public val name: String,
+    public val invisibleItemCount: Long,
+)
+
+@Serializable
+public data class UnassignedContainersResponseDto(
+    public val containers: List<UnassignedContainerDto>,
+)
+
+/** Shared by `PUT /access/containers/{ref}/categories` and `PUT /access/items/{ref}/categories`
+ *  (spec §8.1's escape hatch) — the WHOLE direct set, one transaction (R7). */
+@Serializable
+public data class SaveDirectCategoriesRequestDto(
+    public val categoryRefs: List<String>,
+)
+
+@Serializable
+public data class SaveDirectCategoriesResponseDto(
+    public val categoryRefs: List<String>,
+)
