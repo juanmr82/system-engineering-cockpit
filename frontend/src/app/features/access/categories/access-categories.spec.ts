@@ -79,10 +79,14 @@ describe('AccessCategories', () => {
     fixture.detectChanges();
 
     httpTesting.expectOne('/api/v1/access/categories').flush(CATEGORIES);
-    // AccessApiService is providedIn: 'root' and constructs its `groups` httpResource alongside
-    // `categories` on injection; this view never reads it, but the stray request still has to be
-    // flushed here or verify() sees it hanging (the same trap step 8's own handover entry names).
+    // AccessApiService is providedIn: 'root' and constructs groups/unassignedContainers
+    // alongside categories on injection; this view reads neither, but every stray request still
+    // has to be flushed here or verify() sees it hanging (the same trap step 8's own handover
+    // entry names — check this again whenever AccessApiService grows another resource).
     httpTesting.match('/api/v1/access/groups').forEach((request) => request.flush({ groups: [] }));
+    httpTesting
+      .match('/api/v1/access/containers?state=unassigned')
+      .forEach((request) => request.flush({ containers: [] }));
     await settleGrid(fixture);
   }
 

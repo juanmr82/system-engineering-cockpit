@@ -23,4 +23,12 @@ export class AccessBadgeService {
   readonly count = computed<number | undefined>(() =>
     this.summaryResource.hasValue() ? this.summaryResource.value().unassignedContainerCount : undefined,
   );
+
+  /** Called after the Unassigned screen assigns categories, so the sidenav badge drops without
+   *  waiting for the next full page load — the plan's own acceptance line ("the +n badge...
+   *  reflect it without touching Cypher or restarting the backend") means this, not just the
+   *  screen's own list. */
+  refresh(): void {
+    this.summaryResource.reload();
+  }
 }

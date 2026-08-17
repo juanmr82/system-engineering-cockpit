@@ -1,0 +1,33 @@
+<h2 mat-dialog-title>Assign categories</h2>
+
+<mat-dialog-content class="sec-assign-categories-dialog__content">
+  <p class="sec-assign-categories-dialog__hint">
+    {{
+      data.containerCount === 1
+        ? 'Assign categories to 1 container.'
+        : 'Assign categories to ' + data.containerCount + ' containers.'
+    }}
+  </p>
+
+  @if (categories().length === 0) {
+    <p class="sec-assign-categories-dialog__empty">
+      No categories exist yet — create one on the Categories screen first.
+    </p>
+  } @else {
+    <div class="sec-assign-categories-dialog__list">
+      @for (category of categories(); track category.ref) {
+        <mat-checkbox
+          [checked]="isSelected(category.ref)"
+          (change)="toggle(category.ref)"
+        >
+          {{ category.name }}
+        </mat-checkbox>
+      }
+    </div>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="!canConfirm()" (click)="confirm()">Assign</button>
+</mat-dialog-actions>

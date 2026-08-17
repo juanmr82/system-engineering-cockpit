@@ -100,6 +100,12 @@ describe('AccessGrants', () => {
 
     httpTesting.expectOne('/api/v1/access/groups').flush(GROUPS);
     httpTesting.expectOne('/api/v1/access/categories').flush(CATEGORIES);
+    // AccessApiService also constructs unassignedContainers on injection; this view reads
+    // neither it nor AccessBadgeService's own summary, but the stray request still has to be
+    // flushed here or verify() sees it hanging.
+    httpTesting
+      .match('/api/v1/access/containers?state=unassigned')
+      .forEach((request) => request.flush({ containers: [] }));
     await settleGrid(fixture);
   }
 

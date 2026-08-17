@@ -6,11 +6,15 @@ import { Role } from '../../core/auth/roles';
 import type {
   AccessCategory,
   AccessCategoryListResponse,
+  AccessReconcileResponse,
   CreateAccessCategoryRequest,
   GroupListResponse,
   GroupWithGrants,
+  SaveDirectCategoriesRequest,
+  SaveDirectCategoriesResponse,
   SaveGrantsRequest,
   SetSeesAllRequest,
+  UnassignedContainersResponse,
   UpdateAccessCategoryRequest,
 } from './access.model';
 
@@ -60,5 +64,31 @@ export class AccessApiService {
   /** A deliberately separate write from `saveGrants` (spec §9: "audited loudly"). */
   setSeesAll(ref: string, body: SetSeesAllRequest): Promise<GroupWithGrants> {
     return firstValueFrom(this.http.patch<GroupWithGrants>(`/api/v1/access/groups/${ref}`, body));
+  }
+
+  // -- Unassigned containers (spec §10.2 screen 3) ---------------------------------------------
+
+  /** `?state=unassigned` named explicitly even though the backend defaults to it — the same
+   *  "state as data, not assumed" reasoning `ApiPaths.ACCESS_CONTAINERS`'s own doc comment gives
+   *  for the query parameter existing at all. */
+  readonly unassignedContainers = httpResource<UnassignedContainersResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/containers?state=unassigned' : undefined,
+  );
+
+  saveContainerCategories(ref: string, body: SaveDirectCategoriesRequest): Promise<SaveDirectCategoriesResponse> {
+    return firstValueFrom(
+      this.http.put<SaveDirectCategoriesResponse>(`/api/v1/access/containers/${ref}/categories`, body),
+    );
+  }
+
+  /** Scoped to one source (spec §8.3 "Scope it") — the Unassigned screen's own auto-reconcile
+   *  after a bulk assign calls this once per distinct source among the containers just touched. */
+  reconcileSource(sourceId: string): Promise<AccessReconcileResponse> {
+    return firstValueFrom(
+      this.http.post<AccessReconcileResponse>(
+        `/api/v1/access/reconcile?scope=source&source=${encodeURIComponent(sourceId)}`,
+        null,
+      ),
+    );
   }
 }

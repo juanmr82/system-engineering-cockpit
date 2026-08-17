@@ -68,3 +68,40 @@ export interface SaveGrantsRequest {
 export interface SetSeesAllRequest {
   readonly seesAll: boolean;
 }
+
+/** One row of the Unassigned queue (spec §10.2 screen 3) — a container with no direct category,
+ *  and how many of its members carry none at all. Deliberately exempt from the visibility
+ *  predicate on the backend (§16.2a): an access manager who cannot yet grant themselves a
+ *  category could otherwise never find the container to grant one to. */
+export interface UnassignedContainer {
+  readonly ref: string;
+  readonly sourceId: string;
+  readonly name: string;
+  readonly invisibleItemCount: number;
+}
+
+export interface UnassignedContainersResponse {
+  readonly containers: UnassignedContainer[];
+}
+
+/** Shared by the container and the single-item escape-hatch write (spec §8.1) — the WHOLE direct
+ *  set, one transaction (R7). */
+export interface SaveDirectCategoriesRequest {
+  readonly categoryRefs: string[];
+}
+
+export interface SaveDirectCategoriesResponse {
+  readonly categoryRefs: string[];
+}
+
+/** One source's outcome from `POST /access/reconcile` (spec §8.3). */
+export interface AccessReconcileSource {
+  readonly sourceId: string;
+  readonly propagated: number;
+  readonly retracted: number;
+  readonly seeded: number;
+}
+
+export interface AccessReconcileResponse {
+  readonly sources: AccessReconcileSource[];
+}
