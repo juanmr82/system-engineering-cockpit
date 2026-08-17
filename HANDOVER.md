@@ -3,7 +3,23 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
-## State as of 2026-08-17 (session 33) — phase 6's backend is done (steps 4–6), frontend shell/guards done (step 7)
+## State as of 2026-08-17 (session 33) — phase 6's entire build order is code-complete (steps 1–12); only the manual acceptance pass (step 13) is left
+
+Branch **`feature/access-control`**. **Every backend and frontend step in the phase-6 build order
+is done, committed, and verified by the automated suites.** What is left is exactly one thing:
+the manual on-screen acceptance pass (§15.3 below) — sign in as `sec-dev-user` and
+`sec-dev-admin` against a real backend and confirm the whole loop works end to end. Nothing in
+this session touched real infrastructure (no Docker, no Keycloak, no `ng serve`) — everything
+below is unit/component-tested only.
+
+Commits, in order: `b9e35e2` (step 4 follow-up, defaults/summary docker tests) · `a650a11`
+(step 5, `/auth/me`) · `f74522d` (step 6, `/config/navigation`) · `3ad498a` (step 7, shell/guards)
+· `b9fb0aa` (step 8, Categories) · `a3c3d55` (step 9, Grants) · `ecbabca` (step 10, Unassigned)
+· `494dba7` (step 11, Defaults) · `e393b8f` (step 12, routing).
+
+Read the sections below in order if you're resuming — each one names the traps found while
+building it, and every later step hit a variant of the same few traps, so reading them in order
+is genuinely faster than reading only the last one.
 
 Branch **`feature/access-control`**, continuing session 32's backend steps 1–3 (categories, groups
 & grants, unassigned queue — all committed and docker-verified already). This session finished the
@@ -116,6 +132,75 @@ service. **Expect this again for Unassigned and Defaults.**
 Verified: lint clean, **302/302** tests (up from 295), build green, stable across two full runs.
 Not wired into `app.routes.ts` yet.
 
+### Step 10 (Unassigned screen) — done, commit `ecbabca`
+
+`features/access/unassigned/` — `AccessUnassigned` (the one screen whose backend read *and*
+write are both deliberately exempt from `AccessCypher.visible()`, §16.2a) and
+`AssignCategoriesDialog` (a plain-signal checkbox list — no Signal Forms, since there is no form
+here, just a selection). Multi-row selection via ag-grid's modern `rowSelection: { mode:
+'multiRow', checkboxes: true, headerCheckbox: true }` config object (ag-grid 36's shape — the
+old `rowSelection: 'multiple'` string is deprecated). On confirm: one `PUT` per selected
+container (R7's own transaction unit, never one request for the whole batch), then — the
+decision confirmed with the user during planning, and it must not be dropped if this screen is
+ever refactored — `POST /access/reconcile?scope=source&source=<id>` once per distinct source
+among the containers just touched, so accepting the queue is one gesture. `AccessBadgeService`
+gained a `refresh()` method so the sidenav's own badge count drops immediately after a
+successful assign rather than waiting for the next page load.
+
+**Two new testing traps, on top of the two from step 8:**
+1. **Selecting an ag-grid row through its checkbox DOM doesn't reliably fire the Angular
+   `selectionChanged` output in tests.** Drive selection through the grid API directly instead —
+   `(fixture.debugElement.query(By.directive(AgGridAngular)).componentInstance as
+   AgGridAngular).api.getRowNode(ref)?.setSelected(true)` — which is also what ag-grid itself
+   recommends, and it isolates "does this view's own wiring work" from "does ag-grid's checkbox
+   implementation work" (the second is not this codebase's to re-test).
+2. **Even the API-driven `setSelected(true)` needs a macrotask tick before the event reaches the
+   component** — `getSelectedRows()` reflects the new state synchronously, but the
+   `selectionChanged` event Angular's output binding depends on does not; a bare `await
+   settle()` right after `setSelected` is not enough, the same class of gap `flushGridFrames()`
+   exists for on the render side.
+
+Also: a `Promise.all(...)` chain (the per-container `PUT`s, then the per-source reconciles) needs
+its own `await settle()` between each stage in a test — flushing the first stage's HTTP requests
+does not itself advance the `await` past it; that needs a further microtask tick.
+
+Verified: lint clean, **313/313** tests (up from 302), build green, stable across two runs.
+
+### Step 11 (Defaults screen) — done, commit `494dba7`
+
+`features/access/defaults/` — the last of the four screens, and the one place this session
+deliberately departed from the plan's literal wording. The plan says "one Signal Forms model";
+what got built instead is `Modules`' own system-level batch-save shape (a buffer keyed by row id,
+one `ModuleLevelCell`-style `<select>` renderer, one whole-view Save button, one `PUT` of the
+*entire* set on save) — because this screen is structurally identical to Modules' own (a short,
+fixed row set, one editable select per row), and there is no established pattern anywhere in
+this codebase for binding Signal Forms across an ag-grid cell-renderer boundary. Forcing one in
+for a three-row screen would have been a novel integration invented and proven nowhere else,
+where a directly-analogous, already-proven pattern already existed one file over. Worth knowing
+this was a deliberate choice, not an oversight, if anyone revisits this screen.
+
+`DefaultCategoryCell` mirrors `ModuleLevelCell` almost line for line, including the dashed-ring
+dirty-mark convention. Every known `(sourceId, containerLabel)` pair is always a row — "empty is
+the default answer" (spec §10.2), never an absent one.
+
+No new testing traps this time — the four found across steps 8–10 covered everything, and this
+screen's spec passed clean on the first real run once they were all applied up front.
+
+Verified: lint clean, **319/319** tests (up from 313), build green, stable across two runs.
+
+### Step 12 (routing) — done, commit `e393b8f`
+
+Four lazy routes under `/access/*` in `app.routes.ts`, `/access` redirecting to
+`/access/categories` — the exact shape `jira/issues`+`jira/kids` and the `settings` subtree's own
+redirect already use, no new pattern. No `canActivate` guard, on purpose: each screen already
+self-checks the role and renders `RefusalPanel` in place (frontend/CLAUDE.md §8's "never a
+redirect"), and the sidenav already hides the links from anyone without the role. **This is the
+first commit where the four screens are actually reachable** — confirmed by the production build
+growing four new lazy chunks that did not exist in step 11's build (they compiled correctly the
+whole time, but as unreferenced dead code excluded from bundling until something routed to them).
+
+Verified: lint clean, **319/319** tests, build green.
+
 | Step | Change | Commit |
 |---|---|---|
 | 4 (follow-up) | 7 docker-tagged `AccessAdminServiceTest` cases for `listDefaults`/`saveDefaults`/`summary` — the zero-graph `summary` case is what actually exercises `SUMMARY_COUNTS`'s `COUNT {}` rewrite, previously committed unverified | `b9e35e2` |
@@ -151,35 +236,36 @@ source file ever existed to explain it — worth a `clean` first if it reappears
 
 ### Resume here
 
-**Backend (steps 1–6) and frontend steps 7–9 (shell/guards, Categories, Grants) are all done.**
-What's left:
+**Every code step (backend 1–6, frontend 7–12) is done.** Two things remain, neither of them
+"write more code" — read the plan file's own Testing section before starting either, it has the
+full detail this is only pointing at:
 
-1. **Steps 10–11, the last two Access screens** — Unassigned (depends on `categories` for its
-   multi-select; the one screen whose read AND write are deliberately exempt from
-   `AccessCypher.visible()` per §16.2a, so its `httpResource`/write calls need no role-visibility
-   nuance beyond the existing `hasRole` guard; per the phase-6 plan, assigning categories here
-   should auto-trigger `POST /access/reconcile?scope=source&source=<touched source>` afterward —
-   that decision was confirmed with the user during planning and must not be dropped), Defaults
-   (ag-grid, not `mat-table` — it's a top-level page, not inside a dialog; one whole-form save
-   over the small fixed `(sourceId, containerLabel)` set from `GET/PUT /access/defaults`).
-   `access.model.ts`/`access-api.service.ts` grow with each one, mirroring
-   `backend/.../api/dto/AccessDtos.kt` exactly — already fully read this session; the plan file
-   has the shape-by-shape mapping if a fresh read is faster than re-deriving it.
-2. **Before writing either spec, read the "deadlock-trap variants" notes in steps 7–9 above**
-   (three shapes so far: `whenStable()` before a flush, `reload()` not being synchronous, a
-   write-only service still constructing its own list resource) — **and check every existing
-   Access spec's `setUp()`/`open()` helper for a new stray request** the moment
-   `access-api.service.ts` grows an Unassigned or Defaults resource. This has been true for every
-   screen added so far and should be assumed true again rather than rediscovered.
-3. **Step 12** — `app.routes.ts` wiring (four lazy routes under `/access/*`, matching how
-   `jira/issues`+`jira/kids` are wired today — no new pattern; also wire the sidenav's
-   `access-unassigned` badge count now that the screen it points at will actually exist), full
-   `npm run lint && npm test && npm run build`.
-4. **Step 13** — the manual acceptance pass as `sec-dev-user`/`sec-dev-admin`: take a freshly
-   imported module from invisible to visible using only the Access UI, on screen.
-5. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
-   `invalidate()` calls close the phase-2 staleness gap live (no backend restart needed); the
-   dedicated `AccessAcceptanceTest.kt` described in the plan's Testing section.
+1. **Step 13 — the manual on-screen acceptance pass.** Needs real infrastructure this session
+   never touched: Neo4j + Keycloak up (`deploy/docker-compose.dev.yml` has the dev realm with
+   `sec-dev-user`/`sec-dev-admin`/`sec-dev-nogroup`), the backend running against them, and
+   `ng serve` for the frontend (or the packaged jar). Sign in as `sec-dev-admin`, take a freshly
+   imported module from invisible to visible using **only** the Access UI — create a category,
+   grant it to a group, assign it from the Unassigned queue (confirms the auto-reconcile fires),
+   then sign in as `sec-dev-user` in that group and confirm the module is now visible: the `+n`
+   badge, the statistics tiles, and the module list should all agree, live, with no backend
+   restart. This is the literal acceptance line phase 6 was scoped against
+   (`docs/features/access-control.md` §15's own wording) and nothing in this session's test runs
+   substitutes for actually watching it happen.
+2. **Two backend test items the plan's own Testing section names and this session did not
+   build**: extend `VisibilityMatrixTest.kt` to prove `AccessAdminService`'s unconditional
+   `invalidate()` calls actually close the phase-2 staleness gap *live* — a category created and
+   granted becomes visible only after reconcile, and a `seesAll` flip is observable on the very
+   next `/auth/me` call with no restart; and write the dedicated `AccessAcceptanceTest.kt` (or
+   similarly named) that seeds a module via the real import fixtures — not hand Cypher, that is
+   the point — and drives the full create-category → grant → assign → reconcile sequence
+   programmatically, asserting a `sec-dev-user`-shaped caller's visibility flips from zero rows to
+   every row.
+
+**If resuming this specifically to run the acceptance pass**: it needs Docker (Neo4j) and the
+Keycloak realm both up, which is exactly the kind of infrastructure bring-up this session
+deliberately did not attempt — confirm with whoever is driving before spinning up local
+containers or asking for real sign-in credentials, since standing infrastructure and credential
+handling are outside what a coding session should assume it's cleared to do unprompted.
 
 ## State as of 2026-08-17 (session 32) — one of phase 6's open questions closed; DOORS-upload sketched, not started
 
