@@ -719,6 +719,22 @@ both are phase 7. `POST /access/reconcile` is now `sec-access-manager`-gated, wh
 than solves the standing machine-auth gap: `sec-import-doors.ps1` has neither a session cookie nor a
 role, so it still degrades to the warning §8.3 specifies and the startup pass is what closes it.
 
+**The direction favoured for closing it for real, 2026-08-17 — not started, a separate feature.**
+Rather than give this one route a machine credential, retire the headless caller: move DOORS import
+itself behind an authenticated upload — a "DOORS Importer" settings screen mirroring Windchill's
+(ADR 0015) and JIRA's, so the person triggering an import already carries a session and the
+reconcile that follows needs no separate credential at all. Sketched, not designed: an uploading
+user's own access must gate a *re*-import (reject unless the module already carries a direct
+category **and** the uploader can see it through `AccessCypher.visible()` — reusing
+`DoorsProjection.moduleExists(moduleId, access)` as-is for that half), while a **first-time** import
+of a module nobody has seen before is allowed unconditionally, landing invisible per the ordinary
+default (§8.3). Async the same way Windchill and JIRA already are — `ImportRunService` plus the
+existing SSE `ImportRunStore`, upload does not block the app. What is deliberately *not* decided:
+how the backend gets the ~2,200 lines of DOORS parsing and graph-write logic (`importers/src/
+sec_import/doors/`) into that request path — a full Kotlin port on the `WindchillGraphWriter`
+model, or the backend invoking the existing, proven Python CLI as a subprocess. That question is
+large enough to need its own ADR and its own planning pass before any of this is built.
+
 ---
 
 ## 16. Open questions — answer before phase 3, they change the model
@@ -730,10 +746,8 @@ role, so it still degrades to the warning §8.3 specifies and the startup pass i
    inherit the categories of whatever referenced it, which makes it visible to anyone who can see any
    referrer. **Recommended: invisible** (fail-closed), with the dependency-graph copy adjusted.
    This one is a real product decision, not a technical one.
-2. **Do access managers need to see the objects they are assigning?** The unassigned queue lists
-   containers by name. A module named `SRD_ProjectX_Confidential` is itself information.
-   **Recommended: yes, the queue is exempt** — someone has to be able to do the job — and the
-   exemption is declared in the §6.2 list where it can be seen.
+2. ~~**Do access managers need to see the objects they are assigning?**~~ **ANSWERED
+   2026-08-17 — see §16.2a below.**
 3. **One `seesAll` group, or a per-source "everything in this source"?** Start with `seesAll`.
    A per-source variant is a category with a default that catches every container of that source, so
    it needs no new mechanism if it turns out to be wanted.
@@ -773,3 +787,29 @@ the placeholder into a real object — so a *standing* placeholder almost always
 The `__moduleUrl` on a placeholder is a **stored property, not a derivation**: `importer.py` sets
 `t.__moduleUrl = row.target_module_url` when it creates one (and the mirror for `__inputLinks`). So
 "compute the container from the URL" is a lookup, not URL parsing — do not write a parser for it.
+
+### 16.2a Unassigned-queue visibility — answered, 2026-08-17
+
+**Yes, exempt — a container's name, source and item count, and nothing else.**
+`GET /api/v1/access/containers?state=unassigned` (§10.2 screen 3) does not carry
+`AccessCypher.visible()`: an access manager who cannot yet grant themselves a category could
+otherwise never find the container to grant one to, which would make the queue unable to do the one
+job it exists for.
+
+The exemption is **narrow on purpose** and must stay that way when phase 6 builds the endpoint:
+
+- It exposes container-level metadata only — name, source, `__moduleUrl`/equivalent, and how many
+  items are invisible because of it. **It never returns the contained items themselves**; those stay
+  behind the normal predicate everywhere else, including from this same screen if it ever links
+  through to a container's contents.
+- The route is already `sec-access-manager`-gated (§5, Routes.kt), so the exemption is capability-
+  scoped, not open to every signed-in user — same shape as `POST /access/reconcile`.
+- It goes in the `AccessGuardTest` exemption list (§6.2) with this reasoning attached, the same way
+  the importers' writes and `MetaSchema` are named there rather than silently skipped. Until the
+  endpoint exists there is nothing to add to that list yet; this section is the decision recorded
+  ahead of the code, so phase 6 implements it rather than re-deciding it.
+
+A module named `SRD_ProjectX_Confidential` being visible to every `sec-access-manager` — before it
+has been granted to anyone — is the accepted cost. `sec-access-manager` is already a capability
+trusted with every container's grants, so this adds no new party to the trust boundary; it only
+widens *when* that party can see the name, from "after granting a category" to "before."

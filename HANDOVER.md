@@ -3,6 +3,59 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-17 (session 32) — one of phase 6's open questions closed; DOORS-upload sketched, not started
+
+Branch **`feature/access-control`**, no code changed this session — docs only, both already
+committed by session 31 or about to be by this one. Picked up session 31's two named loose ends
+(§16 Q2, and the machine-auth gap on `POST /access/reconcile`) and closed one, deliberately parked
+the other with its design captured rather than lost.
+
+**§16 Q2 answered** — the unassigned queue (phase 6 screen 3) is exempt from `AccessCypher.visible()`,
+narrowly: container name/source/count only, never the contained items, `sec-access-manager`-gated
+already. Written up as `access-control.md` §16.2a, mirroring how §16.1a closed Q1. Nothing to
+implement yet — the endpoint itself is phase 6 work — this just means phase 6 doesn't re-litigate it.
+
+**Machine-auth gap — explored, not fixed.** Started down "give `POST /access/reconcile` a periodic
+background tick instead of a credential" (mirrors ADR 0018's `ImportScheduler` for JIRA, zero new
+auth surface). The user redirected mid-discussion to a bigger, better idea: retire the headless
+caller entirely by moving DOORS import behind an authenticated upload — a "DOORS Importer" settings
+screen like Windchill's and JIRA's, so reconcile always runs with a real session behind it. Three
+rounds of clarification nailed down the actual product rule, now recorded in `access-control.md`
+§15.3's new "direction favoured" paragraph:
+
+- **First-time import of a module**: always allowed, no check possible or needed. Lands invisible
+  per the ordinary default (§8.3) — nothing new here.
+- **Re-import of an existing module**: rejected with a *stated reason* (the user was explicit:
+  "reject and notify the reason of it," not a bare 404) unless **both** — the module already
+  carries a direct access category, **and** the uploading user can see it through that category
+  (`AccessCypher.visible()`) or `seesAll`. `DoorsProjection.moduleExists(moduleId, access)` already
+  computes exactly the second half of that and needs no changes to reuse.
+- **Async, non-blocking**, same mechanism as Windchill/JIRA: `ImportRunService` + the existing SSE
+  `ImportRunStore`. Windchill's route (`WindchillRoutes.kt`) is the shape to mirror almost exactly —
+  raw JSON text body (not multipart), synchronous parse-or-400, then `importRunService.start(...)`
+  → `202` with a run id.
+- **One open design note surfaced but not resolved**: a stated rejection reason for an
+  exists-but-invisible module is a deliberate, narrow departure from R8's "an unauthorized object is
+  always a 404, never a 403 that confirms existence" — justified here because the uploader already
+  holds the file (proof the module exists), unlike an arbitrary graph-browsing caller. Worth a second
+  look before shipping, not just waved through.
+- **What was explicitly left undecided, on the user's own instruction**: how ~2,200 lines of DOORS
+  parsing/graph-write logic (`importers/src/sec_import/doors/{parser,derivations,importer}.py`,
+  including the 738-line table-reconstruction spec and ADR-0012's reconciliation) gets into the
+  backend's request path — a full Kotlin port on the `WindchillGraphWriter` model, or the backend
+  shelling out to the existing, proven Python CLI. **"Treat as another feature"** — the user's own
+  words. Don't start building the upload screen without settling this first; it decides almost the
+  entire shape of the work.
+
+### Resume here
+
+1. If picking the DOORS-upload feature back up: start with the import-engine question above — it's
+   the fork that decides everything else. `access-control.md` §15.3's new paragraph and this entry
+   have the rest of the design already reasoned through; a fresh planning pass shouldn't need to
+   re-derive it, only decide that one thing and write the ADR it deserves.
+2. Otherwise, phase 6 (the Access views) is still next per the build order — see session 31's entry
+   below, unchanged.
+
 ## State as of 2026-08-17 (session 31) — phase 4's on-screen check, closed for real
 
 Branch **`feature/access-control`**, still on top of session 30's phase 5 commits. No code changed
