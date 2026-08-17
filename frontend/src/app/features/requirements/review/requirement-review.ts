@@ -14,12 +14,11 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
 import type { ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
 import { secGridOptions } from '../../../core/grid/sec-grid';
-import { detailOf } from '../../../core/error/problem-details';
-import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import type { DoorsTableView, ModuleTablesResponse } from '../../../shared/doors-table/doors-table.model';
 import { normalize } from '../../../shared/text/normalize';
 import { ModulesApiService } from '../modules/modules-api.service';
+import type { ModuleAttributesResponse } from '../modules/modules.model';
 import { CommentCell } from './cells/comment-cell';
 import { IdCell } from './cells/id-cell';
 import { IssuesCell } from './cells/issues-cell';
@@ -30,7 +29,8 @@ import { ReviewApiService } from './review-api.service';
 import { ReviewSettingsDialog } from './review-settings-dialog';
 import { describe, isHeading, isTable, isTablePart, refGroup, renderValue } from './review-table.model';
 import type { RefGroup, ReviewCellContext, TableRow } from './review-table.model';
-import type { ModuleObjectsResponse, ReviewComment, ReviewRow } from './review.model';
+import type { ModuleObjectsResponse, ReviewRow } from './review.model';
+import { ThreadPanel } from './thread-panel';
 
 // Deepest outline level with a heading style of its own. Past this a heading keeps the level-6
 // treatment rather than fading into the body text it is meant to introduce.
@@ -66,8 +66,9 @@ function hasUnresolvedLink(entry: { outgoing: RefGroup; incoming: RefGroup }): b
  * Requirements → Req review (docs/REQ_REVIEW.md).
  *
  * One module's objects in document order, with traceability, the module's chosen attributes and
- * one comment per object side by side. Every column but the five fixed ones is built at runtime
- * from what the module actually carries — nothing about DOORS attribute names is hardcoded.
+ * a comment thread per object side by side. Every column but the five fixed ones is built at
+ * runtime from what the module actually carries — nothing about DOORS attribute names is
+ * hardcoded.
  *
  * The table is ag-grid Community (ADR 0006). It was a CSS grid inside a CDK viewport until two
  * real modules arrived carrying 78 and 53 attributes, at which point the identity of a row and
@@ -77,9 +78,10 @@ function hasUnresolvedLink(entry: { outgoing: RefGroup; incoming: RefGroup }): b
  * — the one holding the prose — between two fixed blocks. They keep their place as the last two
  * columns instead.
  *
- * The comment buffer is this component's own state and dies with it (R7): no store, no staging
- * layer, no global save. Because a table *can* be navigated away from, unlike a modal, this view
- * guards its own exit — see canLeaveReview in review.guard.ts.
+ * **No buffer, no exit guard, any more** (`docs/req-review-comment-threads.md` §1). Every reply in
+ * the thread panel posts as its own request the moment it is sent, so there is nothing this view
+ * holds that a navigation could lose — the R7 batch exception `REQ_REVIEW.md` §9.1 used to carve
+ * out for the Comment column is retired along with it.
  */
 @Component({
   selector: 'sec-requirement-review',
@@ -98,11 +100,6 @@ function hasUnresolvedLink(entry: { outgoing: RefGroup; incoming: RefGroup }): b
   ],
   templateUrl: './requirement-review.html',
   styleUrl: './requirement-review.scss',
-  host: {
-    // The tab-close half of the exit guard. The in-app half is the router guard; neither one is a
-    // global store, and both are scoped to this view's own buffer (§9.1).
-    '(window:beforeunload)': 'onBeforeUnload($event)',
-  },
 })
 export class RequirementReview {
   protected readonly modulesApi = inject(ModulesApiService);
@@ -129,9 +126,7 @@ export class RequirementReview {
     return ref ? ReviewApiService.objectsUrl(ref) : undefined;
   });
 
-  protected readonly attributes = httpResource<{
-    attributes: { name: string; visible: boolean; fixed: boolean; mandatory: boolean }[];
-  }>(() => {
+  protected readonly attributes = httpResource<ModuleAttributesResponse>(() => {
     const ref = this.moduleRef();
     return ref ? `/api/v1/modules/${ref}/attributes` : undefined;
   });
@@ -191,6 +186,17 @@ export class RequirementReview {
    */
   protected readonly withoutParents = signal(false);
 
+  /**
+   * Narrows the table to objects that carry a comment thread, resolved or not.
+   *
+   * Replaces the module-level "hide resolved threads" setting the review settings dialog used to
+   * offer (`docs/req-review-comment-threads.md` §5) — that hid content from a table-wide switch a
+   * reviewer had to remember was on; this is an ordinary session filter like the four beside it,
+   * answering "which of these have any conversation on them" rather than deciding what a resolved
+   * thread's cell looks like.
+   */
+  protected readonly withCommentsOnly = signal(false);
+
   protected readonly selectedItem = signal<string | null>(null);
 
   /**
@@ -217,18 +223,6 @@ export class RequirementReview {
 
   /** True while any column carries a sort, so the reset control can say whether it does anything. */
   protected readonly sorted = signal(false);
-
-  // Keyed by ref, never by row position, so filtering, sorting or hiding a column cannot lose an
-  // edit (§5.2). A ref maps to the text currently in its box; absence means "not edited".
-  private readonly commentEdits = signal<ReadonlyMap<string, string>>(new Map());
-
-  // What the server confirmed it stored, laid over the loaded rows. A successful save clears the
-  // dirty marks *without reloading the table* (§5.2), which is exactly what the save response
-  // exists for: the server decides what was written, and a null entry means the note was deleted.
-  private readonly savedComments = signal<ReadonlyMap<string, ReviewComment | null>>(new Map());
-
-  protected readonly saving = signal(false);
-  protected readonly saveError = signal<string | null>(null);
 
   protected readonly gridOptions = secGridOptions<TableRow>();
 
@@ -261,13 +255,11 @@ export class RequirementReview {
     return data.row.requirementLike ? [] : ['sec-grid__row--context'];
   };
 
-  // What a cell renderer may reach. Deliberately these four functions and not `this` — see
+  // What a cell renderer may reach. Deliberately these functions and not `this` — see
   // ReviewCellContext.
   protected readonly cellContext: ReviewCellContext = {
     openDetail: (ref) => this.openDetail(ref),
-    commentText: (row) => this.commentText(row),
-    isDirty: (row) => this.isDirty(row),
-    editComment: (row, text) => this.editComment(row, text),
+    openThread: (row) => this.openThread(row),
   };
 
   // ag-grid identifies a row by this, not by its index, so filtering and sorting move rows around
@@ -465,24 +457,19 @@ export class RequirementReview {
       {
         colId: 'comment',
         headerName: 'Comment',
-        // Last, and no longer pinned — see the note on Issues above.
-        width: 280,
+        // Last, and no longer pinned — see the note on Issues above. Wider than Issues/References:
+        // the cell now holds a preview of the thread itself, not a count (docs/comments_design.jpg).
+        width: 240,
         sortable: false,
+        // Off, deliberately — the opposite of every other column. This cell never dictates the
+        // row's height; it fills whatever height Description's own autoHeight already produced,
+        // via an escaping renderer (`comment-cell.scss`). Left on, ag-grid would measure the cell
+        // once at creation — before the lazily-fetched preview arrives — the same trap
+        // `TableCell`'s own doc comment describes for a different column.
+        autoHeight: false,
         cellRenderer: CommentCell,
-        // `autoHeight` on, like every other column, so a comment longer than the requirement beside
-        // it grows the row instead of scrolling inside a box the reviewer cannot see the bottom of.
-        //
-        // This column used to opt out, and the reason it had to is worth keeping: under `autoHeight`
-        // ag-grid nests the cell's content in wrappers sized to that content, and a textarea's
-        // intrinsic width is its `cols` — 20 characters — so the editor collapsed to a fraction of
-        // its cell. The fix is the one DOORS_TABLES.md already paid for on the table cell: the cell
-        // is `display: block` and the renderer's host is `inline-size: 100%`, so the width comes
-        // from the cell rather than from the content (styles/_grid.scss). `wrapText` is left off:
-        // a textarea wraps its own text, and the property only affects text ag-grid lays out itself.
-        autoHeight: true,
-        // Not `--custom`: the comment editor fills its cell edge to edge, so this cell has no
-        // padding of its own at all — the editor supplies it (§5.2).
-        cellClass: 'sec-grid__cell sec-grid__cell--editor',
+        cellClass: 'sec-grid__cell sec-grid__cell--custom',
+        valueGetter: (params) => (params.data?.row.thread ? String(params.data.row.thread.count) : ''),
       },
     ];
   });
@@ -515,9 +502,11 @@ export class RequirementReview {
           // The index into the server's order, which is document order. Captured here because it
           // is the only place that order is still known — once ag-grid sorts, it is gone.
           order,
-          searchText: normalize(
-            [row.id, row.type ?? '', description, ...cells, row.comment?.text ?? ''].join(' '),
-          ),
+          // No longer includes comment text: the row carries only a thread *summary*
+          // (docs/req-review-comment-threads.md §4), and the full messages are not loaded until a
+          // reviewer opens the thread panel. A small, accepted regression from the single-note
+          // column, which held its one comment's text right here.
+          searchText: normalize([row.id, row.type ?? '', description, ...cells].join(' ')),
           outgoing: refGroup(row.references.outgoing),
           incoming: refGroup(row.references.incoming),
         };
@@ -532,6 +521,7 @@ export class RequirementReview {
     const issuesOnly = this.issuesOnly();
     const withoutParents = this.withoutParents();
     const unresolvedLinksOnly = this.unresolvedLinksOnly();
+    const withCommentsOnly = this.withCommentsOnly();
     return this.allRows().filter(
       (entry) =>
         (!requirementsOnly || entry.row.requirementLike) &&
@@ -539,6 +529,7 @@ export class RequirementReview {
         (!unresolvedLinksOnly || hasUnresolvedLink(entry)) &&
         (!withoutParents ||
           (entry.row.requirementLike && entry.row.references.outgoing.length === 0)) &&
+        (!withCommentsOnly || entry.row.thread !== null) &&
         (!term || entry.searchText.includes(term)),
     );
   });
@@ -570,23 +561,9 @@ export class RequirementReview {
   protected readonly total = computed(() => this.objects.value()?.total ?? 0);
   protected readonly truncated = computed(() => this.objects.value()?.truncated ?? false);
 
-  protected readonly dirtyCount = computed(() => this.commentEdits().size);
-  protected readonly canSave = computed(() => this.dirtyCount() > 0 && !this.saving());
-
   protected readonly selectedModuleName = computed(
     () => this.modulesApi.modules.value()?.rows.find((row) => row.ref === this.moduleRef())?.name ?? '',
   );
-
-  /** True while the reviewer has comments that have not been written to the graph. */
-  hasPendingComments(): boolean {
-    return this.commentEdits().size > 0;
-  }
-
-  protected onBeforeUnload(event: BeforeUnloadEvent): void {
-    if (this.hasPendingComments()) {
-      event.preventDefault();
-    }
-  }
 
   // --- Grid -------------------------------------------------------------------------------------
 
@@ -652,19 +629,10 @@ export class RequirementReview {
 
   // --- Module selection -------------------------------------------------------------------------
 
-  protected async selectModule(ref: string): Promise<void> {
+  protected selectModule(ref: string): void {
     if (ref === this.moduleRef()) {
       return;
     }
-    if (!(await this.confirmDiscard())) {
-      const select = this.moduleSelect();
-      if (select) {
-        select.value = this.moduleRef();
-      }
-      return;
-    }
-    this.commentEdits.set(new Map());
-    this.savedComments.set(new Map());
     this.search.set('');
     this.selectedItem.set(null);
     this.moduleRef.set(ref);
@@ -676,103 +644,30 @@ export class RequirementReview {
     void this.router.navigate([], { queryParams: { module: ref }, replaceUrl: true });
   }
 
-  /** Resolves true when it is safe to drop the buffer: nothing pending, or the user said so. */
-  async confirmDiscard(): Promise<boolean> {
-    if (!this.hasPendingComments()) {
-      return true;
-    }
-    const count = this.dirtyCount();
-    const confirmed = await new Promise<boolean | undefined>((resolve) => {
-      ConfirmDialog.open(this.dialog, {
-        title: 'Discard unsaved comments?',
-        message:
-          count === 1
-            ? 'One comment has not been saved yet. Leaving now discards it.'
-            : `${count} comments have not been saved yet. Leaving now discards them.`,
-        confirmLabel: 'Discard',
-        cancelLabel: 'Keep editing',
-      })
-        .afterClosed()
-        .subscribe(resolve);
-    });
-    return confirmed === true;
-  }
-
-  // --- Comments ---------------------------------------------------------------------------------
-
-  /** What the box shows: the pending edit, else what was last saved, else what was loaded. */
-  protected commentText(row: ReviewRow): string {
-    const edit = this.commentEdits().get(row.ref);
-    return edit ?? this.storedText(row);
-  }
-
-  // The stored value a pending edit is measured against — the overlay first, because after a save
-  // the loaded row still carries the text the server has already replaced.
-  private storedText(row: ReviewRow): string {
-    const saved = this.savedComments();
-    return saved.has(row.ref) ? (saved.get(row.ref)?.text ?? '') : (row.comment?.text ?? '');
-  }
-
-  protected isDirty(row: ReviewRow): boolean {
-    return this.commentEdits().has(row.ref);
-  }
-
-  protected editComment(row: ReviewRow, text: string): void {
-    const edits = new Map(this.commentEdits());
-    if (text === this.storedText(row)) {
-      // Typed back to where it started: not an edit any more, so it must not be saved as one.
-      edits.delete(row.ref);
-    } else {
-      edits.set(row.ref, text);
-    }
-    this.commentEdits.set(edits);
-  }
-
-  protected async saveComments(): Promise<void> {
-    const moduleRef = this.moduleRef();
-    const edits = this.commentEdits();
-    if (!moduleRef || edits.size === 0) {
-      return;
-    }
-
-    this.saving.set(true);
-    this.saveError.set(null);
-    try {
-      // One request, one transaction: either every comment is written or none is, and on failure
-      // the edits stay on screen (§5.2).
-      const response = await this.reviewApi.saveComments(moduleRef, {
-        comments: [...edits].map(([ref, text]) => ({ ref, text })),
-      });
-
-      // The server's answer, not the request, is what the table now shows — and it is applied as
-      // an overlay rather than by refetching, so the reviewer keeps their scroll position (§5.2).
-      const saved = new Map(this.savedComments());
-      for (const entry of response.saved) {
-        saved.set(entry.ref, entry.comment);
-      }
-      this.savedComments.set(saved);
-      this.commentEdits.set(new Map());
-
-      // The comment cells hold their own text and dirty flag, so they have to be told the buffer
-      // was cleared. Only that column, and only the rendered rows — this is not a reload.
-      this.gridApi?.refreshCells({ columns: ['comment'], force: true });
-
-      this.snackBar.open(
-        edits.size === 1 ? 'Comment saved' : `${edits.size} comments saved`,
-        'Dismiss',
-        { duration: 4000 },
-      );
-    } catch (error) {
-      this.saveError.set(detailOf(error, 'Something went wrong saving these comments. Please try again.'));
-    } finally {
-      this.saving.set(false);
-    }
-  }
-
   // --- Panel and dialog -------------------------------------------------------------------------
 
   protected openDetail(ref: string): void {
     this.selectedItem.set(ref);
+  }
+
+  /**
+   * Opens the thread panel for one row (`docs/req-review-comment-threads.md`). Every write it
+   * makes is already committed by the time it closes — there is no buffer here to save — so the
+   * only thing this does afterward is refresh the row's own thread summary, and only if the panel
+   * reports something actually changed.
+   */
+  protected openThread(row: ReviewRow): void {
+    ThreadPanel.open(this.dialog, {
+      itemRef: row.ref,
+      itemLabel: row.id,
+      onItemMentionClick: (ref) => this.openDetail(ref),
+    })
+      .afterClosed()
+      .subscribe((changed) => {
+        if (changed) {
+          this.objects.reload();
+        }
+      });
   }
 
   // §7 asks for a message when an unresolved target is clicked. It is a tooltip on a plain span
@@ -802,8 +697,6 @@ export class RequirementReview {
           this.objects.reload();
           // Not the tables: their content is `Object Text` and geometry, neither of which the
           // attribute settings dialog can change.
-          // Pending comments are keyed by object ref and are held in this component, not on the
-          // rows, so they survive both reloads untouched (§6).
           this.snackBar.open('Attribute settings saved', 'Dismiss', { duration: 4000 });
         }
       });

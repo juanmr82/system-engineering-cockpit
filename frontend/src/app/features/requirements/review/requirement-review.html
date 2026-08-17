@@ -5,173 +5,171 @@
   </header>
 
   <div class="sec-review__bar">
-    <mat-form-field appearance="outline" class="sec-review__module" subscriptSizing="dynamic">
-      <mat-label>Module</mat-label>
-      <mat-select
-        [value]="moduleRef()"
-        (selectionChange)="selectModule($event.value)"
-        panelWidth="auto"
-      >
-        <!-- Without an explicit trigger the closed control renders the whole option, path and
-             all, as one run-on string. The path disambiguates two modules of the same name in
-             the list; it is noise once one is chosen. -->
-        <mat-select-trigger>{{ selectedModuleName() }}</mat-select-trigger>
+    <div class="sec-review__row sec-review__row--primary">
+      <mat-form-field appearance="outline" class="sec-review__module" subscriptSizing="dynamic">
+        <mat-label>Module</mat-label>
+        <mat-select
+          [value]="moduleRef()"
+          (selectionChange)="selectModule($event.value)"
+          panelWidth="auto"
+        >
+          <!-- Without an explicit trigger the closed control renders the whole option, path and
+               all, as one run-on string. The path disambiguates two modules of the same name in
+               the list; it is noise once one is chosen. -->
+          <mat-select-trigger>{{ selectedModuleName() }}</mat-select-trigger>
 
-        @for (module of modulesApi.modules.value()?.rows ?? []; track module.ref) {
-          <mat-option [value]="module.ref">
-            <span class="sec-review__module-name">{{ module.name }}</span>
-            <span class="sec-review__module-path">{{ module.path }}</span>
-          </mat-option>
-        }
-      </mat-select>
-    </mat-form-field>
+          @for (module of modulesApi.modules.value()?.rows ?? []; track module.ref) {
+            <mat-option [value]="module.ref">
+              <span class="sec-review__module-name">{{ module.name }}</span>
+              <span class="sec-review__module-path">{{ module.path }}</span>
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
 
-    <button
-      mat-icon-button
-      type="button"
-      class="sec-review__action"
-      matTooltip="Attribute settings"
-      aria-label="Attribute settings"
-      [disabled]="!moduleRef()"
-      (click)="openSettings()"
-    >
-      <mat-icon svgIcon="gearbox" />
-    </button>
-
-    <!-- Shown only when there is something to report. A permanent "0 issues" badge is a claim the
-         view cannot always honestly make: a module with no mandatory policy, and a module whose
-         objects all fall outside the policy's scope, both produce zero too (§5.3). -->
-    @if (issueCount(); as count) {
       <button
         mat-icon-button
         type="button"
-        class="sec-review__action sec-review__action--issues"
-        [matTooltip]="
-          count === 1
-            ? 'One object in this module is missing a value for an attribute marked mandatory.'
-            : count + ' objects in this module are missing a value for an attribute marked mandatory.'
-        "
-        [attr.aria-label]="count + ' objects with missing mandatory values'"
-        (click)="issuesOnly.set(!issuesOnly())"
-      >
-        <mat-icon svgIcon="alert" />
-        <span class="sec-review__badge sec-review__badge--issues" aria-hidden="true">{{ count }}</span>
-      </button>
-    }
-
-    <!-- The fixed checks always run, so this no longer says "nothing checked" — that would now be
-         untrue. It says only that the *configurable* half is unconfigured, which still matters: a
-         module with no mandatory attributes reports no attribute findings, and that must not be
-         read as every attribute being filled. Shown once the attribute list has loaded, otherwise
-         it flashes on every module change. -->
-    @if (moduleRef() && attributes.hasValue() && !hasMandatoryPolicy()) {
-      <button
-        mat-button
-        type="button"
-        class="sec-review__no-policy"
-        matTooltip="No attribute of this module is marked mandatory, so no attribute is checked for a missing value. Fixed checks still run. Open the attribute settings to mark some."
+        class="sec-review__action"
+        matTooltip="Attribute settings"
+        aria-label="Attribute settings"
+        [disabled]="!moduleRef()"
         (click)="openSettings()"
       >
-        <mat-icon svgIcon="info" />
-        No mandatory attributes
+        <mat-icon svgIcon="gearbox" />
       </button>
-    }
 
-    <button
-      mat-icon-button
-      type="button"
-      class="sec-review__action sec-review__action--save"
-      [matTooltip]="dirtyCount() === 1 ? 'Save 1 comment' : 'Save ' + dirtyCount() + ' comments'"
-      aria-label="Save comments"
-      [disabled]="!canSave()"
-      (click)="saveComments()"
-    >
-      <mat-icon svgIcon="save" />
-      @if (dirtyCount() > 0) {
-        <span class="sec-review__badge" aria-hidden="true">{{ dirtyCount() }}</span>
-      }
-    </button>
-
-    <mat-form-field appearance="outline" class="sec-review__search" subscriptSizing="dynamic">
-      <mat-icon matPrefix svgIcon="search" />
-      <input
-        matInput
-        type="text"
-        placeholder="Search"
-        aria-label="Search this module"
-        [value]="search()"
-        (input)="search.set($any($event.target).value)"
-      />
-      @if (search()) {
+      <!-- Shown only when there is something to report. A permanent "0 issues" badge is a claim
+           the view cannot always honestly make: a module with no mandatory policy, and a module
+           whose objects all fall outside the policy's scope, both produce zero too (§5.3). -->
+      @if (issueCount(); as count) {
         <button
           mat-icon-button
-          matSuffix
           type="button"
-          aria-label="Clear search"
-          (click)="search.set('')"
+          class="sec-review__action sec-review__action--issues"
+          [matTooltip]="
+            count === 1
+              ? 'One object in this module is missing a value for an attribute marked mandatory.'
+              : count + ' objects in this module are missing a value for an attribute marked mandatory.'
+          "
+          [attr.aria-label]="count + ' objects with missing mandatory values'"
+          (click)="issuesOnly.set(!issuesOnly())"
         >
-          <mat-icon svgIcon="close" />
+          <mat-icon svgIcon="alert" />
+          <span class="sec-review__badge sec-review__badge--issues" aria-hidden="true">{{ count }}</span>
         </button>
       }
-    </mat-form-field>
 
-    <mat-checkbox class="sec-review__filter" [checked]="requirementsOnly()" (change)="requirementsOnly.set($event.checked)">
-      Requirements only
-    </mat-checkbox>
+      <!-- The fixed checks always run, so this no longer says "nothing checked" — that would now
+           be untrue. It says only that the *configurable* half is unconfigured, which still
+           matters: a module with no mandatory attributes reports no attribute findings, and that
+           must not be read as every attribute being filled. Shown once the attribute list has
+           loaded, otherwise it flashes on every module change. -->
+      @if (moduleRef() && attributes.hasValue() && !hasMandatoryPolicy()) {
+        <button
+          mat-button
+          type="button"
+          class="sec-review__no-policy"
+          matTooltip="No attribute of this module is marked mandatory, so no attribute is checked for a missing value. Fixed checks still run. Open the attribute settings to mark some."
+          (click)="openSettings()"
+        >
+          <mat-icon svgIcon="info" />
+          No mandatory attributes
+        </button>
+      }
 
-    <!-- Unconditional. It used to be offered only when the module had a mandatory policy, because
-         without one the filter could do nothing but empty the table and that reads as "all clear"
-         when the truth is "nothing was checked". A fixed check now runs on every module whatever
-         its configuration, so an empty result honestly means no issues were found. -->
-    <mat-checkbox class="sec-review__filter" [checked]="issuesOnly()" (change)="issuesOnly.set($event.checked)">
-      Objects with issues
-    </mat-checkbox>
+      <mat-form-field appearance="outline" class="sec-review__search" subscriptSizing="dynamic">
+        <mat-icon matPrefix svgIcon="search" />
+        <input
+          matInput
+          type="text"
+          placeholder="Search"
+          aria-label="Search this module"
+          [value]="search()"
+          (input)="search.set($any($event.target).value)"
+        />
+        @if (search()) {
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            aria-label="Clear search"
+            (click)="search.set('')"
+          >
+            <mat-icon svgIcon="close" />
+          </button>
+        }
+      </mat-form-field>
 
-    <!-- An outgoing reference reads as "refines": A -> B means A refines B, the convention the
-         Breakdown tab states in words. So a requirement with none refines nothing above it. The
-         tooltip says that, because the column header alone cannot. -->
-    <mat-checkbox
-      class="sec-review__filter"
-      matTooltip="Requirements with no outgoing reference — nothing they refine. Headings and table structure are excluded, because they never carry one. A reference into a module that has not been imported yet still counts as a parent."
-      [checked]="withoutParents()"
-      (change)="withoutParents.set($event.checked)"
-    >
-      Requirements without parents
-    </mat-checkbox>
+      <p class="sec-review__stats">
+        <span><b>{{ filtered().length }}</b> shown</span>
+        <span><b>{{ total() }}</b> in module</span>
+      </p>
+    </div>
 
-    <!-- Both ways a link can fail to land on something a reviewer can open: a target deleted in
-         DOORS, and one whose module has not been imported. The two ask for opposite fixes and the
-         row says which it is; the sweep that finds them is the same sweep.
+    <div class="sec-review__row sec-review__row--filters">
+      <span class="sec-review__filters-label">Filter</span>
 
-         Offered unconditionally, like the issues filter and for the same reason — an empty result
-         honestly means the module has none, and hiding the control when it does would leave a
-         reviewer unable to tell that from not having looked. -->
-    <mat-checkbox
-      class="sec-review__filter"
-      matTooltip="Objects with a link to or from an object this application cannot show — one deleted in DOORS, or one whose module has not been imported. A deleted target has to be fixed in DOORS; an unimported one needs its module imported."
-      [checked]="unresolvedLinksOnly()"
-      (change)="unresolvedLinksOnly.set($event.checked)"
-    >
-      Links to unresolved objects
-    </mat-checkbox>
+      <mat-checkbox class="sec-review__filter" [checked]="requirementsOnly()" (change)="requirementsOnly.set($event.checked)">
+        Requirements only
+      </mat-checkbox>
 
-    <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded
-         in, so this clears every column's sort rather than sorting by anything (§5). -->
-    @if (sorted()) {
-      <button mat-stroked-button type="button" class="sec-review__reset-sort" (click)="resetSort()">
-        Document order
-      </button>
-    }
+      <!-- Unconditional. It used to be offered only when the module had a mandatory policy,
+           because without one the filter could do nothing but empty the table and that reads as
+           "all clear" when the truth is "nothing was checked". A fixed check now runs on every
+           module whatever its configuration, so an empty result honestly means no issues were
+           found. -->
+      <mat-checkbox class="sec-review__filter" [checked]="issuesOnly()" (change)="issuesOnly.set($event.checked)">
+        Objects with issues
+      </mat-checkbox>
 
-    <p class="sec-review__stats">
-      <span><b>{{ filtered().length }}</b> shown</span>
-      <span><b>{{ total() }}</b> in module</span>
-    </p>
+      <!-- An outgoing reference reads as "refines": A -> B means A refines B, the convention the
+           Breakdown tab states in words. So a requirement with none refines nothing above it. The
+           tooltip says that, because the column header alone cannot. -->
+      <mat-checkbox
+        class="sec-review__filter"
+        matTooltip="Requirements with no outgoing reference — nothing they refine. Headings and table structure are excluded, because they never carry one. A reference into a module that has not been imported yet still counts as a parent."
+        [checked]="withoutParents()"
+        (change)="withoutParents.set($event.checked)"
+      >
+        Requirements without parents
+      </mat-checkbox>
+
+      <!-- Both ways a link can fail to land on something a reviewer can open: a target deleted in
+           DOORS, and one whose module has not been imported. The two ask for opposite fixes and
+           the row says which it is; the sweep that finds them is the same sweep.
+
+           Offered unconditionally, like the issues filter and for the same reason — an empty
+           result honestly means the module has none, and hiding the control when it does would
+           leave a reviewer unable to tell that from not having looked. -->
+      <mat-checkbox
+        class="sec-review__filter"
+        matTooltip="Objects with a link to or from an object this application cannot show — one deleted in DOORS, or one whose module has not been imported. A deleted target has to be fixed in DOORS; an unimported one needs its module imported."
+        [checked]="unresolvedLinksOnly()"
+        (change)="unresolvedLinksOnly.set($event.checked)"
+      >
+        Links to unresolved objects
+      </mat-checkbox>
+
+      <!-- Any thread, resolved or not — a reviewer sweeping for open conversation, not for a
+           particular status of one (docs/req-review-comment-threads.md §5 redesign). -->
+      <mat-checkbox
+        class="sec-review__filter"
+        [checked]="withCommentsOnly()"
+        (change)="withCommentsOnly.set($event.checked)"
+      >
+        Requirements with comments
+      </mat-checkbox>
+
+      <!-- Sorting is the grid's; getting back is not. Document order is the order the rows loaded
+           in, so this clears every column's sort rather than sorting by anything (§5). -->
+      @if (sorted()) {
+        <button mat-stroked-button type="button" class="sec-review__reset-sort" (click)="resetSort()">
+          Document order
+        </button>
+      }
+    </div>
   </div>
-
-  @if (saveError(); as message) {
-    <p class="sec-review__error" role="alert">{{ message }}</p>
-  }
 
   @if (!moduleRef()) {
     <sec-empty-state

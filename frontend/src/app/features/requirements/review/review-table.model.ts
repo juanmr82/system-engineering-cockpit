@@ -154,13 +154,11 @@ export function renderValue(value: unknown): string {
 /**
  * What a cell renderer is allowed to ask the view for, passed as the grid's `context`.
  *
- * Narrow on purpose. A renderer can open the detail panel and read or write one object's comment;
- * it cannot reach the module selection, the search or the save. Handing the component itself to
- * ag-grid would work and would make every one of those reachable from a cell.
+ * Narrow on purpose. A renderer can open the detail panel or a row's thread; it cannot reach the
+ * module selection or the search. Handing the component itself to ag-grid would work and would
+ * make every one of those reachable from a cell.
  */
 export interface ReviewCellContext {
   readonly openDetail: (ref: string) => void;
-  readonly commentText: (row: ReviewRow) => string;
-  readonly isDirty: (row: ReviewRow) => boolean;
-  readonly editComment: (row: ReviewRow, text: string) => void;
+  readonly openThread: (row: ReviewRow) => void;
 }

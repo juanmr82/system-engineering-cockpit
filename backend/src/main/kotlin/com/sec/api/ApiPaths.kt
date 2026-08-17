@@ -44,6 +44,14 @@ public object ApiPaths {
     public const val STATISTICS: String = "$V1/statistics"
 
     /**
+     * Comment threads (`docs/req-review-comment-threads.md` §4): `GET`/`POST $ITEMS/{ref}/annotations`
+     * for a thread, `PATCH`/`DELETE $ANNOTATIONS/{ref}` for one note in it — `{ref}` there is the
+     * note's own `__metaId`, not the item's, so the route needs no item context to resolve or
+     * delete a thread.
+     */
+    public const val ANNOTATIONS: String = "$V1/annotations"
+
+    /**
      * The JIRA integration. Everything under it needs a configured host and token — except
      * [JIRA_HEALTH], whose entire job is to report whether they are there.
      */

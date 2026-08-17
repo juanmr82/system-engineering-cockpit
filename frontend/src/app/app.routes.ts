@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
 import { canLeaveModules } from './features/requirements/modules/modules.guard';
-import { canLeaveReview } from './features/requirements/review/review.guard';
 
 // Every route is lazy (loadComponent) and renders inside the shell. Unknown paths render a
 // not-found component inside the shell, not a bare page (CLAUDE.md §9).
@@ -22,8 +21,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/requirements/modules/modules').then((m) => m.Modules),
         // The System level column is editable, so this view owns a buffer that can be navigated
-        // away from — the same situation the review table's comments created (R7). The guard file
-        // imports the component as a type only, so this does not un-lazy the route.
+        // away from (R7). The guard file imports the component as a type only, so this does not
+        // un-lazy the route.
+        //
+        // The only guard left in the application: the Req review table used to own one too
+        // (the R7 batch exception `docs/REQ_REVIEW.md` §9.1 carved out for its Comment column),
+        // but every reply now posts as its own request and there is nothing left there to guard
+        // against losing (docs/req-review-comment-threads.md §1).
         canDeactivate: [canLeaveModules],
       },
       {
@@ -32,10 +36,6 @@ export const routes: Routes = [
           import('./features/requirements/review/requirement-review').then(
             (m) => m.RequirementReview,
           ),
-        // The only guard in the application, and it is scoped to the one view that owns an
-        // editable table — never a router-wide guard reading a global store (CLAUDE.md R7). The
-        // guard file imports the component as a type only, so this does not un-lazy the route.
-        canDeactivate: [canLeaveReview],
       },
       {
         path: 'jira/issues',

@@ -8,6 +8,7 @@ import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.OidcLoginResult
 import com.sec.security.SecPrincipal
+import com.sec.security.UserDirectory
 import com.sec.security.UserSession
 import com.sec.security.auditName
 import com.sec.security.requireSecSession
@@ -31,7 +32,7 @@ import io.ktor.server.sessions.set
  * the route tree's outer one — this file is where the "session required" line is actually drawn,
  * and it should be readable in one place.
  */
-public fun Route.authRoutes(oidc: Oidc, accessResolver: AccessResolver) {
+public fun Route.authRoutes(oidc: Oidc, accessResolver: AccessResolver, userDirectory: UserDirectory) {
     get(ApiPaths.AUTH_LOGIN) {
         val redirectTarget = call.request.queryParameters["redirect"]
         call.respondRedirect(oidc.authorizationRedirect(redirectTarget))
@@ -65,6 +66,9 @@ public fun Route.authRoutes(oidc: Oidc, accessResolver: AccessResolver) {
                 call.respondProblem(HttpStatusCode.BadRequest, "Sign-in failed", result.reason)
 
             is OidcLoginResult.Success -> {
+                // Best-effort display-name cache (docs/req-review-comment-threads.md §2.2) — never
+                // gates the sign-in itself, which is why this runs before the session is even set.
+                userDirectory.upsert(result.session.sub, result.session.name, result.session.username)
                 call.sessions.set(result.session)
                 call.respondRedirect(oidc.frontendUrl(result.redirectTarget))
             }

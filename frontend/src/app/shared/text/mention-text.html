@@ -1,0 +1,19 @@
+@for (segment of segments(); track $index) {
+  @switch (segment.kind) {
+    @case ('text') {
+      <span>{{ segment.value }}</span>
+    }
+    @case ('mention') {
+      @if (segment.target === 'item') {
+        <button type="button" class="sec-mention sec-mention--item" (click)="onItemClick(segment.ref)">
+          {{ segment.display }}
+        </button>
+      } @else {
+        <span class="sec-mention sec-mention--user">
+          <mat-icon svgIcon="account-circle" aria-hidden="true" />
+          {{ segment.display }}
+        </span>
+      }
+    }
+  }
+}

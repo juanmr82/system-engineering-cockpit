@@ -190,6 +190,17 @@ public object NodeLabel {
     )
 
     /**
+     * A comment author's display-name cache (`docs/req-review-comment-threads.md` §2.2).
+     *
+     * Deliberately **not** `__`-prefixed and **not** `:__Meta`: it anchors to the identity
+     * directory, not to the imported graph, the same reasoning that keeps [GROUP] and
+     * [ACCESS_DEFAULT] out of the `__` namespace and out of `meta` — `MATCH (m:__Meta) DETACH
+     * DELETE m` must not remove it. Reuses [Prop.ID] (`__id` = the Keycloak `sub`) and
+     * [Prop.NAME] (`__name` = display name) — both source-agnostic already.
+     */
+    public const val USER: String = "User"
+
+    /**
      * The mirror of one Keycloak group, keyed on the exact path the `groups` claim carries.
      *
      * Deliberately **not** `:__Meta` (ADR 0016 §6.2): it anchors to the identity directory, not to
@@ -323,8 +334,17 @@ public object MetaProp {
      *  nobody can reason about. */
     public const val APPLIES_TO_LABELS: String = "appliesToLabels"
 
-    /** `:__Note` — the comment itself. */
+    /** `:__Note` — the comment itself. May hold `@[display](kind:ref)` mention tokens, parsed only
+     *  on the client (`docs/req-review-comment-threads.md` §3.1). */
     public const val TEXT: String = "text"
+
+    /** `:__Note` — **root note only**, never a reply. The thread has one resolved state, not one
+     *  per message (`docs/req-review-comment-threads.md` §2.1). */
+    public const val RESOLVED: String = "resolved"
+
+    /** `:__Note` — a reply's `__metaId` of the thread's root note; absent on the root. Flat, one
+     *  level: a reply's `replyTo` always points at a root, never at another reply. */
+    public const val REPLY_TO: String = "replyTo"
 
     /** `:__AttributeSetting` — shown as a column in the review table. */
     public const val VISIBLE: String = "visible"
@@ -357,6 +377,17 @@ public object MetaProp {
     /** `:__AccessCategory` — granted to every group with no explicit `__mayRead` (R8, §8.4).
      *  Never a bypass: still a category, still granted, just to all of them at once. */
     public const val EVERY_GROUP: String = "everyGroup"
+}
+
+/**
+ * Properties of a [NodeLabel.USER] node (`docs/req-review-comment-threads.md` §2.2).
+ *
+ * [Prop.ID] (`__id`) and [Prop.NAME] (`__name`) already cover the Keycloak `sub` and the display
+ * name — both source-agnostic. This is the one field neither already names.
+ */
+public object UserProp {
+    /** `preferred_username` at last sign-in — the company user id, never used as a key. */
+    public const val USERNAME: String = "username"
 }
 
 /**
@@ -435,6 +466,10 @@ public object MetaValue {
      * A number rather than a name, and here rather than inline in four write statements, because
      * the day a payload shape changes this is the value that has to move — and a generation
      * number that is only right in three of four places is worse than no generation number.
+     *
+     * `1 → 2`: `:__Note` gained `resolved` and `replyTo` (`docs/req-review-comment-threads.md`
+     * §2.1). Existing single-note comments still read fine — `resolved` defaults `false` on read,
+     * `replyTo` defaults absent — so this is a version bump, not a migration.
      */
-    public const val CURRENT_SCHEMA_VERSION: Int = 1
+    public const val CURRENT_SCHEMA_VERSION: Int = 2
 }

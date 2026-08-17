@@ -359,7 +359,7 @@ public object AccessCypher {
      * is left untouched — `ON CREATE` only, so its own `__createdAt` never moves on a resave.
      *
      * Write-only, no `RETURN`: [GROUP_WITH_GRANTS] reads the result back afterward, the same
-     * write-then-read-back shape `MetaWriter.saveComments` already uses.
+     * write-then-read-back shape `MetaWriter.postNote` uses for a comment thread.
      */
     public val REPLACE_GRANTS: String = """
         CYPHER 25

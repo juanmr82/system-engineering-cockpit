@@ -1,0 +1,41 @@
+@use 'mixins' as sec;
+
+// Inline flow: plain text runs and chips read as one sentence, the same as the raw
+// @[display](kind:ref) token would while composing (§3.2) — only the token itself changes shape.
+:host {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+
+// An item mention is a link into the graph, so it wears the Tier-2 accent a value from this
+// application always wears (CLAUDE.md §8) — the same filled chip a classification badge uses.
+.sec-mention--item {
+  @include sec.meta-chip;
+
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sec-blue-mid);
+  }
+
+  &:focus-visible {
+    @include sec.focus-ring(2px);
+  }
+}
+
+// A user mention names an author, not a value to flag — quiet text with an icon, never a link:
+// there is no user-profile view to send it to (§3.4).
+.sec-mention--user {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--sec-ink-2);
+  font-weight: 600;
+
+  mat-icon {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+  }
+}

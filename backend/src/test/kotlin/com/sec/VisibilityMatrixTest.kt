@@ -2,7 +2,7 @@ package com.sec
 
 import com.sec.config.Neo4jSettings
 import com.sec.config.WindchillSettings
-import com.sec.domain.SaveCommentsOutcome
+import com.sec.domain.PostNoteOutcome
 import com.sec.domain.GraphDirection
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeRead
@@ -528,33 +528,28 @@ class VisibilityMatrixTest {
      * `sec-user` is the right role for this write — a comment is one reviewer's note, not
      * configuration — so `requireRole` deliberately lets it through and the refusal has to come from
      * visibility instead. Hand-made is the case that matters: the ref is base64url of `__id`, so a
-     * caller can put any object in the body whether or not a view ever showed it to them.
+     * caller can post to any object's thread whether or not a view ever showed it to them.
      *
-     * Three separate things have to hold, and each is asserted rather than reasoned about, because
-     * each fails differently: the module gate, the per-item gate, and the statement itself.
+     * Two things have to hold, and each is asserted rather than reasoned about, because each fails
+     * differently: `MetaWriter.postNote`'s own read-then-write, and the statement itself. There is
+     * no separate "module gate" any more — `docs/req-review-comment-threads.md`'s endpoint takes
+     * only an item ref, so the old cross-module forgery this test used to check is structurally
+     * impossible: there is no second, declared module left to lie about.
      */
     @Test
     fun `a caller cannot comment on an object they cannot see, however the request is made`() = runBlocking {
         val writer = MetaWriter(graphDriver, doors)
 
-        // 1. A module this caller cannot read is ModuleNotFound — the same answer as a module that
-        //    does not exist, so the write path keeps the 404-vs-403 rule the reads keep.
+        // 1. An item this caller cannot see is ItemNotFound — the same answer as an item that does
+        //    not exist, so the write path keeps the 404-vs-403 rule the reads keep.
         assertEquals(
-            SaveCommentsOutcome.ModuleNotFound,
-            writer.saveComments(MODULE_B, listOf(comment(ITEM_B1, "no")), onlyA),
+            PostNoteOutcome.ItemNotFound,
+            writer.postNote(ITEM_B1, "no", onlyA, authorSub = "attacker"),
         )
 
-        // 2. A visible module, but an item of it this caller cannot see. `item-b1` really is in
-        //    module B, so this is not a malformed request — it is the exact shape a hand-made one
-        //    takes, and the answer must not distinguish it from an id that is simply wrong.
-        val hiddenItem = writer.saveComments(MODULE_B, listOf(comment(ITEM_B1, "no")), bothAB)
-        assertTrue(hiddenItem is SaveCommentsOutcome.Saved, "the A+B caller may comment on b1")
-
-        val forged = writer.saveComments(MODULE_A, listOf(comment(ITEM_B1, "forged")), onlyA)
-        assertTrue(
-            forged is SaveCommentsOutcome.UnknownItems,
-            "an object outside the caller's visible set must be refused, not written: $forged",
-        )
+        // 2. The A+B caller can see the same item and posts to it successfully.
+        val posted = writer.postNote(ITEM_B1, "no", bothAB, authorSub = "reviewer")
+        assertTrue(posted is PostNoteOutcome.Posted, "the A+B caller may comment on b1")
 
         // 3. And the statement itself refuses, so the guarantee survives its caller being
         //    reordered. Writing straight through the filtered Cypher with an invisible anchor
@@ -562,13 +557,15 @@ class VisibilityMatrixTest {
         graphDriver.executeWrite(
             listOf(
                 Query(
-                    ReviewCypher.UPSERT_COMMENTS,
+                    ReviewCypher.CREATE_NOTE,
                     mapOf(
-                        "comments" to listOf(
-                            mapOf("itemId" to ITEM_B2, "metaId" to "forged-meta", "text" to "forged"),
-                        ),
+                        "itemId" to ITEM_B2,
+                        "metaId" to "forged-meta",
+                        "text" to "forged",
                         "user" to "attacker",
                         "now" to "2026-01-01T00:00:00Z",
+                        "replyTo" to null,
+                        "extra" to mapOf("resolved" to false),
                     ),
                 ),
             ),
@@ -585,12 +582,9 @@ class VisibilityMatrixTest {
     @Test
     fun `a refused comment leaves the anchor untouched`() = runBlocking {
         val before = propertiesOf(ITEM_B1)
-        MetaWriter(graphDriver, doors).saveComments(MODULE_A, listOf(comment(ITEM_B1, "forged")), onlyA)
+        MetaWriter(graphDriver, doors).postNote(ITEM_B1, "forged", onlyA, authorSub = "attacker")
         assertEquals(before, propertiesOf(ITEM_B1), "a refused write must not touch the anchor node")
     }
-
-    private fun comment(itemId: String, text: String) =
-        MetaWriter.CommentEditInput(itemId = itemId, text = text)
 
     private suspend fun countNotesOn(itemId: String): Int =
         graphDriver.executeRead(

@@ -23,6 +23,7 @@ import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.Role
+import com.sec.security.UserDirectory
 import com.sec.security.requireRole
 import com.sec.security.requireSecSession
 import com.sec.source.jira.JiraColumnStore
@@ -87,6 +88,9 @@ public fun Application.configureRouting(
     // ADR 0017. authRoutes() is the one file allowed to register anything unauthenticated besides
     // health/ready — it draws that line itself, in one place (security/Session.kt's doc comment).
     oidc: Oidc,
+    // The :User display-name cache, upserted on every successful callback
+    // (docs/req-review-comment-threads.md §2.2). Not :__Meta, so it bypasses metaWriter entirely.
+    userDirectory: UserDirectory,
     // access-control.md §5/§6.3. One instance for the process, so its cache is actually shared
     // across requests rather than reset per route.
     accessResolver: AccessResolver,
@@ -105,7 +109,7 @@ public fun Application.configureRouting(
         // The declared exceptions (docs/features/access-control.md §9 "Guarding, once"):
         // /health, /ready, and the two of /auth/* that create a session rather than needing one.
         healthRoutes(graphDriver)
-        authRoutes(oidc, accessResolver)
+        authRoutes(oidc, accessResolver, userDirectory)
 
         // Every other route needs a session (ADR 0017 §5) and the CSRF check on every non-GET
         // (§11). One wrapper, so a feature route file registered here is guarded whether or not

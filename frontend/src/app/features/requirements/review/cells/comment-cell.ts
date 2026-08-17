@@ -1,139 +1,137 @@
-import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
-import type { AfterViewInit, OnDestroy } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal } from '@angular/core';
+import type { OnDestroy } from '@angular/core';
+import { httpResource } from '@angular/common/http';
+import { MatIconModule } from '@angular/material/icon';
 import type { ICellRendererAngularComp } from 'ag-grid-angular';
 import type { ICellRendererParams } from 'ag-grid-community';
+import { AuthorAvatar } from '../../../../shared/avatar/author-avatar';
+import { ReviewApiService } from '../review-api.service';
 import type { ReviewCellContext, TableRow } from '../review-table.model';
-import type { ReviewRow } from '../review.model';
+import type { AnnotationsResponse, ReviewRow, ThreadNote, ThreadSummary } from '../review.model';
+
+// One preview line's pixel budget, tuned against the table's own default row height
+// (`--ag-row-height: 46px`, styles/_grid.scss) so an ordinary row yields exactly one slot — the
+// compact chip — and only a row a wrapped Description made taller crosses into the per-note
+// preview (docs/comments_design.jpg, the redesign's own baseline).
+const LINE_HEIGHT = 24;
+const MIN_EXPANDED_SLOTS = 2;
+
+type Mode = 'empty' | 'compact' | 'expanded';
 
 /**
- * The Comment cell (§5.2): one reviewer comment per object, always visible and always editable.
+ * The Comment cell: the whole cell is the affordance now, not a small icon a reviewer has to hunt
+ * for on a row a wrapped Description made tall (docs/comments_design.jpg baseline). Three states:
  *
- * **Deliberately not an ag-grid editable cell.** Grid cell editing would introduce a second
- * staging concept — a cell value the grid holds and commits — beside the view's own edit buffer,
- * and R7 allows exactly one. So this is a plain `<textarea>` writing straight into the component's
- * `ref`-keyed buffer, which is what the Save button reads (ADR 0006).
+ * - **empty** — no thread yet. The full cell reads "Add a comment…"; clicking anywhere opens the
+ *   panel, the same as every other state.
+ * - **compact** — a thread exists but the row has no more than one line's worth of height to give
+ *   it (the common case, at the table's own 46px row height): participant avatars, the count, and
+ *   a resolved mark.
+ * - **expanded** — the row is tall enough for more. Fetches the full thread lazily (only once a
+ *   row actually needs it — most never do) and lists as many individual "avatar + one line of
+ *   text" previews as fit, folding whatever is left into a trailing summary line.
  *
- * The value shown is asked for on every init and refresh rather than cached across rows: ag-grid
- * recycles a renderer as rows scroll, and a stale value here would put one object's comment on
- * another object's row.
- *
- * **The box grows to its text, and the row grows with it.** A textarea has a fixed height whatever
- * its content, so a long comment used to scroll inside a cell the reviewer could not see the bottom
- * of. This measures the content and states the height; the column carries `autoHeight`, so ag-grid
- * takes that into the row height alongside the wrapped Description beside it.
+ * A thread's *identity* changing — a post, a resolve, a delete — hands the cell back to ag-grid
+ * for a fresh instance rather than patching this one in place ({@link refresh}), the same pattern
+ * `TableCell.refresh` already uses: a stale `httpResource` fetched under the old thread state must
+ * not survive into the new one.
  */
 @Component({
   selector: 'sec-comment-cell',
+  imports: [AuthorAvatar, MatIconModule],
   templateUrl: './comment-cell.html',
   styleUrl: './comment-cell.scss',
 })
-export class CommentCell implements ICellRendererAngularComp, AfterViewInit, OnDestroy {
+export class CommentCell implements ICellRendererAngularComp, OnDestroy {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private readonly box = viewChild<ElementRef<HTMLTextAreaElement>>('box');
 
-  protected readonly text = signal('');
-  protected readonly dirty = signal(false);
-  protected readonly label = signal('');
-
-  private row: ReviewRow | null = null;
+  private readonly rowSignal = signal<ReviewRow | null>(null);
+  protected readonly thread = signal<ThreadSummary | null>(null);
   private context?: ReviewCellContext;
 
+  private readonly slots = signal(1);
   private observer: ResizeObserver | null = null;
-  private observedWidth = 0;
-  private frame = 0;
+  /** What this instance was built for, so {@link refresh} can tell a re-read from a new thread. */
+  private builtForThread: ThreadSummary | null = null;
+
+  protected readonly wantsExpanded = computed(
+    () => !!this.thread() && this.slots() >= MIN_EXPANDED_SLOTS,
+  );
+
+  // Fetched only once a row is actually tall enough to show it — every row at the table's default
+  // height stops at the compact chip, which is drawn from the summary already on hand.
+  protected readonly annotations = httpResource<AnnotationsResponse>(() => {
+    const row = this.rowSignal();
+    return this.wantsExpanded() && row ? ReviewApiService.annotationsUrl(row.ref) : undefined;
+  });
+
+  protected readonly mode = computed<Mode>(() => {
+    if (!this.thread()) {
+      return 'empty';
+    }
+    if (!this.wantsExpanded()) {
+      return 'compact';
+    }
+    // Falls back to the compact chip while the fetch is in flight (or failed) rather than an empty
+    // cell — the summary is already known, so there is always something to show.
+    return this.annotations.hasValue() ? 'expanded' : 'compact';
+  });
+
+  protected readonly previewNotes = computed<ThreadNote[]>(() =>
+    this.annotations.hasValue() ? this.annotations.value().notes : [],
+  );
+
+  /** How many notes get their own preview line; the rest fold into the trailing summary. */
+  protected readonly individualCount = computed(() => {
+    const total = this.previewNotes().length;
+    const slots = this.slots();
+    return total <= slots ? total : Math.max(0, slots - 1);
+  });
+
+  protected readonly individualNotes = computed(() => this.previewNotes().slice(0, this.individualCount()));
+  protected readonly overflowCount = computed(() => this.previewNotes().length - this.individualCount());
 
   agInit(params: ICellRendererParams<TableRow>): void {
     this.update(params);
+    this.builtForThread = this.thread();
+    this.watchHeight();
   }
 
-  ngAfterViewInit(): void {
-    this.autosize();
-    this.watchWidth();
-  }
-
-  ngOnDestroy(): void {
-    this.observer?.disconnect();
-    cancelAnimationFrame(this.frame);
-  }
-
-  // True keeps this instance alive and just re-reads it. That is what lets the parent clear the
-  // dirty marks after a save without the input losing focus or the table reloading (§5.2).
   refresh(params: ICellRendererParams<TableRow>): boolean {
+    const incoming = params.data?.row.thread ?? null;
+    if (incoming !== this.builtForThread) {
+      return false;
+    }
     this.update(params);
     return true;
   }
 
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
+  }
+
   private update(params: ICellRendererParams<TableRow>): void {
     const row = params.data?.row ?? null;
-    const context = params.context as ReviewCellContext | undefined;
-    this.row = row;
-    this.context = context;
-    this.label.set(row ? `Comment on ${row.id}` : 'Comment');
-    this.text.set(row && context ? context.commentText(row) : '');
-    this.dirty.set(!!row && !!context && context.isDirty(row));
-    // Scrolling recycles this renderer onto another object, whose comment is a different length.
-    // Deferred, because the signal above only schedules the DOM write — measuring now would measure
-    // the previous object's text.
-    this.scheduleAutosize();
+    this.context = params.context as ReviewCellContext | undefined;
+    this.rowSignal.set(row);
+    this.thread.set(row?.thread ?? null);
   }
 
-  protected onInput(value: string): void {
-    const row = this.row;
-    const context = this.context;
-    // The user's own keystroke is already in the DOM, so this one measurement is not deferred: a
-    // frame's delay is visible as the box lagging a line behind the text being typed into it.
-    this.autosize();
-    if (!row || !context) {
-      return;
-    }
-    context.editComment(row, value);
-    this.text.set(value);
-    // Asked for rather than assumed: typing a comment back to what was stored un-dirties the row,
-    // and only the buffer knows that.
-    this.dirty.set(context.isDirty(row));
-  }
-
-  /**
-   * Set the box's height to its content's height.
-   *
-   * `height: auto` first, and it is load-bearing: `scrollHeight` is the greater of the content and
-   * the current height, so measuring without releasing the height means the box can only ever grow.
-   * Deleting a paragraph would leave the row as tall as the paragraph was.
-   */
-  private autosize(): void {
-    const element = this.box()?.nativeElement;
-    if (!element) {
-      return;
-    }
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
-  }
-
-  private scheduleAutosize(): void {
-    cancelAnimationFrame(this.frame);
-    this.frame = requestAnimationFrame(() => this.autosize());
-  }
-
-  /**
-   * Re-measure when the column is dragged narrower or wider, because that re-wraps the text.
-   *
-   * **Width only.** Writing the height inside a `ResizeObserver` that also watches height is how a
-   * `ResizeObserver loop` error is produced, and ag-grid has its own observer on this cell to keep
-   * the row height in step — so reacting to our own height change would put the two in a cycle.
-   * A width that has not changed does nothing at all.
-   */
-  private watchWidth(): void {
+  private watchHeight(): void {
     if (this.observer || typeof ResizeObserver === 'undefined') {
       return;
     }
-    this.observer = new ResizeObserver((entries) => {
-      const width = Math.round(entries[0]?.contentRect.width ?? 0);
-      if (width === 0 || width === this.observedWidth) {
-        return;
-      }
-      this.observedWidth = width;
-      this.scheduleAutosize();
+    this.observer = new ResizeObserver(() => {
+      const height = this.host.nativeElement.getBoundingClientRect().height;
+      this.slots.set(Math.max(1, Math.floor(height / LINE_HEIGHT)));
     });
     this.observer.observe(this.host.nativeElement);
+  }
+
+  protected open(): void {
+    const row = this.rowSignal();
+    if (row) {
+      this.context?.openThread(row);
+    }
   }
 }

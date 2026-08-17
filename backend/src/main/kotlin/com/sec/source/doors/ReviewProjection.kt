@@ -1,12 +1,12 @@
 package com.sec.source.doors
 
-import com.sec.api.dto.CommentDto
 import com.sec.api.dto.ItemDetailDto
 import com.sec.api.dto.ModuleObjectsResponseDto
 import com.sec.api.dto.ModulePropertyDto
 import com.sec.api.dto.ReferenceDto
 import com.sec.api.dto.ReferencesDto
 import com.sec.api.dto.ReviewRowDto
+import com.sec.api.dto.ThreadSummaryDto
 import com.sec.api.dto.TracesResponseDto
 import com.sec.domain.Aliases
 import com.sec.domain.NodeLabel
@@ -190,7 +190,7 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
         val labels: List<String> = get("labels").asList { it.asString() }
         val props = node.asMap()
 
-        val commentId = get("commentId").takeUnless { it.isNull() }?.asString()
+        val threadRootId = get("threadRootId").takeUnless { it.isNull() }?.asString()
 
         // Built before the DTO because the Issues column is one of its readers: a link whose far
         // end DOORS deleted is a finding on *this* row, and counting it here means the count and
@@ -217,11 +217,15 @@ public class ReviewProjection(private val graphDriver: GraphDriver) {
             issues = DoorsChecks.issuesFor(policies, labels, props, references.deletedCount()),
             attributes = attributeBag(props),
             references = references,
-            comment = commentId?.let {
-                CommentDto(
-                    metaId = it,
-                    text = get("commentText").takeUnless { v -> v.isNull() }?.asString().orEmpty(),
-                    updatedAt = get("commentUpdatedAt").takeUnless { v -> v.isNull() }?.asString(),
+            // null when the item has no thread at all — distinct from a thread with zero replies,
+            // which still has a root and so still has a summary (docs/req-review-comment-threads.md).
+            thread = threadRootId?.let {
+                ThreadSummaryDto(
+                    rootRef = Ref.encode(it),
+                    count = get("threadCount").asInt(),
+                    resolved = get("threadResolved").takeUnless { v -> v.isNull() }?.asBoolean() ?: false,
+                    lastActivityAt = get("threadUpdatedAt").takeUnless { v -> v.isNull() }?.asString(),
+                    participants = get("participants").asList { it.asString() },
                 )
             },
         )

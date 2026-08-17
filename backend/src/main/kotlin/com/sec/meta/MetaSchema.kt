@@ -8,6 +8,8 @@ import com.sec.domain.NodeLabel.ATTRIBUTE_SETTING
 import com.sec.domain.NodeLabel.GROUP
 import com.sec.domain.NodeLabel.META
 import com.sec.domain.NodeLabel.POLICY
+import com.sec.domain.NodeLabel.USER
+import com.sec.domain.Prop.ID
 import com.sec.domain.Prop.META_ID
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
@@ -78,6 +80,13 @@ public object MetaSchema {
         CYPHER 25
         CREATE CONSTRAINT group_key IF NOT EXISTS
         FOR (g:$GROUP) REQUIRE g.$GROUP_KEY IS UNIQUE
+        """,
+        // :User is not :__Meta either, for the same reason (docs/req-review-comment-threads.md
+        // §2.2): it anchors to the identity directory, not to the imported graph.
+        """
+        CYPHER 25
+        CREATE CONSTRAINT user_id_unique IF NOT EXISTS
+        FOR (u:$USER) REQUIRE u.$ID IS UNIQUE
         """,
     )
 

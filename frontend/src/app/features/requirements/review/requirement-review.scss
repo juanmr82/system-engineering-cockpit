@@ -22,8 +22,33 @@
   @include sec.view-title;
 }
 
+// Two rows now, not one long wrapping line: the primary controls (module, search, stats) on top,
+// every filter checkbox together underneath. `sticky-bar` still supplies the sheet, the shadow and
+// the padding; it is turned from a row into a column here and each row inside it keeps the row
+// layout `sticky-bar` used to provide directly.
 .sec-review__bar {
   @include sec.sticky-bar;
+
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.sec-review__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+// A hairline rather than a second sheet edge — the two rows are one control, not two sections.
+.sec-review__row--filters {
+  padding-top: 8px;
+  border-top: var(--sec-hairline) solid var(--sec-line-soft);
+}
+
+.sec-review__filters-label {
+  @include sec.eyebrow;
 }
 
 .sec-review__module {
@@ -52,8 +77,8 @@
   position: relative;
 }
 
-// The dirty count sits on the save icon rather than beside it: the number and the action it
-// applies to are one thing, and the bar has no room for a second control.
+// A count sits on its icon rather than beside it: the number and the action it applies to are one
+// thing, and the bar has no room for a second control. Used by the issues badge below.
 .sec-review__badge {
   position: absolute;
   top: 0;
@@ -67,10 +92,6 @@
   font-weight: 700;
   line-height: 15px;
   font-variant-numeric: tabular-nums;
-}
-
-.sec-review__action--save:not(:disabled) {
-  color: var(--sec-highlight-meta);
 }
 
 // A finding about imported data, so it wears the error red rather than the Tier-2 blue: the app
@@ -152,10 +173,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.sec-review__error {
-  @include sec.error-panel;
 }
 
 // The width is bound from the component, so the panel can be dragged wider for an object carrying

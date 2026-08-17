@@ -1,0 +1,88 @@
+<h2 mat-dialog-title class="sec-thread-panel__title">
+  <mat-icon svgIcon="comment" aria-hidden="true" />
+  {{ data.itemLabel }}
+</h2>
+
+@if (annotations.isLoading()) {
+  <mat-progress-bar mode="indeterminate" />
+}
+
+<mat-dialog-content class="sec-thread-panel__content">
+  @if (annotations.error()) {
+    <p class="sec-thread-panel__error">Something went wrong loading this thread. Please try again.</p>
+  } @else {
+    @if (root(); as rootNote) {
+      <article class="sec-thread-panel__note sec-thread-panel__note--root">
+        <header class="sec-thread-panel__note-header">
+          <sec-author-avatar [name]="rootNote.authorName" />
+          <span class="sec-thread-panel__author">{{ rootNote.authorName }}</span>
+          <span class="sec-thread-panel__timestamp">{{ rootNote.createdAt | date: 'medium' }}</span>
+          <span class="sec-thread-panel__spacer"></span>
+          <button
+            type="button"
+            mat-stroked-button
+            [disabled]="resolving()"
+            (click)="toggleResolved()"
+          >
+            {{ rootNote.resolved ? 'Reopen' : 'Resolve' }}
+          </button>
+          <button
+            type="button"
+            mat-icon-button
+            [disabled]="deletingRef() === rootNote.ref"
+            aria-label="Delete this comment"
+            (click)="delete(rootNote)"
+          >
+            <mat-icon svgIcon="trash" aria-hidden="true" />
+          </button>
+        </header>
+        <sec-mention-text [text]="rootNote.text" (itemClick)="openMentionedItem($event)" />
+      </article>
+
+      @for (reply of replies(); track reply.ref) {
+        <article class="sec-thread-panel__note sec-thread-panel__note--reply">
+          <header class="sec-thread-panel__note-header">
+            <sec-author-avatar [name]="reply.authorName" />
+            <span class="sec-thread-panel__author">{{ reply.authorName }}</span>
+            <span class="sec-thread-panel__timestamp">{{ reply.createdAt | date: 'medium' }}</span>
+            <span class="sec-thread-panel__spacer"></span>
+            <button
+              type="button"
+              mat-icon-button
+              [disabled]="deletingRef() === reply.ref"
+              aria-label="Delete this reply"
+              (click)="delete(reply)"
+            >
+              <mat-icon svgIcon="trash" aria-hidden="true" />
+            </button>
+          </header>
+          <sec-mention-text [text]="reply.text" (itemClick)="openMentionedItem($event)" />
+        </article>
+      }
+    } @else if (!annotations.isLoading()) {
+      <p class="sec-thread-panel__empty">No comments yet.</p>
+    }
+  }
+</mat-dialog-content>
+
+<div class="sec-thread-panel__composer">
+  <textarea
+    class="sec-thread-panel__box"
+    placeholder="Add a comment"
+    rows="2"
+    [value]="replyText()"
+    (input)="replyText.set($any($event.target).value)"
+  ></textarea>
+  @if (postError(); as error) {
+    <p class="sec-thread-panel__error">{{ error }}</p>
+  }
+  <div class="sec-thread-panel__composer-actions">
+    <button type="button" mat-flat-button [disabled]="!replyText().trim() || posting()" (click)="post()">
+      Post
+    </button>
+  </div>
+</div>
+
+<mat-dialog-actions align="end">
+  <button type="button" mat-button (click)="close()">Close</button>
+</mat-dialog-actions>

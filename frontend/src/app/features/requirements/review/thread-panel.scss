@@ -1,0 +1,86 @@
+@use 'mixins' as sec;
+
+.sec-thread-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sec-thread-panel__content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 80px;
+}
+
+// Every note is Tier-2 data (CLAUDE.md §8) — the same left-rule accent every application
+// annotation wears, so a reader never mistakes one for something DOORS said.
+.sec-thread-panel__note {
+  @include sec.accent-panel(var(--sec-highlight-meta), var(--sec-wash-cool));
+
+  padding: 8px 10px;
+}
+
+// A reply reads as nested under its root without a second level of tree furniture — an indent is
+// enough, since a thread is flat (spec §2.1) and there is never more than one level to show.
+.sec-thread-panel__note--reply {
+  margin-inline-start: 16px;
+}
+
+.sec-thread-panel__note-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.sec-thread-panel__author {
+  font-weight: 600;
+  color: var(--sec-ink);
+}
+
+.sec-thread-panel__timestamp {
+  color: var(--sec-ink-3);
+  font-size: var(--sec-text-xs);
+}
+
+.sec-thread-panel__spacer {
+  flex: 1;
+}
+
+.sec-thread-panel__empty {
+  @include sec.absent-text;
+}
+
+.sec-thread-panel__error {
+  @include sec.error-panel;
+}
+
+.sec-thread-panel__composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: var(--sec-hairline) solid var(--sec-line);
+}
+
+.sec-thread-panel__box {
+  width: 100%;
+  padding: 8px 10px;
+  border: var(--sec-hairline) solid var(--sec-line);
+  border-radius: var(--sec-radius);
+  background: var(--sec-paper);
+  font: inherit;
+  font-size: var(--sec-text-sm);
+  color: var(--sec-ink);
+  resize: vertical;
+
+  &:focus-visible {
+    @include sec.focus-ring(-2px);
+  }
+}
+
+.sec-thread-panel__composer-actions {
+  display: flex;
+  justify-content: flex-end;
+}

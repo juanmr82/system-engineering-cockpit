@@ -1,80 +1,119 @@
 @use 'mixins' as sec;
 
-// In flow, filling the cell's width. The pair to `display: block` on `.sec-grid__cell--editor`
-// (styles/_grid.scss): a percentage width needs a definite width to resolve against, and the block
-// cell is what supplies it. `inline-size: 100%` is a percentage and never a measured pixel width,
-// so dragging the column re-wraps the comment and the browser does the reflow.
-//
-// This was `position: absolute; inset: 0` while the column had a fixed row height. It cannot be
-// now: the column carries `autoHeight`, so ag-grid measures this cell to size the row, and an
-// out-of-flow element contributes no height at all.
+// This column is `autoHeight: false` (requirement-review.ts) — the row's height is set by other
+// columns (Description's wrapped text), and this cell only ever fills whatever height that
+// produced; it never grows the row itself. `.ag-cell` is already `position: absolute` with
+// ag-grid's own inline offset, so pinning the host to `inset: 0` resolves against the full cell
+// box with no override needed on the cell itself (frontend/CLAUDE.md §6: "to align anything to the
+// cell's edge, pin it to the cell").
 :host {
-  display: block;
-  inline-size: 100%;
-  min-inline-size: 0;
-  // Fills the cell's height, which the cell's own column-flex rule makes definite. Without this the
-  // box stopped at its text and the rest of the cell was dead space a click did nothing in.
-  block-size: 100%;
+  position: absolute;
+  inset: 0;
 }
 
-// A spreadsheet cell, not a form field. It fills the cell edge to edge with a small inset, has no
-// border of its own, and wraps — so the comment is simply *there*, readable at a glance down the
-// column, instead of sitting in a one-line box inside a much larger cell.
-//
-// A textarea rather than an input, because the cells beside it wrap: a comment that could not
-// would be the only truncated thing on the row.
-.sec-comment-cell__input {
-  display: block;
+// Shared by every state: a borderless control that fills the cell exactly, so clicking anywhere in
+// it — not a sliver of icon — opens the thread (docs/comments_design.jpg baseline).
+%sec-comment-cell-fill {
+  display: flex;
   width: 100%;
-  padding: 9px 10px;
+  height: 100%;
+  padding: 4px 6px;
   border: 0;
-  background: transparent;
+  background: none;
   font: inherit;
-  font-size: var(--sec-text-sm);
-  line-height: var(--sec-leading);
-  color: var(--sec-ink);
-  // The drag handle would sit on top of the cell below it, and the height is set from the content
-  // by the component rather than by the user.
-  resize: none;
-  // The height comes from `scrollHeight`, which is only the content's height while nothing is
-  // scrolling. A scrollbar here would also mean the row was the wrong height, so it is a bug
-  // rather than a fallback.
-  overflow-y: hidden;
-  // Two floors, and the larger wins. `100%` is the cell, so the box fills a row made tall by the
-  // Description beside it; `46px` is two lines, for a row too short for that to mean anything. The
-  // measured height set inline still governs when the comment is longer than either — that is what
-  // makes the row grow with the text.
-  //
-  // During ag-grid's own measure pass the cell has no definite height yet, so the percentage
-  // resolves to nothing and the measurement is the content's alone. That is what keeps this out of
-  // a feedback loop with the row height it feeds.
-  min-block-size: max(46px, 100%);
-
-  &::placeholder {
-    color: var(--sec-ink-3);
-  }
-
-  // The edit affordance appears on approach rather than being drawn permanently — 900 boxed
-  // outlines down a column is chrome, not information.
-  &:hover {
-    background: var(--sec-wash);
-  }
+  text-align: left;
+  cursor: pointer;
 
   &:focus-visible {
     @include sec.focus-ring(-2px);
-
-    background: var(--sec-paper);
   }
 }
 
-// A comment is application data, so a dirty one wears the Tier-2 accent and can never be mistaken
-// for something DOORS said (CLAUDE.md §8). A left rule and a wash, not a full border: the cell has
-// no border to thicken, and the rule reads down a column of them.
-.sec-comment-cell__input--dirty {
-  box-shadow: inset var(--sec-rail) 0 0 0 var(--sec-highlight-meta);
-  background: color-mix(in srgb, var(--sec-highlight-meta) 6%, white);
+// Empty: the whole cell is the affordance. Quiet until hover/focus — 900 identical prompts down a
+// column is noise, not information — but the click target is never smaller than what is quiet.
+.sec-comment-cell__empty {
+  @extend %sec-comment-cell-fill;
 
-  &:hover {
-    background: color-mix(in srgb, var(--sec-highlight-meta) 9%, white);
+  align-items: center;
+  border: var(--sec-hairline) dashed var(--sec-line);
+  border-radius: var(--sec-radius);
+  color: var(--sec-ink-3);
+  font-size: var(--sec-text-xs);
+  opacity: 0;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    background: var(--sec-wash);
+    border-style: solid;
   }
+}
+
+// Compact: one line, vertically centred — every row at the table's own default height
+// (styles/_grid.scss) stops here.
+.sec-comment-cell__compact {
+  @extend %sec-comment-cell-fill;
+
+  align-items: center;
+  gap: 5px;
+  color: var(--sec-highlight-meta);
+  font-weight: 600;
+  font-size: var(--sec-text-xs);
+}
+
+.sec-comment-cell__count {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Expanded: a stack of individual preview lines, centred as a block — a row is only this tall
+// because Description wrapped, and the preview fills the space that opened up rather than hugging
+// its top edge.
+.sec-comment-cell__expanded {
+  @extend %sec-comment-cell-fill;
+
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.sec-comment-cell__line {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--sec-ink-2);
+  font-size: var(--sec-text-xs);
+}
+
+.sec-comment-cell__line-text {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The trailing "N comments" line a truncated preview always ends on — the baseline's "always on":
+// a preview that just stops reads as having ended, not as having more (§1.1's +n badge is the same
+// argument, applied to a different column).
+.sec-comment-cell__line--summary {
+  color: var(--sec-highlight-meta);
+  font-weight: 600;
+}
+
+.sec-comment-cell__avatars {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.sec-comment-cell__resolved-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  font-size: 14px;
+  color: var(--sec-highlight-verified);
 }

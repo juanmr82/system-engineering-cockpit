@@ -13,6 +13,7 @@ import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.cypher.SystemCypher
 import com.sec.graph.cypher.TableCypher
+import com.sec.graph.cypher.UserCypher
 import com.sec.graph.cypher.WindchillCypher
 import com.sec.meta.MetaSchema
 import com.sec.source.doors.DoorsLabel
@@ -74,7 +75,7 @@ class AccessGuardTest {
         add(
             "ModuleCypher",
             ModuleCypher.LIST_MODULES, ModuleCypher.MODULE_DETAIL, ModuleCypher.DISCOVER_ATTRIBUTES,
-            ModuleCypher.EXISTING_MANDATORY_POLICIES, ModuleCypher.MODULE_OBJECT_IDS,
+            ModuleCypher.EXISTING_MANDATORY_POLICIES,
             ModuleCypher.MODULE_EXISTS, ModuleCypher.SET_SYSTEM_LEVEL, ModuleCypher.CLEAR_SYSTEM_LEVEL,
             ModuleCypher.ADD_MANDATORY_POLICIES, ModuleCypher.REMOVE_MANDATORY_POLICIES,
         )
@@ -82,10 +83,14 @@ class AccessGuardTest {
             "ReviewCypher",
             ReviewCypher.MODULE_OBJECTS, ReviewCypher.MANDATORY_POLICIES, ReviewCypher.MODULE_NAMES,
             ReviewCypher.COUNT_MODULE_OBJECTS, ReviewCypher.ITEM_DETAIL, ReviewCypher.ITEM_TRACES_OUT,
-            ReviewCypher.ITEM_TRACES_IN, ReviewCypher.UPSERT_COMMENTS, ReviewCypher.DELETE_COMMENTS,
-            ReviewCypher.READ_COMMENTS, ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS,
+            ReviewCypher.ITEM_TRACES_IN, ReviewCypher.READ_THREAD_ROOT, ReviewCypher.CREATE_NOTE,
+            ReviewCypher.READ_ANNOTATIONS, ReviewCypher.RESOLVE_NOTE, ReviewCypher.DELETE_NOTE,
+            ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS,
             ReviewCypher.UPSERT_ATTRIBUTE_SETTINGS, ReviewCypher.DELETE_ATTRIBUTE_SETTINGS,
         )
+        // :User carries no ACL predicate at all — it is not :SEItem or a type label, the same
+        // reason :__Group and :__AccessCategory need none (docs/req-review-comment-threads.md §2.2).
+        add("UserCypher", UserCypher.UPSERT)
         add(
             "StatisticsCypher",
             StatisticsCypher.MODULES_IN_SCOPE, StatisticsCypher.MODULE_OBJECTS,
