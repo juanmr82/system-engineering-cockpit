@@ -85,6 +85,37 @@ Verified: lint clean, **295/295** tests (up from 282), build green. Not wired in
 `app.routes.ts` yet (step 12) — the component compiles and is fully tested but is not reachable
 from the running app.
 
+### Step 9 (Grants screen) — done, commit `a3c3d55`
+
+`features/access/grants/` — `AccessGrants`, the matrix (rows = groups, columns = categories,
+built client-side from `AccessApiService`'s two resources, no server-built shape per spec §9),
+three cell renderers: `GrantCell` (one checkbox per group×category, identified by
+`params.column.getColId()` which the parent sets to the category's own `ref`), `SeesAllCell`
+(its own visually distinct column, Tier-2 accent colour, immediate write behind a
+`ConfirmDialog` — never batched into the grant buffer), `GrantsRowSaveCell` (pinned-right,
+one `PUT` per row). Grant edits buffer in a `Map<groupRef, Set<categoryRef>>`, the same
+per-`ref`-not-position shape `Modules`' `levelEdits` uses, cleared per row on that row's own
+successful save via `gridApi.refreshCells({ rowNodes: [node] })` — **never a batch refresh**,
+which is what `access-grants.spec.ts`'s regression test actually asserts (`saves exactly one PUT
+for the row that was edited, and clears only that row`).
+
+`SeesAllCell`'s checkbox always shows the *stored* `seesAll`, never an optimistic click —
+`onChange` asks the parent to confirm-then-write and snaps the local `checked` signal straight
+back to the stored value, so a cancelled confirmation needs no separate revert path (unlike the
+review table's native `<select>`, which does — `requirement-review.ts`'s `moduleSelect` — because
+that element bypasses Angular's own binding and a `mat-checkbox` does not).
+
+Extended `access.model.ts`/`access-api.service.ts` with `GroupWithGrants`/`saveGrants`/
+`setSeesAll`, both role-guarded the same way `categories` already is. **One test fix this
+surfaced immediately**: `access-categories.spec.ts` now also has to flush a stray
+`/api/v1/access/groups` request, since `AccessApiService` constructs that resource on injection
+too — confirms the step-8 handover note's prediction that every future screen adding a resource
+to the shared service needs the same check in every *other* screen's spec that injects the
+service. **Expect this again for Unassigned and Defaults.**
+
+Verified: lint clean, **302/302** tests (up from 295), build green, stable across two full runs.
+Not wired into `app.routes.ts` yet.
+
 | Step | Change | Commit |
 |---|---|---|
 | 4 (follow-up) | 7 docker-tagged `AccessAdminServiceTest` cases for `listDefaults`/`saveDefaults`/`summary` — the zero-graph `summary` case is what actually exercises `SUMMARY_COUNTS`'s `COUNT {}` rewrite, previously committed unverified | `b9e35e2` |
@@ -120,25 +151,29 @@ source file ever existed to explain it — worth a `clean` first if it reappears
 
 ### Resume here
 
-**Backend (steps 1–6), frontend shell/guards (step 7) and the Categories screen (step 8) are all
-done.** What's left:
+**Backend (steps 1–6) and frontend steps 7–9 (shell/guards, Categories, Grants) are all done.**
+What's left:
 
-1. **Steps 9–11, the remaining three Access screens** — Grants (the per-row-save renderer is the
-   one genuinely novel piece: rows = groups from `AccessApiService`'s soon-to-exist `groups`
-   resource, columns = categories from the now-existing `categories` resource, built client-side
-   — the plan is explicit there is no server-built matrix), Unassigned (depends on Categories for
-   its multi-select; exercises the summary badge end-to-end once it can actually assign a
-   category), Defaults (ag-grid, not `mat-table` — it's a top-level page, not inside a dialog).
+1. **Steps 10–11, the last two Access screens** — Unassigned (depends on `categories` for its
+   multi-select; the one screen whose read AND write are deliberately exempt from
+   `AccessCypher.visible()` per §16.2a, so its `httpResource`/write calls need no role-visibility
+   nuance beyond the existing `hasRole` guard; per the phase-6 plan, assigning categories here
+   should auto-trigger `POST /access/reconcile?scope=source&source=<touched source>` afterward —
+   that decision was confirmed with the user during planning and must not be dropped), Defaults
+   (ag-grid, not `mat-table` — it's a top-level page, not inside a dialog; one whole-form save
+   over the small fixed `(sourceId, containerLabel)` set from `GET/PUT /access/defaults`).
    `access.model.ts`/`access-api.service.ts` grow with each one, mirroring
    `backend/.../api/dto/AccessDtos.kt` exactly — already fully read this session; the plan file
    has the shape-by-shape mapping if a fresh read is faster than re-deriving it.
-2. **Before writing the next screen's spec, read the "deadlock-trap variants" note above** (three
-   shapes found so far: `whenStable()` before a flush, `reload()` not being synchronous, and a
-   write-only service still constructing its own list resource). A fourth screen almost certainly
-   hits a fourth variant of the same family — the fix is always some combination of "flush before
-   awaiting" and "detectChanges() + a macrotask tick before expecting a scheduled request."
+2. **Before writing either spec, read the "deadlock-trap variants" notes in steps 7–9 above**
+   (three shapes so far: `whenStable()` before a flush, `reload()` not being synchronous, a
+   write-only service still constructing its own list resource) — **and check every existing
+   Access spec's `setUp()`/`open()` helper for a new stray request** the moment
+   `access-api.service.ts` grows an Unassigned or Defaults resource. This has been true for every
+   screen added so far and should be assumed true again rather than rediscovered.
 3. **Step 12** — `app.routes.ts` wiring (four lazy routes under `/access/*`, matching how
-   `jira/issues`+`jira/kids` are wired today — no new pattern), full
+   `jira/issues`+`jira/kids` are wired today — no new pattern; also wire the sidenav's
+   `access-unassigned` badge count now that the screen it points at will actually exist), full
    `npm run lint && npm test && npm run build`.
 4. **Step 13** — the manual acceptance pass as `sec-dev-user`/`sec-dev-admin`: take a freshly
    imported module from invisible to visible using only the Access UI, on screen.
