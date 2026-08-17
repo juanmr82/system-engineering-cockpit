@@ -2,6 +2,8 @@ export interface NavItem {
   readonly key: string;
   readonly label: string;
   readonly route: string;
+  /** Overlaid client-side, never carried by the config itself — see `access-badge.service.ts`. */
+  readonly badge?: number;
 }
 
 export interface NavGroup {
@@ -42,6 +44,18 @@ export const DEFAULT_NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'cameo-soi-views', label: 'SOI views', route: '/mbse/soi-views' },
       { key: 'cameo-functions', label: 'Functions', route: '/mbse/functions' },
+    ],
+  },
+  // sec-access-manager only (frontend/CLAUDE.md §9) — the sidenav role-filters this group client
+  // side; the config itself carries no role field (root CLAUDE.md §9, backend step 9).
+  {
+    key: 'access',
+    label: 'Access',
+    items: [
+      { key: 'access-categories', label: 'Categories', route: '/access/categories' },
+      { key: 'access-grants', label: 'Grants', route: '/access/grants' },
+      { key: 'access-unassigned', label: 'Not assigned', route: '/access/unassigned' },
+      { key: 'access-defaults', label: 'Defaults', route: '/access/defaults' },
     ],
   },
 ];

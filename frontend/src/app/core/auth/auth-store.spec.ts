@@ -12,6 +12,8 @@ const ME: AuthenticatedUser = {
   roles: ['sec-user', 'sec-access-manager'],
   groups: ['/SEC/Thermal'],
   csrfToken: 'csrf-token-1',
+  seesAll: false,
+  categoryCount: 2,
 };
 
 describe('AuthStore', () => {
@@ -41,6 +43,19 @@ describe('AuthStore', () => {
     expect(store.csrfToken()).toBe('csrf-token-1');
     expect(store.roles()).toEqual(['sec-user', 'sec-access-manager']);
     expect(store.groups()).toEqual(['/SEC/Thermal']);
+    expect(store.seesAll()).toBe(false);
+    expect(store.categoryCount()).toBe(2);
+  });
+
+  // AccessSet.SEES_ALL carries no categoryIds by design (backend AuthMeDto's own doc comment) —
+  // this is the wart made visible in the frontend rather than mistaken for "sees nothing".
+  it('categoryCount reads 0 for a seesAll user, which does not mean they see nothing', async () => {
+    TestBed.tick();
+    httpTesting.expectOne('/api/v1/auth/me').flush({ ...ME, seesAll: true, categoryCount: 0 });
+    await appRef.whenStable();
+
+    expect(store.seesAll()).toBe(true);
+    expect(store.categoryCount()).toBe(0);
   });
 
   it('hasRole checks the roles the session actually carries', async () => {

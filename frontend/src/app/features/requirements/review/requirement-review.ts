@@ -1,5 +1,5 @@
 import { Component, computed, debounced, inject, signal, viewChild } from '@angular/core';
-import { HttpErrorResponse, httpResource } from '@angular/common/http';
+import { httpResource } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
@@ -14,7 +14,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { AgGridAngular } from 'ag-grid-angular';
 import type { ColDef, GridApi, GridReadyEvent } from 'ag-grid-community';
 import { secGridOptions } from '../../../core/grid/sec-grid';
-import type { ProblemDetails } from '../../../core/error/problem-details';
+import { detailOf } from '../../../core/error/problem-details';
 import { ConfirmDialog } from '../../../shared/dialog/confirm-dialog';
 import { EmptyState } from '../../../shared/empty-state/empty-state';
 import type { DoorsTableView, ModuleTablesResponse } from '../../../shared/doors-table/doors-table.model';
@@ -60,16 +60,6 @@ function hasUnresolvedLink(entry: { outgoing: RefGroup; incoming: RefGroup }): b
     entry.outgoing.unresolvedCount > 0 ||
     entry.incoming.unresolvedCount > 0
   );
-}
-
-function extractErrorDetail(error: unknown): string {
-  if (error instanceof HttpErrorResponse && error.error) {
-    const problem = error.error as Partial<ProblemDetails>;
-    if (problem.detail) {
-      return problem.detail;
-    }
-  }
-  return 'Something went wrong saving these comments. Please try again.';
 }
 
 /**
@@ -773,7 +763,7 @@ export class RequirementReview {
         { duration: 4000 },
       );
     } catch (error) {
-      this.saveError.set(extractErrorDetail(error));
+      this.saveError.set(detailOf(error, 'Something went wrong saving these comments. Please try again.'));
     } finally {
       this.saving.set(false);
     }

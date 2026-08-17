@@ -34,6 +34,8 @@ export class AuthStore {
   readonly csrfToken = computed(() => this.user()?.csrfToken ?? null);
   readonly roles = computed<readonly string[]>(() => this.user()?.roles ?? []);
   readonly groups = computed<readonly string[]>(() => this.user()?.groups ?? []);
+  readonly seesAll = computed(() => this.user()?.seesAll ?? false);
+  readonly categoryCount = computed(() => this.user()?.categoryCount ?? 0);
 
   hasRole(role: string): boolean {
     return this.roles().includes(role);

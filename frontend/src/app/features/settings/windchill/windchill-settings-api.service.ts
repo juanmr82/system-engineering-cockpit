@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, httpResource } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { detailOf } from '../../../core/error/problem-details';
 
 /** Whether this deployment knows where Windchill is. There is no credential to report. */
 export interface WindchillHealth {
@@ -56,16 +57,9 @@ export class WindchillSettingsApiService {
         }),
       );
     } catch (cause) {
-      throw new WindchillImportRejected(detailOf(cause));
+      throw new WindchillImportRejected(
+        detailOf(cause, 'The export could not be imported. Check that the server is running and try again.'),
+      );
     }
   }
-}
-
-/** The problem detail's own sentence, or a fallback when the failure never reached the API. */
-function detailOf(cause: unknown): string {
-  const body = (cause as { error?: unknown } | null)?.error;
-  const detail = (body as { detail?: unknown } | null)?.detail;
-  return typeof detail === 'string' && detail.length > 0
-    ? detail
-    : 'The export could not be imported. Check that the server is running and try again.';
 }
