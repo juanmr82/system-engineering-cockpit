@@ -137,6 +137,14 @@ class AccessGuardTest {
                 .flatMap { listOf(AccessCypher.propagate(it), AccessCypher.retract(it)) }
                 .toTypedArray(),
             *AccessContainment.all.map { AccessCypher.seed(it) }.toTypedArray(),
+            // Categories (phase 6, §10.2 screen 1) — appended, not inserted, so [1]-[10] above keep
+            // their indices and their exemptions.
+            AccessCypher.CATEGORIES_WITH_COUNTS,
+            AccessCypher.CATEGORY_KEY_EXISTS,
+            AccessCypher.CREATE_CATEGORY,
+            AccessCypher.UPDATE_CATEGORY,
+            AccessCypher.CATEGORY_USAGE_COUNTS,
+            AccessCypher.DELETE_CATEGORY_IF_UNUSED,
         )
     }
 
@@ -222,6 +230,17 @@ class AccessGuardTest {
             "project from its source default (§8.3)",
         "AccessCypher[10]" to "AccessReconciler's own write — seeds an uncategorised " +
             "WindchillDocument directly from its source default; containerless (§8.2)",
+        // Categories (phase 6, §10.2 screen 1) — indices 11-16, in AccessCypher.kt's own
+        // declaration order. CATEGORY_KEY_EXISTS, CREATE_CATEGORY and DELETE_CATEGORY_IF_UNUSED
+        // touch no filtered label at all and need no entry here — only the two that count into
+        // :SEItem do.
+        "AccessCypher[11]" to "the Categories screen's own object/group counts — access-control.md " +
+            "§13: \"no read path may start from a category node… the Access view's object counts " +
+            "are the exception… never on a page a normal user loads,\" which this page is",
+        "AccessCypher[14]" to "same §13 exemption as [11] — UPDATE_CATEGORY re-reads the fresh " +
+            "counts after a rename rather than assuming them unchanged",
+        "AccessCypher[15]" to "same §13 exemption as [11] — the delete confirmation's pre-empt " +
+            "counts, and the 409 message's counts if the frontend's check is ever stale",
     )
 
     // -- the checks -----------------------------------------------------------------------------

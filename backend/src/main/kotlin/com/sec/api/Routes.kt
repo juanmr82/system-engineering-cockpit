@@ -17,6 +17,7 @@ import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
 import com.sec.importer.ImportScheduler
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessAdminService
 import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
@@ -89,6 +90,10 @@ public fun Application.configureRouting(
     // §8.3. The same instance the import-pipeline hook and the startup pass use, so a manual
     // reconcile and an automatic one are never racing two independent views of "already seeded".
     accessReconciler: AccessReconciler,
+    // Phase 6, §9/§10.2. The write path for categories, grants, containers and defaults — built
+    // one screen at a time, sharing accessResolver so its invalidate() calls land on the same
+    // cache every filtered read path already reads from.
+    accessAdminService: AccessAdminService,
     // ADR 0018. Source-agnostic: whichever importers are on a schedule, keyed by their own id.
     // Empty when nothing is scheduled.
     importSchedulers: Map<String, ImportScheduler> = emptyMap(),
@@ -139,7 +144,7 @@ public fun Application.configureRouting(
                 importRoutes(importRunService, importSchedulers)
             }
             requireRole(Role.ACCESS_MANAGER) {
-                accessRoutes(accessReconciler)
+                accessRoutes(accessReconciler, accessAdminService)
             }
         }
 

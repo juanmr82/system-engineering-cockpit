@@ -170,6 +170,13 @@ class GraphNamesTest {
                 .flatMap { listOf(AccessCypher.propagate(it), AccessCypher.retract(it)) }
                 .toTypedArray(),
             *AccessContainment.all.map { AccessCypher.seed(it) }.toTypedArray(),
+            // Categories (phase 6, §10.2 screen 1) — appended, so every index above is unchanged.
+            AccessCypher.CATEGORIES_WITH_COUNTS,
+            AccessCypher.CATEGORY_KEY_EXISTS,
+            AccessCypher.CREATE_CATEGORY,
+            AccessCypher.UPDATE_CATEGORY,
+            AccessCypher.CATEGORY_USAGE_COUNTS,
+            AccessCypher.DELETE_CATEGORY_IF_UNUSED,
         )
     }
 

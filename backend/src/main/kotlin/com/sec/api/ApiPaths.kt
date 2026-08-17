@@ -135,8 +135,8 @@ public object ApiPaths {
     public const val IMPORT_RUNS: String = "$IMPORT/runs"
 
     /**
-     * The Access views (spec §9). Only [ACCESS_RECONCILE] exists before phase 6 — categories,
-     * grants, containers and defaults have no write path yet (`AccessAdminService`).
+     * The Access views (spec §9, §10.2). `AccessAdminService` (phase 6) builds this one screen at
+     * a time — [ACCESS_CATEGORIES] first; groups/grants, containers and defaults follow.
      */
     public const val ACCESS: String = "$V1/access"
 
@@ -149,6 +149,13 @@ public object ApiPaths {
      * work `ImportRunService` exists for. Revisit if a deployment's pass is slow enough to want one.
      */
     public const val ACCESS_RECONCILE: String = "$ACCESS/reconcile"
+
+    /**
+     * The Categories screen (spec §10.2 screen 1): `GET`/`POST` here, `PATCH`/`DELETE` at
+     * `$ACCESS_CATEGORIES/{ref}`. `DELETE` is `409` while any object or grant still references the
+     * category, per [com.sec.api.ProblemType.ACCESS_CATEGORY_IN_USE].
+     */
+    public const val ACCESS_CATEGORIES: String = "$ACCESS/categories"
 
     /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and

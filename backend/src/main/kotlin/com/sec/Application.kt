@@ -16,6 +16,7 @@ import com.sec.importer.ImportRunService
 import com.sec.importer.ImportScheduler
 import com.sec.meta.MetaSchema
 import com.sec.meta.MetaWriter
+import com.sec.security.AccessAdminService
 import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
@@ -241,6 +242,9 @@ internal fun Application.configureApp(
     val windchillProjection = WindchillProjection(graphDriver, windchillSettings)
     // access-control.md §5. One instance for the process so its cache is actually shared.
     val accessResolver = AccessResolver(graphDriver)
+    // Phase 6, §9/§10.2. Shares accessResolver so its invalidate() calls land on the same cache
+    // accessSet(accessResolver) reads from on every filtered request.
+    val accessAdminService = AccessAdminService(graphDriver, accessResolver)
 
     // One service for every source. DOORS and Windchill register here too when their importers
     // move in-process; today JIRA is the only one, because it is the only one that can run inside
@@ -304,6 +308,7 @@ internal fun Application.configureApp(
         oidc,
         accessResolver,
         accessReconciler,
+        accessAdminService,
         importSchedulers,
     )
 }

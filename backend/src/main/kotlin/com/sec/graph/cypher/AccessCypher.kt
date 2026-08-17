@@ -11,14 +11,25 @@ import com.sec.domain.GroupProp.KEY as GROUP_KEY
 import com.sec.domain.GroupProp.LAST_SEEN_AT
 import com.sec.domain.GroupProp.NAME as GROUP_NAME
 import com.sec.domain.GroupProp.SEES_ALL
+import com.sec.domain.MetaKind.ACCESS_CATEGORY as ACCESS_CATEGORY_KIND
+import com.sec.domain.MetaProp.DESCRIPTION
 import com.sec.domain.MetaProp.EVERY_GROUP
+import com.sec.domain.MetaProp.KEY as ACCESS_CATEGORY_KEY
+import com.sec.domain.MetaProp.NAME as ACCESS_CATEGORY_NAME
+import com.sec.domain.MetaValue.CURRENT_SCHEMA_VERSION
 import com.sec.domain.NodeLabel.ACCESS_CATEGORY
 import com.sec.domain.NodeLabel.ACCESS_DEFAULT
 import com.sec.domain.NodeLabel.GROUP
+import com.sec.domain.NodeLabel.META
+import com.sec.domain.NodeLabel.SE_ITEM
 import com.sec.domain.Prop.CREATED_AT
 import com.sec.domain.Prop.CREATED_BY
 import com.sec.domain.Prop.ID
 import com.sec.domain.Prop.META_ID
+import com.sec.domain.Prop.META_KIND
+import com.sec.domain.Prop.SCHEMA_VERSION
+import com.sec.domain.Prop.UPDATED_AT
+import com.sec.domain.Prop.UPDATED_BY
 import com.sec.domain.Rel.ACCESS_SEEDED
 import com.sec.domain.Rel.ASSIGNS
 import com.sec.domain.Rel.IN_ACCESS_CATEGORY
@@ -176,4 +187,110 @@ public object AccessCypher {
             RETURN coalesce(sum(n), 0) AS n
             """.trimIndent()
     }
+
+    // -- Categories (spec §9, §10.2 screen 1) — AccessAdminService, phase 6 --------------------
+
+    /**
+     * Every category, with how many objects carry it and how many groups may read it — the
+     * Categories screen's table.
+     *
+     * Touches `:SEItem` from the category side, which [security.AccessGuardTest] would otherwise
+     * refuse: exempted per §13 ("no read path may start from a category node... the Access view's
+     * object counts are the exception — compute them in the background or accept them as slow, and
+     * never on a page a normal user loads"). This is exactly that page.
+     */
+    public val CATEGORIES_WITH_COUNTS: String = """
+        CYPHER 25
+        MATCH (c:$ACCESS_CATEGORY)
+        OPTIONAL MATCH (c)<-[:$IN_ACCESS_CATEGORY]-(o:$SE_ITEM)
+        WITH c, count(DISTINCT o) AS objectCount
+        OPTIONAL MATCH (c)<-[:$MAY_READ]-(g:$GROUP)
+        RETURN c.$META_ID AS metaId, c.$ACCESS_CATEGORY_KEY AS key, c.$ACCESS_CATEGORY_NAME AS name,
+               c.$DESCRIPTION AS description, c.$EVERY_GROUP AS everyGroup,
+               objectCount, count(DISTINCT g) AS groupCount
+        ORDER BY c.$ACCESS_CATEGORY_NAME
+    """
+
+    /**
+     * Pre-check before [CREATE_CATEGORY]: a 409 with a stated reason (spec §9), not the raw
+     * constraint violation `access_category_key` would otherwise throw.
+     */
+    public val CATEGORY_KEY_EXISTS: String = """
+        CYPHER 25
+        MATCH (c:$ACCESS_CATEGORY {$ACCESS_CATEGORY_KEY: ${'$'}key})
+        RETURN count(c) AS n
+    """
+
+    public val CREATE_CATEGORY: String = """
+        CYPHER 25
+        CREATE (c:$META:$ACCESS_CATEGORY {
+            $META_ID: ${'$'}metaId,
+            $META_KIND: '$ACCESS_CATEGORY_KIND',
+            $SCHEMA_VERSION: $CURRENT_SCHEMA_VERSION,
+            $ACCESS_CATEGORY_KEY: ${'$'}key,
+            $ACCESS_CATEGORY_NAME: ${'$'}name,
+            $DESCRIPTION: ${'$'}description,
+            $EVERY_GROUP: ${'$'}everyGroup,
+            $CREATED_BY: ${'$'}user, $CREATED_AT: ${'$'}now,
+            $UPDATED_BY: ${'$'}user, $UPDATED_AT: ${'$'}now
+        })
+        RETURN c.$META_ID AS metaId
+    """
+
+    /**
+     * `key` is never in this statement — stable once created; "rename" (spec §10.2) means
+     * [ACCESS_CATEGORY_NAME]. `coalesce` against the existing value is what makes every field
+     * optional in the request without a separate read-modify-write.
+     *
+     * Returns the full row [CATEGORIES_WITH_COUNTS] would, so the dialog echoes back the stored
+     * state — including counts, unaffected by a rename but read fresh rather than assumed — without
+     * a second round trip. No rows means `$metaId` matched nothing: the caller reads that as
+     * `NotFound`.
+     */
+    public val UPDATE_CATEGORY: String = """
+        CYPHER 25
+        MATCH (c:$ACCESS_CATEGORY {$META_ID: ${'$'}metaId})
+        SET c.$ACCESS_CATEGORY_NAME = coalesce(${'$'}name, c.$ACCESS_CATEGORY_NAME),
+            c.$DESCRIPTION = coalesce(${'$'}description, c.$DESCRIPTION),
+            c.$EVERY_GROUP = coalesce(${'$'}everyGroup, c.$EVERY_GROUP),
+            c.$UPDATED_BY = ${'$'}user,
+            c.$UPDATED_AT = ${'$'}now
+        WITH c
+        OPTIONAL MATCH (c)<-[:$IN_ACCESS_CATEGORY]-(o:$SE_ITEM)
+        WITH c, count(DISTINCT o) AS objectCount
+        OPTIONAL MATCH (c)<-[:$MAY_READ]-(g:$GROUP)
+        RETURN c.$META_ID AS metaId, c.$ACCESS_CATEGORY_KEY AS key, c.$ACCESS_CATEGORY_NAME AS name,
+               c.$DESCRIPTION AS description, c.$EVERY_GROUP AS everyGroup,
+               objectCount, count(DISTINCT g) AS groupCount
+    """
+
+    /**
+     * The 409 message's counts (spec §9: "409 if any object or grant still references it"). Same
+     * §13 exemption class as [CATEGORIES_WITH_COUNTS] — read once, before attempting the delete, so
+     * the frontend's pre-empt (decided in the phase-6 plan, §6.2) has real numbers to show.
+     */
+    public val CATEGORY_USAGE_COUNTS: String = """
+        CYPHER 25
+        MATCH (c:$ACCESS_CATEGORY {$META_ID: ${'$'}metaId})
+        OPTIONAL MATCH (c)<-[:$IN_ACCESS_CATEGORY]-(o:$SE_ITEM)
+        WITH c, count(DISTINCT o) AS objectCount
+        OPTIONAL MATCH (c)<-[:$MAY_READ]-(g:$GROUP)
+        RETURN objectCount, count(DISTINCT g) AS groupCount
+    """
+
+    /**
+     * Deletes only if nothing still references the category. The frontend pre-empts this with
+     * [CATEGORY_USAGE_COUNTS], so this is the defensive backstop against the window between that
+     * read and this write, not the primary UX.
+     *
+     * Unlabeled `EXISTS` — an existence guard, not a data read, so it carries no `/*ACL*/` marker.
+     */
+    public val DELETE_CATEGORY_IF_UNUSED: String = """
+        CYPHER 25
+        MATCH (c:$ACCESS_CATEGORY {$META_ID: ${'$'}metaId})
+        WHERE NOT EXISTS { (c)<-[:$IN_ACCESS_CATEGORY]-() }
+          AND NOT EXISTS { (c)<-[:$MAY_READ]-() }
+        DETACH DELETE c
+        RETURN count(c) AS deleted
+    """
 }

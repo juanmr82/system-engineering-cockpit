@@ -68,4 +68,11 @@ public object ProblemType {
      * without knowing anything about the state of a remote system.
      */
     public const val VALIDATION: String = "${PREFIX}validation"
+
+    /** `POST /access/categories` — the pre-checked `key` is already taken (spec §9). */
+    public const val ACCESS_CATEGORY_KEY_IN_USE: String = "${PREFIX}access-category-key-in-use"
+
+    /** `DELETE /access/categories/{ref}` — an object or a grant still references it (spec §9). The
+     *  frontend branches on this to render the count-bearing message rather than a generic error. */
+    public const val ACCESS_CATEGORY_IN_USE: String = "${PREFIX}access-category-in-use"
 }
