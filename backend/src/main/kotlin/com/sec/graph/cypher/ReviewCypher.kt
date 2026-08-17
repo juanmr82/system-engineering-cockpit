@@ -4,6 +4,8 @@ import com.sec.domain.MetaKind.ATTRIBUTE_SETTING as ATTRIBUTE_SETTING_KIND
 import com.sec.domain.MetaKind.NOTE as NOTE_KIND
 import com.sec.domain.MetaProp.APPLIES_TO_LABELS
 import com.sec.domain.MetaProp.ATTRIBUTE_NAME
+import com.sec.domain.MetaProp.REPLY_TO
+import com.sec.domain.MetaProp.RESOLVED
 import com.sec.domain.MetaProp.RULE
 import com.sec.domain.MetaProp.TEXT
 import com.sec.domain.MetaProp.EXCLUDED_FROM_OPEN_POINTS
@@ -18,6 +20,7 @@ import com.sec.domain.NodeLabel.NOTE
 import com.sec.domain.NodeLabel.POLICY
 import com.sec.domain.NodeLabel.SE_ITEM
 import com.sec.domain.NodeLabel.UNDEFINED
+import com.sec.domain.NodeLabel.USER
 import com.sec.domain.Prop.CREATED_AT
 import com.sec.domain.Prop.CREATED_BY
 import com.sec.domain.Prop.ID
@@ -80,6 +83,12 @@ public object ReviewCypher {
     // a compile-time constant, so this statement can only be computed once at object-init time
     // rather than at compile time. Every name in it — including the ones the predicate embeds —
     // is still a single interpolated constant (ADR 0010); only the *mechanism* differs.
+    //
+    // `participants` is up to 3 distinct comment authors, display-name resolved, for the Comment
+    // column's compact chip (docs/req-review-comment-threads.md §5 redesign) — it lets the cell
+    // show who is in a thread without a reviewer opening it. Full note text is deliberately *not*
+    // here: the panel's own `GET .../annotations` is where a message is actually read, so the list
+    // endpoint stays cheap however long a thread gets.
     public val MODULE_OBJECTS: String = """
         CYPHER 25
         MATCH (o:$DOORS_OBJECT {$MODULE_URL: ${'$'}moduleUrl})
@@ -102,15 +111,37 @@ public object ReviewCypher {
                  resolved: NOT inc:$UNDEFINED,
                  deleted: inc:$DELETED,
                  moduleUrl: inc.$MODULE_URL
-             }] AS incoming
-        OPTIONAL MATCH (o)-[:$NOTE_ON]->(n:$META:$NOTE)
+             }] AS incoming,
+             [(o)-[:$NOTE_ON]->(n:$META:$NOTE) | n] AS notes
+        WITH o, outgoing, incoming, notes,
+             [n IN notes WHERE n.$REPLY_TO IS NULL | n.$META_ID][0]  AS threadRootId,
+             [n IN notes WHERE n.$REPLY_TO IS NULL | n.$RESOLVED][0] AS threadResolved,
+             size(notes)                                             AS threadCount,
+             reduce(latest = null, n IN notes |
+               CASE WHEN latest IS NULL OR n.$UPDATED_AT > latest THEN n.$UPDATED_AT ELSE latest END
+             ) AS threadUpdatedAt,
+             // Distinct authors, first-seen order — capped to 3 before the :User join below, so
+             // the join runs on the participant chip's own budget rather than on the thread's full
+             // length. Compact cell display only; the panel's full thread still resolves every
+             // author through READ_ANNOTATIONS.
+             reduce(ids = [], n IN notes |
+               CASE WHEN n.$CREATED_BY IN ids THEN ids ELSE ids + n.$CREATED_BY END
+             )[0..3] AS participantIds
+        UNWIND (CASE WHEN participantIds = [] THEN [null] ELSE participantIds END) AS participantId
+        OPTIONAL MATCH (u:$USER {$ID: participantId}) WHERE participantId IS NOT NULL
+        WITH o, outgoing, incoming, threadRootId, threadResolved, threadCount, threadUpdatedAt,
+             collect(
+               CASE WHEN participantId IS NULL THEN null ELSE coalesce(u.$NAME, participantId) END
+             ) AS participantNames
         RETURN o                AS object,
                labels(o)        AS labels,
                outgoing         AS outgoing,
                incoming         AS incoming,
-               n.$META_ID       AS commentId,
-               n.$TEXT          AS commentText,
-               n.$UPDATED_AT    AS commentUpdatedAt
+               threadRootId     AS threadRootId,
+               threadResolved   AS threadResolved,
+               threadCount      AS threadCount,
+               threadUpdatedAt  AS threadUpdatedAt,
+               [x IN participantNames WHERE x IS NOT NULL] AS participants
     """
 
     /**
@@ -198,50 +229,105 @@ public object ReviewCypher {
         LIMIT ${'$'}limit
     """
 
-    // --- Comments (Tier 2, Shape A) -------------------------------------------------------------
+    // --- Comment threads (Tier 2, Shape A) ------------------------------------------------------
+    //
+    // docs/req-review-comment-threads.md. One thread per item — root plus flat replies, `resolved`
+    // on the root only. Posting is a read-then-branch, not a single MERGE: READ_THREAD_ROOT decides
+    // whether a new note is the thread's root or a reply to the existing one, the same way the old
+    // single-note write enforced "exactly one" via a relationship MERGE. `val`, not `const val`, on
+    // every statement that embeds AccessCypher.visible — see MODULE_OBJECTS above for why.
 
-    // Exactly one comment per object (§5.2). Community cannot constrain that, so the write path
-    // enforces it: MERGE on the *relationship* rather than on the node means an object that
-    // already has a note updates that node instead of gaining a second one. __metaId is only set
-    // ON CREATE, so re-saving a comment never rewrites its identity, and __createdBy/__createdAt
-    // survive every later edit.
-    public val UPSERT_COMMENTS: String = """
+    /**
+     * Does this item already have a thread? Distinguishes "item not found or not visible" (empty
+     * result) from "item visible, no thread yet" (one row, `rootMetaId` null) — [MetaWriter.postNote]
+     * needs both answers to decide whether to create a root or a reply, and whether to 404 at all.
+     */
+    public val READ_THREAD_ROOT: String = """
         CYPHER 25
-        UNWIND ${'$'}comments AS c
-        MATCH (i:$SE_ITEM {$ID: c.itemId})
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
         WHERE ${AccessCypher.visible("i")}
-        MERGE (i)-[:$NOTE_ON]->(n:$META:$NOTE)
-          ON CREATE SET n.$META_ID   = c.metaId,
-                        n.$CREATED_BY = ${'$'}user,
-                        n.$CREATED_AT = ${'$'}now
-        SET n.$META_KIND      = '$NOTE_KIND',
-            n.$SCHEMA_VERSION = $CURRENT_SCHEMA_VERSION,
-            n.$TEXT           = c.text,
-            n.$UPDATED_BY     = ${'$'}user,
-            n.$UPDATED_AT     = ${'$'}now
+        OPTIONAL MATCH (i)-[:$NOTE_ON]->(root:$META:$NOTE) WHERE root.$REPLY_TO IS NULL
+        RETURN root.$META_ID AS rootMetaId
     """
 
-    // Clearing a comment deletes the node rather than storing "", so MATCH (m:__Meta) stays a true
-    // inventory of what the application knows (§5.2).
-    public val DELETE_COMMENTS: String = """
+    /**
+     * One note, root or reply. `${'$'}replyTo` null creates a root (Neo4j removes a property set to
+     * null, so [MetaProp.REPLY_TO] ends up genuinely absent — spec §2.1). `${'$'}extra` carries
+     * `{resolved: false}` for a root and `{}` for a reply, so the one conditional field is a plain
+     * map merge rather than a second statement (the `SET n += $props` idiom this file already uses).
+     *
+     * Returns the full note, `:User`-joined, so [MetaWriter.postNote] needs no second round trip —
+     * `${'$'}user` here is the Keycloak `sub` (spec §2.2), the same id [UserCypher.UPSERT] keys on.
+     */
+    public val CREATE_NOTE: String = """
         CYPHER 25
-        UNWIND ${'$'}itemIds AS itemId
-        MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})
         WHERE ${AccessCypher.visible("i")}
-        DETACH DELETE n
-    """
-
-    // Read back after the write so the client can clear its dirty marks without reloading the
-    // table (§8): the server, not the client, decides what was stored.
-    public val READ_COMMENTS: String = """
-        CYPHER 25
-        UNWIND ${'$'}itemIds AS itemId
-        MATCH (i:$SE_ITEM {$ID: itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
-        WHERE ${AccessCypher.visible("i")}
-        RETURN i.$ID        AS ref,
-               n.$META_ID   AS metaId,
-               n.$TEXT      AS text,
+        CREATE (n:$META:$NOTE {
+          $META_ID: ${'$'}metaId, $META_KIND: '$NOTE_KIND', $SCHEMA_VERSION: $CURRENT_SCHEMA_VERSION,
+          $TEXT: ${'$'}text,
+          $CREATED_BY: ${'$'}user, $CREATED_AT: ${'$'}now, $UPDATED_BY: ${'$'}user, $UPDATED_AT: ${'$'}now
+        })
+        SET n.$REPLY_TO = ${'$'}replyTo, n += ${'$'}extra
+        CREATE (i)-[:$NOTE_ON]->(n)
+        WITH n
+        OPTIONAL MATCH (u:$USER {$ID: n.$CREATED_BY})
+        RETURN n.$META_ID AS metaId, n.$TEXT AS text, n.$REPLY_TO AS replyTo, n.$RESOLVED AS resolved,
+               coalesce(u.$NAME, n.$CREATED_BY) AS authorName, n.$CREATED_AT AS createdAt,
                n.$UPDATED_AT AS updatedAt
+    """
+
+    /**
+     * Every note on one item, root first then chronologically — `__metaId` is UUIDv7
+     * (`domain/UuidV7.kt`), so a plain `ORDER BY` on it needs no second sort key. Joins `:User` for
+     * the display name, falling back to the raw `sub` when nobody with that id has ever signed in
+     * (O3): a display cache that cannot answer must not hide the author entirely.
+     */
+    public val READ_ANNOTATIONS: String = """
+        CYPHER 25
+        MATCH (i:$SE_ITEM {$ID: ${'$'}itemId})-[:$NOTE_ON]->(n:$META:$NOTE)
+        WHERE ${AccessCypher.visible("i")}
+        OPTIONAL MATCH (u:$USER {$ID: n.$CREATED_BY})
+        RETURN n.$META_ID                    AS metaId,
+               n.$TEXT                       AS text,
+               n.$REPLY_TO                   AS replyTo,
+               n.$RESOLVED                   AS resolved,
+               coalesce(u.$NAME, n.$CREATED_BY) AS authorName,
+               n.$CREATED_AT                 AS createdAt,
+               n.$UPDATED_AT                 AS updatedAt
+        ORDER BY n.$META_ID
+    """
+
+    // Root only — a reply has no resolved state of its own (spec §2.1), so this matches nothing
+    // for one and the route reports that the same way it reports "not found". Returns the full
+    // note, :User-joined, the same shape CREATE_NOTE does — the route has only the note's own ref,
+    // never the anchor item's, so a second query could not be scoped by item even if it wanted to.
+    public val RESOLVE_NOTE: String = """
+        CYPHER 25
+        MATCH (i:$SE_ITEM)-[:$NOTE_ON]->(root:$META:$NOTE {$META_ID: ${'$'}metaId})
+        WHERE root.$REPLY_TO IS NULL AND ${AccessCypher.visible("i")}
+        SET root.$RESOLVED = ${'$'}resolved, root.$UPDATED_BY = ${'$'}user, root.$UPDATED_AT = ${'$'}now
+        WITH root
+        OPTIONAL MATCH (u:$USER {$ID: root.$CREATED_BY})
+        RETURN root.$META_ID AS metaId, root.$TEXT AS text, root.$REPLY_TO AS replyTo,
+               root.$RESOLVED AS resolved, coalesce(u.$NAME, root.$CREATED_BY) AS authorName,
+               root.$CREATED_AT AS createdAt, root.$UPDATED_AT AS updatedAt
+    """
+
+    /**
+     * Deletes one thread, or one reply — the same statement either way. A reply's own `__metaId`
+     * never appears as another note's `replyTo` (threads are flat), so when `${'$'}metaId` names a
+     * reply the `OPTIONAL MATCH` below simply matches nothing and only that reply is removed. When
+     * it names a root, every reply chained to it goes too — the cascade the spec's §2.1 shows.
+     */
+    public val DELETE_NOTE: String = """
+        CYPHER 25
+        MATCH (i:$SE_ITEM)-[:$NOTE_ON]->(root:$META:$NOTE {$META_ID: ${'$'}metaId})
+        WHERE ${AccessCypher.visible("i")}
+        WITH i, root, ${'$'}metaId AS deletedId
+        OPTIONAL MATCH (i)-[:$NOTE_ON]->(reply:$META:$NOTE {$REPLY_TO: ${'$'}metaId})
+        DETACH DELETE root, reply
+        RETURN deletedId
     """
 
     // --- Attribute settings (Tier 2, Shape B) ---------------------------------------------------

@@ -1,10 +1,51 @@
-<textarea
-  #box
-  class="sec-comment-cell__input"
-  [class.sec-comment-cell__input--dirty]="dirty()"
-  [attr.aria-label]="label()"
-  placeholder="Add a comment"
-  rows="1"
-  [value]="text()"
-  (input)="onInput($any($event.target).value)"
-></textarea>
+@switch (mode()) {
+  @case ('empty') {
+    <button type="button" class="sec-comment-cell__empty" (click)="open()">
+      <span class="sec-comment-cell__empty-text">Add a comment…</span>
+    </button>
+  }
+  @case ('expanded') {
+    <button type="button" class="sec-comment-cell__expanded" (click)="open()">
+      @for (note of individualNotes(); track note.ref) {
+        <span class="sec-comment-cell__line">
+          <sec-author-avatar [name]="note.authorName" />
+          <span class="sec-comment-cell__line-text">{{ note.text }}</span>
+          @if (note.replyTo === null && note.resolved) {
+            <mat-icon
+              svgIcon="check-circle"
+              aria-hidden="true"
+              class="sec-comment-cell__resolved-mark"
+            />
+          }
+        </span>
+      }
+      @if (overflowCount() > 0) {
+        <span class="sec-comment-cell__line sec-comment-cell__line--summary">
+          <span class="sec-comment-cell__avatars">
+            @for (name of thread()!.participants; track name) {
+              <sec-author-avatar [name]="name" />
+            }
+          </span>
+          <span class="sec-comment-cell__line-text">
+            {{ thread()!.count }} {{ thread()!.count === 1 ? 'comment' : 'comments' }}
+          </span>
+        </span>
+      }
+    </button>
+  }
+  @default {
+    <button type="button" class="sec-comment-cell__compact" (click)="open()">
+      <span class="sec-comment-cell__avatars">
+        @for (name of thread()!.participants; track name) {
+          <sec-author-avatar [name]="name" />
+        }
+      </span>
+      <span class="sec-comment-cell__count">
+        {{ thread()!.count }} {{ thread()!.count === 1 ? 'comment' : 'comments' }}
+      </span>
+      @if (thread()!.resolved) {
+        <mat-icon svgIcon="check-circle" aria-hidden="true" class="sec-comment-cell__resolved-mark" />
+      }
+    </button>
+  }
+}

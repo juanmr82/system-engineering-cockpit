@@ -10,7 +10,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { flushGridFrames } from '../../../core/grid/grid-testing';
 import { RequirementReview } from './requirement-review';
 import type { ModuleTablesResponse } from '../../../shared/doors-table/doors-table.model';
-import type { ModuleObjectsResponse, ReviewRow, SaveCommentsResponse } from './review.model';
+import type { ModuleObjectsResponse, ReviewRow } from './review.model';
 
 const MODULE_REF = 'bW9kdWxlLTE';
 
@@ -24,7 +24,7 @@ function row(overrides: Partial<ReviewRow> & Pick<ReviewRow, 'ref' | 'id' | 'nam
     issues: [],
     attributes: {},
     references: { outgoing: [], incoming: [], incomingComplete: false },
-    comment: null,
+    thread: null,
     ...overrides,
   };
 }
@@ -100,7 +100,13 @@ const OBJECTS: ModuleObjectsResponse = {
         'REQ. Priorität': '',
         'SYS. Rationale': '',
       },
-      comment: { metaId: 'meta-1', text: 'Checked at review', updatedAt: '2026-08-05T10:00:00Z' },
+      thread: {
+        rootRef: 'bWV0YS0x',
+        count: 1,
+        resolved: false,
+        lastActivityAt: '2026-08-05T10:00:00Z',
+        participants: ['Elena K.'],
+      },
       // One outgoing link into a module that has not been imported, and nothing deleted. This is
       // the row that tells the widened filter from the old one: it has an unresolved link and no
       // deleted target, so the "links to deleted objects" filter would have hidden it.
@@ -220,7 +226,6 @@ const ATTRIBUTES = {
 
 describe('RequirementReview', () => {
   let harness: RouterTestingHarness;
-  let component: RequirementReview;
   let httpTesting: HttpTestingController;
 
   const element = (): HTMLElement => harness.routeNativeElement as HTMLElement;
@@ -242,15 +247,6 @@ describe('RequirementReview', () => {
     // Angular being stable is not the grid having drawn — see flushGridFrames.
     await flushGridFrames();
     harness.detectChanges();
-  };
-
-  const commentBoxes = (): HTMLInputElement[] =>
-    Array.from(element().querySelectorAll('.sec-comment-cell__input'));
-
-  const type = async (input: HTMLInputElement, text: string): Promise<void> => {
-    input.value = text;
-    input.dispatchEvent(new Event('input'));
-    await settle();
   };
 
   const search = async (term: string): Promise<void> => {
@@ -297,10 +293,7 @@ describe('RequirementReview', () => {
 
     harness = await RouterTestingHarness.create();
     httpTesting = TestBed.inject(HttpTestingController);
-    component = await harness.navigateByUrl(
-      `/requirements/review?module=${MODULE_REF}`,
-      RequirementReview,
-    );
+    await harness.navigateByUrl(`/requirements/review?module=${MODULE_REF}`, RequirementReview);
 
     httpTesting.expectOne(`/api/v1/modules/${MODULE_REF}/objects`).flush(OBJECTS);
     httpTesting.expectOne(`/api/v1/modules/${MODULE_REF}/attributes`).flush(attributes);
@@ -508,9 +501,10 @@ describe('RequirementReview', () => {
     // claim nothing is being checked.
     expect(renderedText()).toContain('No mandatory attributes');
     // The issues filter stays: a fixed check runs whatever the configuration, so an empty result
-    // is an honest "none found" rather than "none looked for". Four filters now — requirements
-    // only, objects with issues, requirements without parents, links to unresolved objects.
-    expect(element().querySelectorAll('.sec-review__filter').length).toBe(4);
+    // is an honest "none found" rather than "none looked for". Five filters now — requirements
+    // only, objects with issues, requirements without parents, links to unresolved objects,
+    // requirements with comments.
+    expect(element().querySelectorAll('.sec-review__filter').length).toBe(5);
 
     openSpy.mockRestore();
   });
@@ -557,8 +551,9 @@ describe('RequirementReview', () => {
     const toggles = Array.from(
       element().querySelectorAll<HTMLInputElement>('.sec-review__filter input'),
     );
-    // Last checkbox: "Links to unresolved objects".
-    toggles[toggles.length - 1].click();
+    // Fourth checkbox: "Links to unresolved objects". "Requirements with comments" follows it,
+    // so this can no longer be addressed as the last one.
+    toggles[3].click();
     await settle();
 
     const text = renderedText();
@@ -603,69 +598,68 @@ describe('RequirementReview', () => {
     expect(text).toContain('5 in module');
   });
 
-  // §5.2: editing marks the row dirty and counts it; typing the original text back is not an edit,
-  // so it must not be saved as one.
-  it('counts dirty comments, and stops counting one typed back to its original', async () => {
-    const [first, second] = commentBoxes();
-
-    await type(first, 'Needs a rationale');
-    expect(component.hasPendingComments()).toBe(true);
-
-    await type(second, 'Changed');
-    expect(renderedText()).toContain('2');
-
-    await type(second, 'Checked at review');
-    await type(first, '');
-    expect(component.hasPendingComments()).toBe(false);
-  });
-
-  // Criterion 5 and §5.2: one click, one request carrying every dirty comment, and the table is
-  // not reloaded afterwards — the response is what clears the dirty marks.
-  it('saves every dirty comment in one request and clears the marks without reloading', async () => {
-    const [first] = commentBoxes();
-    await type(first, 'Needs a rationale');
-
-    const saveButton = require<HTMLButtonElement>('.sec-review__action--save');
-    saveButton.click();
-
-    const request = httpTesting.expectOne(`/api/v1/modules/${MODULE_REF}/comments`);
-    expect(request.request.body).toEqual({
-      comments: [{ ref: 'b2JqLTE', text: 'Needs a rationale' }],
-    });
-
-    const response: SaveCommentsResponse = {
-      saved: [
-        {
-          ref: 'b2JqLTE',
-          comment: { metaId: 'meta-2', text: 'Needs a rationale', updatedAt: '2026-08-05T11:00:00Z' },
-        },
-      ],
-    };
-    request.flush(response);
+  // Replaces the old module-level "hide resolved threads" switch (§5 redesign): an ordinary
+  // session filter, not a table-wide setting a reviewer had to remember was on.
+  it('narrows to the objects that carry a comment thread, resolved or not', async () => {
+    const toggles = Array.from(
+      element().querySelectorAll<HTMLInputElement>('.sec-review__filter input'),
+    );
+    // Fifth checkbox: "Requirements with comments".
+    toggles[4].click();
     await settle();
 
-    expect(component.hasPendingComments()).toBe(false);
-    expect(commentBoxes()[0].value).toBe('Needs a rationale');
+    const text = renderedText();
+    expect(text).toContain('2.1 Scope');
+    expect(text).not.toContain('SRD-1');
+    expect(text).toContain('1 shown');
   });
 
-  // §5.2: on failure nothing is written and every edit stays on screen, with the error inline.
-  it('keeps the edits and shows the error when the save fails', async () => {
-    const [first] = commentBoxes();
-    await type(first, 'Needs a rationale');
+  // docs/comments_design.jpg: the Comment column fills the whole cell now, not a small icon — SRD-1
+  // has no thread yet ("Add a comment…"), SRD-2 already has one and shows its count and who is in it.
+  it('shows a ghost affordance for a row with no thread, and a compact chip for one that has one', () => {
+    expect(element().querySelector('.sec-comment-cell__empty')).not.toBeNull();
+    const chip = require<HTMLElement>('.sec-comment-cell__compact');
+    expect(chip.textContent).toContain('1');
+    // The participant avatar: initials in the text, the full name on its title (shared/avatar).
+    expect(chip.querySelector('.sec-author-avatar')?.textContent).toBe('EK');
+    expect(chip.querySelector('.sec-author-avatar')?.getAttribute('title')).toBe('Elena K.');
+  });
 
-    const saveButton = require<HTMLButtonElement>('.sec-review__action--save');
-    saveButton.click();
+  // Every write the panel makes is already committed by the time it closes — there is no buffer
+  // here to save — so opening it is a plain MatDialog.open with the row's own ref and id, and this
+  // view's only remaining job is to refresh if the panel reports something actually changed.
+  it('opens the thread panel for the clicked row, and reloads the objects only if something changed', async () => {
+    const openSpy = vi
+      .spyOn(TestBed.inject(MatDialog), 'open')
+      .mockReturnValue({ afterClosed: () => of(true) } as never);
 
-    httpTesting
-      .expectOne(`/api/v1/modules/${MODULE_REF}/comments`)
-      .flush(
-        { type: 'about:blank', title: 'Unknown object', status: 400, detail: 'Reload the module.' },
-        { status: 400, statusText: 'Bad Request' },
-      );
+    require<HTMLButtonElement>('.sec-comment-cell__empty').click();
+
+    expect(openSpy).toHaveBeenCalled();
+    const config = openSpy.mock.calls[0][1] as { data: { itemRef: string; itemLabel: string } };
+    expect(config.data.itemRef).toBe('b2JqLTE');
+    expect(config.data.itemLabel).toBe('SRD-1');
+
+    harness.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    httpTesting.expectOne(`/api/v1/modules/${MODULE_REF}/objects`).flush(OBJECTS);
     await settle();
 
-    expect(component.hasPendingComments()).toBe(true);
-    expect(commentBoxes()[0].value).toBe('Needs a rationale');
-    expect(renderedText()).toContain('Reload the module.');
+    openSpy.mockRestore();
+  });
+
+  it('does not reload when the thread panel closes with nothing changed', async () => {
+    const openSpy = vi
+      .spyOn(TestBed.inject(MatDialog), 'open')
+      .mockReturnValue({ afterClosed: () => of(false) } as never);
+
+    require<HTMLButtonElement>('.sec-comment-cell__empty').click();
+    harness.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    httpTesting.expectNone(`/api/v1/modules/${MODULE_REF}/objects`);
+
+    openSpy.mockRestore();
   });
 });

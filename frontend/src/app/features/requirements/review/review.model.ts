@@ -34,11 +34,31 @@ export interface References {
   readonly incomingComplete: boolean;
 }
 
-// Exactly one comment per object — a value, never a thread (§5.2).
-export interface ReviewComment {
-  readonly metaId: string;
+// A thread's own summary, carried on the row so the grid can draw its indicator without loading
+// every message for every row (docs/req-review-comment-threads.md §4). The full thread — every
+// note, its author, its text — is a second request, made when a reviewer opens the panel.
+export interface ThreadSummary {
+  readonly rootRef: string;
+  readonly count: number;
+  readonly resolved: boolean;
+  readonly lastActivityAt: string | null;
+  /** Up to 3 distinct authors, display-name resolved — who is in the thread, for the Comment
+   *  column's compact chip, without loading it. */
+  readonly participants: readonly string[];
+}
+
+// One message in a thread, root or reply. `authorName` is resolved server-side from the `:User`
+// cache — a raw Keycloak `sub` never reaches the client (R5).
+export interface ThreadNote {
+  readonly ref: string;
   readonly text: string;
-  readonly updatedAt: string | null;
+  /** The root's `:ref`; null for the root itself. */
+  readonly replyTo: string | null;
+  /** Root only; always null on a reply. */
+  readonly resolved: boolean | null;
+  readonly authorName: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
 // `attributes` is the dynamic DOORS attribute bag: Record<string, unknown>, narrowed at the point
@@ -63,7 +83,7 @@ export interface ReviewRow {
   readonly issues: string[];
   readonly attributes: Record<string, unknown>;
   readonly references: References;
-  readonly comment: ReviewComment | null;
+  readonly thread: ThreadSummary | null;
 }
 
 export interface ModuleObjectsResponse {
@@ -96,22 +116,6 @@ export interface ItemDetail {
   readonly attributes: Record<string, unknown>;
 }
 
-// An empty `text` means delete: the reviewer cleared the box, so the node goes rather than being
-// stored as "" (§5.2).
-export interface CommentEdit {
-  readonly ref: string;
-  readonly text: string;
-}
-
-export interface SaveCommentsRequest {
-  readonly comments: CommentEdit[];
-}
-
-export interface SavedComment {
-  readonly ref: string;
-  readonly comment: ReviewComment | null;
-}
-
-export interface SaveCommentsResponse {
-  readonly saved: SavedComment[];
+export interface AnnotationsResponse {
+  readonly notes: ThreadNote[];
 }

@@ -2,21 +2,23 @@ package com.sec.api.routes
 
 import com.sec.api.ApiPaths
 import com.sec.api.decodeRef
-import com.sec.api.dto.CommentDto
-import com.sec.api.dto.SaveCommentsRequestDto
-import com.sec.api.dto.SaveCommentsResponseDto
-import com.sec.api.dto.SavedCommentDto
+import com.sec.api.dto.AnnotationsResponseDto
+import com.sec.api.dto.NoteDto
+import com.sec.api.dto.PostNoteRequestDto
+import com.sec.api.dto.ResolveThreadRequestDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
+import com.sec.domain.DeleteThreadOutcome
 import com.sec.domain.GraphDirection
 import com.sec.domain.GraphLevelStrategy
+import com.sec.domain.PostNoteOutcome
 import com.sec.domain.Ref
-import com.sec.domain.SaveCommentsOutcome
+import com.sec.domain.ResolveThreadOutcome
+import com.sec.domain.ThreadNote
 import com.sec.meta.MetaWriter
 import com.sec.security.AccessResolver
 import com.sec.security.SecPrincipal
 import com.sec.security.accessSet
-import com.sec.security.auditName
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
 import com.sec.source.doors.DoorsProjection
@@ -27,13 +29,15 @@ import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 
-// The Req review table (docs/REQ_REVIEW.md §8). The objects endpoint is paged and capped; the
-// comment endpoint is feature-shaped for the reason CLAUDE.md §5 allows — a table save is one
-// transaction, not N annotation calls — and routes through the same guarded meta writer.
+// The Req review table (docs/REQ_REVIEW.md §8) and its comment threads
+// (docs/req-review-comment-threads.md). The objects endpoint is paged and capped; every thread
+// write is its own request through the same guarded meta writer — R7's ordinary rule, not a batch.
 public fun Route.reviewRoutes(
     doorsProjection: DoorsProjection,
     reviewProjection: ReviewProjection,
@@ -55,72 +59,6 @@ public fun Route.reviewRoutes(
                 ?: return@get call.respondBadPaging()
 
             call.respond(reviewProjection.getModuleObjects(moduleId, access, skip = skip, limit = limit))
-        }
-
-        // The save icon: every dirty comment for this module, one request, one transaction (§5.2).
-        post("/comments") {
-            val moduleId = call.decodeRef() ?: return@post call.respondInvalidRef()
-            val principal = call.principal<SecPrincipal>()
-                ?: error("$moduleId/comments ran without a principal despite the session guard")
-            val body = call.receive<SaveCommentsRequestDto>()
-
-            // Refs are decoded here, before the writer sees them, so a malformed handle is a 400
-            // rather than an item that mysteriously does not exist.
-            val malformed = body.comments.filter { Ref.decodeOrNull(it.ref) == null }.map { it.ref }
-            if (malformed.isNotEmpty()) {
-                return@post call.respondProblem(
-                    HttpStatusCode.BadRequest,
-                    "Invalid reference",
-                    "Some references in this request are not readable. Reload the module and try again.",
-                )
-            }
-
-            val edits = body.comments.mapNotNull { edit ->
-                Ref.decodeOrNull(edit.ref)?.let { MetaWriter.CommentEditInput(itemId = it, text = edit.text) }
-            }
-
-            val access = call.accessSet(accessResolver)
-            when (
-                val outcome = metaWriter.saveComments(moduleId, edits, access, user = principal.auditName)
-            ) {
-                is SaveCommentsOutcome.ModuleNotFound ->
-                    call.respondModuleNotFound()
-
-                is SaveCommentsOutcome.MalformedRefs ->
-                    call.respondProblem(
-                        HttpStatusCode.BadRequest,
-                        "Invalid reference",
-                        "Some references in this request are not readable.",
-                    )
-
-                is SaveCommentsOutcome.UnknownItems ->
-                    call.respondProblem(
-                        HttpStatusCode.BadRequest,
-                        "Unknown object",
-                        "${outcome.refs.size} of the commented objects are not in this module. " +
-                            "Reload the module and try again.",
-                    )
-
-                is SaveCommentsOutcome.Saved ->
-                    call.respond(
-                        SaveCommentsResponseDto(
-                            saved = outcome.comments.map { saved ->
-                                SavedCommentDto(
-                                    ref = Ref.encode(saved.itemId),
-                                    // A cleared comment comes back as null, which is what tells the
-                                    // table its node was deleted rather than stored empty.
-                                    comment = saved.metaId?.let {
-                                        CommentDto(
-                                            metaId = it,
-                                            text = saved.text.orEmpty(),
-                                            updatedAt = saved.updatedAt,
-                                        )
-                                    },
-                                )
-                            },
-                        ),
-                    )
-            }
         }
     }
 
@@ -148,6 +86,46 @@ public fun Route.reviewRoutes(
             call.respond(
                 reviewProjection.getTraces(itemId, incoming = incoming, access = call.accessSet(accessResolver)),
             )
+        }
+
+        // The thread panel's own load — every note on this item, root first
+        // (docs/req-review-comment-threads.md §4). 404 rather than an empty list when the item
+        // itself does not resolve, so "no thread yet" and "no such object" stay distinguishable.
+        get("/annotations") {
+            val itemId = call.decodeRef() ?: return@get call.respondInvalidRef()
+            val access = call.accessSet(accessResolver)
+            if (reviewProjection.getItemDetail(itemId, access) == null) {
+                return@get call.respondProblem(
+                    HttpStatusCode.NotFound, "Object not found", "No object for this reference.",
+                )
+            }
+            call.respond(AnnotationsResponseDto(metaWriter.listAnnotations(itemId, access).map { it.toDto() }))
+        }
+
+        // Each reply is its own request, its own transaction — R7's ordinary rule now that the
+        // batch-comment exception (REQ_REVIEW.md §9.1) is retired. The server decides root vs.
+        // reply; the client only ever posts text (§4).
+        post("/annotations") {
+            val itemId = call.decodeRef() ?: return@post call.respondInvalidRef()
+            val principal = call.principal<SecPrincipal>()
+                ?: error("$itemId/annotations ran without a principal despite the session guard")
+            val body = call.receive<PostNoteRequestDto>()
+            if (body.text.isBlank()) {
+                return@post call.respondProblem(
+                    HttpStatusCode.BadRequest, "Empty comment", "A comment cannot be empty.",
+                )
+            }
+            val access = call.accessSet(accessResolver)
+
+            when (val outcome = metaWriter.postNote(itemId, body.text, access, authorSub = principal.sub)) {
+                is PostNoteOutcome.ItemNotFound ->
+                    call.respondProblem(
+                        HttpStatusCode.NotFound, "Object not found", "No object for this reference.",
+                    )
+
+                is PostNoteOutcome.Posted ->
+                    call.respond(HttpStatusCode.Created, outcome.note.toDto())
+            }
         }
 
         /**
@@ -235,7 +213,52 @@ public fun Route.reviewRoutes(
             call.respond(graph)
         }
     }
+
+    // {ref} here is a note's own __metaId, not the item's — resolving or deleting a thread needs
+    // no item context, which is exactly what ReviewCypher.RESOLVE_NOTE/DELETE_NOTE rely on
+    // (docs/req-review-comment-threads.md §4).
+    route("${ApiPaths.ANNOTATIONS}/${ApiPaths.REF}") {
+        patch {
+            val metaId = call.decodeRef() ?: return@patch call.respondInvalidRef()
+            val principal = call.principal<SecPrincipal>()
+                ?: error("$metaId ran without a principal despite the session guard")
+            val body = call.receive<ResolveThreadRequestDto>()
+            val access = call.accessSet(accessResolver)
+
+            when (
+                val outcome = metaWriter.resolveThread(metaId, body.resolved, access, authorSub = principal.sub)
+            ) {
+                is ResolveThreadOutcome.NotFound -> call.respondAnnotationNotFound()
+                is ResolveThreadOutcome.Resolved -> call.respond(outcome.note.toDto())
+            }
+        }
+
+        delete {
+            val metaId = call.decodeRef() ?: return@delete call.respondInvalidRef()
+            when (val outcome = metaWriter.deleteThread(metaId, call.accessSet(accessResolver))) {
+                is DeleteThreadOutcome.NotFound -> call.respondAnnotationNotFound()
+                is DeleteThreadOutcome.Deleted -> call.respond(HttpStatusCode.NoContent)
+            }
+        }
+    }
 }
+
+// Covers "no such note", "not visible", and — for PATCH — "this ref names a reply, not a root":
+// all three are the same "nothing to act on" a 404 already means (R8), and none is distinguished
+// from the others on the wire (a 403 would confirm the note exists, spec §7).
+private suspend fun ApplicationCall.respondAnnotationNotFound(): Unit =
+    respondProblem(HttpStatusCode.NotFound, "Comment not found", "No comment for this reference.")
+
+private fun ThreadNote.toDto(): NoteDto =
+    NoteDto(
+        ref = Ref.encode(metaId),
+        text = text,
+        replyTo = replyTo?.let(Ref::encode),
+        resolved = resolved,
+        authorName = authorName,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
 
 private const val DEFAULT_LIMIT = 2_000
 private const val MAX_LIMIT = 5_000

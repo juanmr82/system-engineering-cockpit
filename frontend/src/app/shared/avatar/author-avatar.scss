@@ -1,0 +1,30 @@
+// `flex: none`, not `min-width: 0`: this is a flex *item* wherever it is used — a comment-cell
+// preview line, a thread-panel note header — and the sibling it sits beside is often a long,
+// truncating line of comment text. Without a hard `flex-shrink: 0`, the flex algorithm shrinks
+// this host too once that sibling's content is large enough to be starved for space, which
+// squeezes the chip narrower than its own "XX" and lets the text sibling's box start underneath
+// it instead of after it (visible only on a long comment — SRD-1860 is the case that found it).
+:host {
+  display: inline-flex;
+  flex: none;
+}
+
+// Outlined, never filled (CLAUDE.md §8 rule 3) — the border and the text carry the colour, so the
+// chip reads as a rule rather than competing with the Tier-2 accent's own filled chip.
+.sec-author-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  border: var(--sec-hairline) solid var(--sec-author-avatar-color, var(--sec-blue-mid));
+  border-radius: var(--sec-radius);
+  color: var(--sec-author-avatar-color, var(--sec-blue-mid));
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

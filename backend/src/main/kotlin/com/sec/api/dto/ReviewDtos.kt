@@ -51,14 +51,52 @@ public data class ReferencesDto(
     public val incomingComplete: Boolean = true,
 )
 
-// One comment on one object. Exactly one per object (§5.2) — this is a single value, never a list.
-// The author is recorded on the node (__createdBy/__updatedBy, R2 requires the audit fields) but
-// is deliberately not carried here: the review table shows no author.
+// A comment thread, replacing the single-note Comment column (docs/req-review-comment-threads.md).
+// The review table's own row carries only a summary — enough to draw the count/resolved chip
+// without loading every message for every row; the full thread is a second request
+// (AnnotationsResponseDto), made when a reviewer actually opens it.
 @Serializable
-public data class CommentDto(
-    public val metaId: String,
+public data class ThreadSummaryDto(
+    /** The root note's `:ref` — what `PATCH`/`DELETE $ANNOTATIONS/{ref}` addresses. */
+    public val rootRef: String,
+    /** Root plus every reply. */
+    public val count: Int,
+    public val resolved: Boolean,
+    public val lastActivityAt: String?,
+    /** Up to 3 distinct authors, display-name resolved, for the Comment column's compact chip —
+     *  who is in the thread, without loading it. */
+    public val participants: List<String> = emptyList(),
+)
+
+// One message in a thread, root or reply. `authorName` is resolved server-side from the `:User`
+// cache (R5 — a raw sub is never shown), falling back to the sub itself if nobody with that id has
+// signed in since this shipped (spec O3).
+@Serializable
+public data class NoteDto(
+    public val ref: String,
     public val text: String,
-    public val updatedAt: String? = null,
+    /** The root's `:ref`; null for the root itself. */
+    public val replyTo: String? = null,
+    /** Root only; always null on a reply. */
+    public val resolved: Boolean? = null,
+    public val authorName: String,
+    public val createdAt: String,
+    public val updatedAt: String,
+)
+
+@Serializable
+public data class AnnotationsResponseDto(
+    public val notes: List<NoteDto>,
+)
+
+@Serializable
+public data class PostNoteRequestDto(
+    public val text: String,
+)
+
+@Serializable
+public data class ResolveThreadRequestDto(
+    public val resolved: Boolean,
 )
 
 // One table row. `attributes` is the dynamic DOORS attribute bag as Map<String, JsonElement> —
@@ -97,7 +135,7 @@ public data class ReviewRowDto(
     public val issues: List<String> = emptyList(),
     public val attributes: Map<String, JsonElement>,
     public val references: ReferencesDto,
-    public val comment: CommentDto? = null,
+    public val thread: ThreadSummaryDto? = null,
 )
 
 // `truncated` follows the pattern attribute-policy-checks.md §4 already establishes: a page that
@@ -135,28 +173,3 @@ public data class TracesResponseDto(
     public val complete: Boolean,
 )
 
-// --- Comment save -------------------------------------------------------------------------------
-
-// An empty `text` means delete (§8). That is the wire contract, so the client never needs a
-// separate delete call for the ordinary "reviewer cleared the box" case.
-@Serializable
-public data class CommentEditDto(
-    public val ref: String,
-    public val text: String,
-)
-
-@Serializable
-public data class SaveCommentsRequestDto(
-    public val comments: List<CommentEditDto> = emptyList(),
-)
-
-@Serializable
-public data class SavedCommentDto(
-    public val ref: String,
-    public val comment: CommentDto?,
-)
-
-@Serializable
-public data class SaveCommentsResponseDto(
-    public val saved: List<SavedCommentDto>,
-)

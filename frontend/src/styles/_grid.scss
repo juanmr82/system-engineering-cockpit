@@ -231,64 +231,14 @@
   color: var(--sec-highlight-error);
 }
 
-.sec-grid .sec-grid__cell--editor {
-  // **Block, not flex, and this is the pair to `inline-size: 100%` on the editor's host.**
-  //
-  // The column carries `autoHeight` now, so the row grows to fit a long comment instead of the
-  // comment scrolling inside a fixed-height box. That means ag-grid derives the row height from
-  // this cell's content — so the editor has to be *in flow*. It used to be `position: absolute;
-  // inset: 0`, which contributes no height at all and would collapse the row.
-  //
-  // The reason it was out of flow is real and has to be answered rather than ignored: under
-  // `autoHeight` ag-grid nests cell content in wrappers sized to that content, and a textarea's
-  // intrinsic width is its `cols` — 20 characters — so an in-flow editor shrank to a fraction of
-  // its cell whatever `width: 100%` said. `display: block` here is what gives the host a definite
-  // width to resolve `inline-size: 100%` against, exactly as it does for `--table` below.
-  // **A column, so the editor can fill the cell's height as well as its width.**
-  //
-  // The row's height is set by whichever cell is tallest — normally the wrapped Description — and
-  // the comment box was left at its own content height inside it, with dead space below that looked
-  // like a margin and did not accept a click. Stretching it is not a matter of `height: 100%`: ag-
-  // grid nests the renderer in two wrappers of its own, and a percentage height resolves against
-  // nothing until every one of them has a definite height.
-  //
-  // So the cell is a column flex container and its child is told to fill it. The `> *` says "this
-  // cell's child", whatever ag-grid happens to call it, which is why this is still not a rule on an
-  // `.ag-*` name. The wrapper inside is itself a flex row, so *its* child stretches vertically on
-  // the cross axis with no further help, and the renderer's host takes it from there.
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-
-  > * {
-    flex: 1 1 auto;
-    min-block-size: 0;
-
-    // And one level deeper, because the wrapper is a flex row that **centres** its child: a child
-    // of a centred flex line keeps its content height however tall the line is, so it has to say
-    // it stretches. Two levels of "this cell's child", and still not a rule naming an `.ag-*`
-    // class. If ag-grid ever changes that nesting the box simply stops filling, which is the
-    // failure this started from rather than a new one.
-    > * {
-      align-self: stretch;
-    }
-  }
-
-  // **Never set `position` on a cell.** ag-grid lays every cell out with `position: absolute` and
-  // an inline `left`/`right` offset, so overriding it to `relative` silently discards that offset:
-  // the cell renders at its static position instead. That is invisible while a column is the only
-  // one pinned to its side — the offset is 0 — and puts the cell on top of its neighbour the
-  // moment a second one joins it, which is what happened when Issues was added beside Comment.
-}
-
 // --- Embedded DOORS tables ---------------------------------------------------------------------
 //
 // A table is drawn inside the Description column at the column's full width, which is where DOORS
 // draws it (docs/DOORS_TABLES.md §1). Two rules make that work, and both are about *width*.
 //
-// Written as a descendant of `.sec-grid` for specificity, the same reason `--editor` is: ag-grid's
-// stylesheet is injected into the head at runtime, after ours, so at equal specificity it wins.
-// Two of our own classes outrank it, and neither selector names an `.ag-*` internal.
+// Written as a descendant of `.sec-grid` for specificity: ag-grid's stylesheet is injected into
+// the head at runtime, after ours, so at equal specificity it wins. Two of our own classes outrank
+// it, and neither selector names an `.ag-*` internal.
 .sec-grid .sec-grid__cell--table {
   // Not `flex`. `--custom` makes a cell a flex box so a chip sits at the top of a tall row, but a
   // flex item is sized to its content — and a grid whose tracks are fractions has no content width
@@ -301,8 +251,10 @@
   padding-block: 6px;
 
   // **Never set `position` here.** ag-grid lays every cell out with `position: absolute` plus an
-  // inline offset, and overriding it silently discards that offset (see `--editor` above). No
-  // override is needed: the width comes from the cell being block, not from escaping it.
+  // inline offset, and overriding it silently discards that offset. No override is needed here:
+  // the width comes from the cell being block, not from escaping it — a renderer that *does* need
+  // to escape (fill the cell exactly, top to bottom) pins its own host to `inset: 0` instead, in
+  // its own stylesheet (`comment-cell.scss` is the current example).
 }
 
 // A table row is a figure, not a requirement and not muted context — it carries no tint and no

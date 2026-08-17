@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import type { ModuleSettingsRequest } from '../modules/modules.model';
-import type { SaveCommentsRequest, SaveCommentsResponse } from './review.model';
+import type { ThreadNote } from './review.model';
 
 // The writes and the one-off reads of the Req review view. The table's own resources are created
 // in the component, not here, so they are torn down with the view rather than living on the root
@@ -28,12 +28,28 @@ export class ReviewApiService {
     return `/api/v1/modules/${moduleRef}/tables`;
   }
 
-  // Every dirty comment for one module, one request, one server-side transaction. Partial success
-  // is impossible: on failure nothing is written and the edits stay on screen (§5.2).
-  saveComments(moduleRef: string, body: SaveCommentsRequest): Promise<SaveCommentsResponse> {
+  // The thread panel's own load — every note on one item, root first
+  // (docs/req-review-comment-threads.md §4).
+  static annotationsUrl(itemRef: string): string {
+    return `/api/v1/items/${itemRef}/annotations`;
+  }
+
+  // Each reply is its own request, its own transaction — R7's ordinary rule, not the batch
+  // exception the single-note Comment column used to need. The server decides root vs. reply.
+  postNote(itemRef: string, text: string): Promise<ThreadNote> {
     return firstValueFrom(
-      this.http.post<SaveCommentsResponse>(`/api/v1/modules/${moduleRef}/comments`, body),
+      this.http.post<ThreadNote>(ReviewApiService.annotationsUrl(itemRef), { text }),
     );
+  }
+
+  resolveThread(rootRef: string, resolved: boolean): Promise<ThreadNote> {
+    return firstValueFrom(
+      this.http.patch<ThreadNote>(`/api/v1/annotations/${rootRef}`, { resolved }),
+    );
+  }
+
+  deleteThread(ref: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`/api/v1/annotations/${ref}`));
   }
 
   saveSettings(moduleRef: string, body: ModuleSettingsRequest): Promise<unknown> {

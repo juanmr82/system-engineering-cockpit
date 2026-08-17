@@ -64,7 +64,9 @@ public fun Route.moduleRoutes(
                 return@get call.respondModuleNotFound()
             }
             call.respond(
-                ModuleAttributesResponseDto(doorsProjection.getModuleAttributes(moduleId, access)),
+                ModuleAttributesResponseDto(
+                    attributes = doorsProjection.getModuleAttributes(moduleId, access),
+                ),
             )
         }
 

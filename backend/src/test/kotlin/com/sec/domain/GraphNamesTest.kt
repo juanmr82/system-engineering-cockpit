@@ -12,6 +12,7 @@ import com.sec.graph.cypher.ReviewCypher
 import com.sec.graph.cypher.StatisticsCypher
 import com.sec.graph.cypher.SystemCypher
 import com.sec.graph.cypher.TableCypher
+import com.sec.graph.cypher.UserCypher
 import com.sec.graph.cypher.WindchillCypher
 import com.sec.meta.MetaSchema
 import com.sec.security.AccessContainment
@@ -59,7 +60,7 @@ class GraphNamesTest {
     private val declaredLabels: Set<String> =
         setOf(
             NodeLabel.SE_ITEM, NodeLabel.UNDEFINED, NodeLabel.DELETED, NodeLabel.IMPORT_RUN,
-            NodeLabel.GROUP, NodeLabel.ACCESS_DEFAULT,
+            NodeLabel.GROUP, NodeLabel.ACCESS_DEFAULT, NodeLabel.USER,
         ) + NodeLabel.meta + DoorsLabel.all + JiraLabel.all + WindchillLabel.all
 
     private val declaredRelationships: Set<String> = setOf(
@@ -103,7 +104,7 @@ class GraphNamesTest {
         add(
             "ModuleCypher",
             ModuleCypher.LIST_MODULES, ModuleCypher.MODULE_DETAIL, ModuleCypher.DISCOVER_ATTRIBUTES,
-            ModuleCypher.EXISTING_MANDATORY_POLICIES, ModuleCypher.MODULE_OBJECT_IDS,
+            ModuleCypher.EXISTING_MANDATORY_POLICIES,
             ModuleCypher.MODULE_EXISTS, ModuleCypher.SET_SYSTEM_LEVEL, ModuleCypher.CLEAR_SYSTEM_LEVEL,
             ModuleCypher.ADD_MANDATORY_POLICIES, ModuleCypher.REMOVE_MANDATORY_POLICIES,
         )
@@ -111,10 +112,12 @@ class GraphNamesTest {
             "ReviewCypher",
             ReviewCypher.MODULE_OBJECTS, ReviewCypher.MANDATORY_POLICIES, ReviewCypher.MODULE_NAMES,
             ReviewCypher.COUNT_MODULE_OBJECTS, ReviewCypher.ITEM_DETAIL, ReviewCypher.ITEM_TRACES_OUT,
-            ReviewCypher.ITEM_TRACES_IN, ReviewCypher.UPSERT_COMMENTS, ReviewCypher.DELETE_COMMENTS,
-            ReviewCypher.READ_COMMENTS, ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS,
+            ReviewCypher.ITEM_TRACES_IN, ReviewCypher.READ_THREAD_ROOT, ReviewCypher.CREATE_NOTE,
+            ReviewCypher.READ_ANNOTATIONS, ReviewCypher.RESOLVE_NOTE, ReviewCypher.DELETE_NOTE,
+            ReviewCypher.EXISTING_ATTRIBUTE_SETTINGS,
             ReviewCypher.UPSERT_ATTRIBUTE_SETTINGS, ReviewCypher.DELETE_ATTRIBUTE_SETTINGS,
         )
+        add("UserCypher", UserCypher.UPSERT)
         add(
             "StatisticsCypher",
             StatisticsCypher.MODULES_IN_SCOPE, StatisticsCypher.MODULE_OBJECTS,

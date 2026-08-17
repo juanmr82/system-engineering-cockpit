@@ -1,8 +1,10 @@
 package com.sec
 
 import com.sec.config.Neo4jSettings
+import com.sec.domain.DeleteThreadOutcome
+import com.sec.domain.PostNoteOutcome
 import com.sec.domain.Ref
-import com.sec.domain.SaveCommentsOutcome
+import com.sec.domain.ResolveThreadOutcome
 import com.sec.domain.SaveModuleSettingsOutcome
 import com.sec.domain.SystemLevelChange
 import com.sec.graph.GraphDriver
@@ -201,76 +203,154 @@ class ReviewFeatureTest {
         assertFalse(reviewProjection.getTraces("obj-2", incoming = true, access = seesAll).complete)
     }
 
-    // Criteria 5 and 7: one transaction, and the anchor node is byte-identical across the write.
+    // R2's byte-identical guarantee: posting a thread never touches the anchor it hangs off.
     @Test
-    fun `saving comments writes notes without touching the objects they hang off`() = runBlocking {
+    fun `posting a note writes it without touching the object it hangs off`() = runBlocking {
         val before = rawProperties("obj-1")
 
-        val outcome = metaWriter.saveComments(
-            moduleId,
-            listOf(
-                MetaWriter.CommentEditInput("obj-1", "Needs a rationale"),
-                MetaWriter.CommentEditInput("obj-2", "Agreed at review"),
-            ),
-            access = seesAll,
-        )
-        val saved = assertIs<SaveCommentsOutcome.Saved>(outcome)
-        assertEquals(2, saved.comments.count { it.metaId != null })
+        val outcome = metaWriter.postNote("obj-1", "Needs a rationale", seesAll, authorSub = "reviewer-1")
+        val posted = assertIs<PostNoteOutcome.Posted>(outcome)
+        assertEquals("Needs a rationale", posted.note.text)
+        assertNull(posted.note.replyTo)
+        assertEquals(false, posted.note.resolved)
 
         assertEquals(before, rawProperties("obj-1"))
 
         val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }
-        assertEquals("Needs a rationale", row.comment?.text)
-        assertNotNull(row.comment?.metaId)
+        assertEquals(1, row.thread?.count)
+        assertEquals(false, row.thread?.resolved)
     }
 
-    // §5.2: exactly one comment per object. Editing must update the node, never add a second.
+    // docs/req-review-comment-threads.md §2.1: one thread per item. The first post creates the
+    // root; every post after it is a reply to that same root, never a second root.
     @Test
-    fun `editing a comment updates the same node and keeps its identity`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "First")), access = seesAll)
-        val original = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
+    fun `a second post on the same item becomes a reply, not a second root`() = runBlocking {
+        val root = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-3", "First", seesAll, authorSub = "reviewer-1"),
+        ).note
+        val reply = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-3", "Second", seesAll, authorSub = "reviewer-2"),
+        ).note
 
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-3", "Second")), access = seesAll)
-        val edited = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }.comment
+        assertNull(root.replyTo)
+        assertEquals(root.metaId, reply.replyTo)
+        assertEquals(false, root.resolved)
+        assertNull(reply.resolved, "a reply carries no resolved state of its own")
 
-        assertEquals("Second", edited?.text)
-        assertEquals(original?.metaId, edited?.metaId)
+        val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-3" }
+        assertEquals(2, row.thread?.count)
+        assertEquals(Ref.encode(root.metaId), row.thread?.rootRef)
 
-        val noteCount = graphDriver.executeRead(
+        val rootCount = graphDriver.executeRead(
             Query(
-                "CYPHER 25 MATCH (:SEItem {__id: 'obj-3'})-[:__noteOn]->(n:__Note) RETURN count(n) AS c",
+                "CYPHER 25 MATCH (:SEItem {__id: 'obj-3'})-[:__noteOn]->(n:__Note) " +
+                    "WHERE n.replyTo IS NULL RETURN count(n) AS c",
                 emptyMap(),
             ),
         ) { it.single().get("c").asInt() }
-        assertEquals(1, noteCount)
+        assertEquals(1, rootCount, "a second post must not create a second root")
     }
 
-    // Criterion 8: clearing a comment removes the node rather than storing an empty string.
+    // The Comment column's compact chip shows who is in a thread without a reviewer opening it
+    // (§5 redesign) — distinct authors only, no duplicate when the same person posts twice.
     @Test
-    fun `clearing a comment deletes its node`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "Temporary")), access = seesAll)
-        assertNotNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
+    fun `the thread summary names its distinct participants`() = runBlocking {
+        metaWriter.postNote("obj-1", "First", seesAll, authorSub = "reviewer-1")
+        metaWriter.postNote("obj-1", "Second", seesAll, authorSub = "reviewer-2")
+        metaWriter.postNote("obj-1", "Third", seesAll, authorSub = "reviewer-1")
 
-        val outcome = metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-4", "   ")), access = seesAll)
+        val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }
+        // No :User node exists for either sub in this test, so each falls back to its raw sub (O3)
+        // — which is enough to prove the list is deduplicated rather than one entry per note.
+        assertEquals(setOf("reviewer-1", "reviewer-2"), row.thread?.participants?.toSet())
+        assertEquals(2, row.thread?.participants?.size)
+    }
 
-        assertNull(assertIs<SaveCommentsOutcome.Saved>(outcome).comments.single().metaId)
-        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-4" }.comment)
+    // The root's own resolve toggle; a reply has none of its own to toggle.
+    @Test
+    fun `resolving a thread sets the root, and a reply's ref cannot be resolved`() = runBlocking {
+        val root = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-1", "Needs a rationale", seesAll, authorSub = "reviewer-1"),
+        ).note
+        val reply = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-1", "Done", seesAll, authorSub = "reviewer-2"),
+        ).note
+
+        val resolved = assertIs<ResolveThreadOutcome.Resolved>(
+            metaWriter.resolveThread(root.metaId, resolved = true, seesAll, authorSub = "reviewer-2"),
+        )
+        assertEquals(true, resolved.note.resolved)
+        assertEquals(
+            true,
+            reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }.thread?.resolved,
+        )
+
+        assertEquals(
+            ResolveThreadOutcome.NotFound,
+            metaWriter.resolveThread(reply.metaId, resolved = true, seesAll, authorSub = "reviewer-2"),
+        )
+    }
+
+    // Deleting the root cascades to every reply; deleting a lone reply removes only itself
+    // (docs/req-review-comment-threads.md §2.1 — the same generic statement handles both shapes).
+    @Test
+    fun `deleting a thread cascades to its replies, and deleting a reply removes only itself`() = runBlocking {
+        val root = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-2", "First", seesAll, authorSub = "reviewer-1"),
+        ).note
+        val reply = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-2", "Second", seesAll, authorSub = "reviewer-2"),
+        ).note
+
+        assertEquals(DeleteThreadOutcome.Deleted, metaWriter.deleteThread(reply.metaId, seesAll))
+        assertEquals(
+            1,
+            reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-2" }.thread?.count,
+        )
+
+        assertEquals(DeleteThreadOutcome.Deleted, metaWriter.deleteThread(root.metaId, seesAll))
+        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-2" }.thread)
+
+        assertEquals(DeleteThreadOutcome.NotFound, metaWriter.deleteThread(root.metaId, seesAll))
     }
 
     // An arbitrary __id in the body must not be able to attach a note to any node in the graph.
     @Test
-    fun `a comment on an object outside the module is refused, and nothing is written`() = runBlocking {
-        val outcome = metaWriter.saveComments(
-            moduleId,
-            listOf(MetaWriter.CommentEditInput("missing-1", "Should not be stored")),
-            access = seesAll,
-        )
+    fun `a comment on an object that does not exist is refused, and nothing is written`() = runBlocking {
+        val outcome = metaWriter.postNote("missing-item", "Should not be stored", seesAll, authorSub = "reviewer-1")
 
-        assertEquals(SaveCommentsOutcome.UnknownItems(listOf("missing-1")), outcome)
+        assertEquals(PostNoteOutcome.ItemNotFound, outcome)
         val notes = graphDriver.executeRead(
-            Query("CYPHER 25 MATCH (:SEItem {__id: 'missing-1'})-[:__noteOn]->(n) RETURN count(n) AS c", emptyMap()),
+            Query("CYPHER 25 MATCH (:SEItem {__id: 'missing-item'})-[:__noteOn]->(n) RETURN count(n) AS c", emptyMap()),
         ) { it.single().get("c").asInt() }
         assertEquals(0, notes)
+    }
+
+    /**
+     * R2's other Tier-2 guarantee: a re-import must not disturb a thread. Simulated the way the
+     * importer actually writes — `MERGE … SET n += props` on the same `__id` — rather than by
+     * invoking the Python importer, which this Kotlin suite cannot run (CLAUDE.md §1).
+     */
+    @Test
+    fun `a thread survives a re-import of the object it hangs off`() = runBlocking {
+        val posted = assertIs<PostNoteOutcome.Posted>(
+            metaWriter.postNote("obj-1", "Still needs a rationale", seesAll, authorSub = "reviewer-1"),
+        ).note
+
+        graphDriver.executeWrite(
+            Query(
+                """
+                CYPHER 25
+                MERGE (n:SEItem {__id: 'obj-1'})
+                SET n += ${'$'}props
+                """.trimIndent(),
+                mapOf("props" to rawProperties("obj-1")),
+            ),
+        ) { }
+
+        val row = reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }
+        assertEquals(Ref.encode(posted.metaId), row.thread?.rootRef)
+        assertEquals(1, row.thread?.count)
     }
 
     // Criterion 4: mandatory set through the review dialog is the *same* :__Policy the Modules
@@ -491,7 +571,7 @@ class ReviewFeatureTest {
     // Criterion 8, second half: one query removes everything the app knows and nothing else.
     @Test
     fun `deleting all meta removes comments and attribute settings, leaving imported data intact`() = runBlocking {
-        metaWriter.saveComments(moduleId, listOf(MetaWriter.CommentEditInput("obj-1", "A comment")), access = seesAll)
+        metaWriter.postNote("obj-1", "A comment", seesAll, authorSub = "reviewer-1")
         metaWriter.saveModuleSettings(
             moduleId = moduleId,
             systemLevel = SystemLevelChange.Unchanged,
@@ -506,7 +586,7 @@ class ReviewFeatureTest {
 
         assertEquals(before, rawProperties("obj-1"))
         assertEquals(4, reviewProjection.getModuleObjects(moduleId, seesAll).total)
-        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }.comment)
+        assertNull(reviewProjection.getModuleObjects(moduleId, seesAll).rows.first { it.id == "SRD-1" }.thread)
         val attributes = doorsProjection.getModuleAttributes(moduleId, access = seesAll).associateBy { it.name }
         assertFalse(attributes.getValue("Object Text").visible)
         assertFalse(attributes.getValue("Object Text").mandatory)

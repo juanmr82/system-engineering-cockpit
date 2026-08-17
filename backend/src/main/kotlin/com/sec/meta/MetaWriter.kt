@@ -1,12 +1,14 @@
 package com.sec.meta
 
-import com.sec.domain.SaveCommentsOutcome
+import com.sec.domain.DeleteThreadOutcome
+import com.sec.domain.PostNoteOutcome
+import com.sec.domain.ResolveThreadOutcome
 import com.sec.domain.SaveModuleSettingsOutcome
 import com.sec.domain.SaveSystemLevelsOutcome
-import com.sec.domain.SavedComment
 import com.sec.domain.SavedSystemLevel
 import com.sec.domain.SystemLevel
 import com.sec.domain.SystemLevelChange
+import com.sec.domain.ThreadNote
 import com.sec.domain.UuidV7
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.ModuleCypher
@@ -17,6 +19,7 @@ import com.sec.security.AccessSet
 import com.sec.security.CurrentUser
 import com.sec.source.doors.DoorsProjection
 import org.neo4j.driver.Query
+import org.neo4j.driver.Record
 import java.time.Instant
 
 // The single guarded write path for Tier-2 data (CLAUDE.md R2). Every write that touches
@@ -24,21 +27,23 @@ import java.time.Instant
 // enforced in this one place, not per route. Expected failures are a sealed result, not an
 // exception (CLAUDE.md §11).
 //
-// Several feature-shaped endpoints reach this class (module settings, review settings, the batch
-// comment save). That is deliberate and is what CLAUDE.md §5 allows: a dialog or a table save is
-// one transaction, not N annotation calls. One meta write path, however many endpoints reach it.
+// Several feature-shaped endpoints reach this class (module settings, review settings, comment
+// threads). That is deliberate and is what CLAUDE.md §5 allows: a dialog save is one transaction,
+// not N annotation calls, and a thread reply is its own one-gesture-one-request write (R7's
+// ordinary rule, now that docs/req-review-comment-threads.md has retired the old batch exception).
+// One meta write path, however many endpoints reach it.
 //
 // Every public method takes an AccessSet, and it is not decoration. Each one already answers
-// "does this module exist" through DoorsProjection.moduleExists before it writes, and that read is
-// filtered — so a module this caller cannot see is ModuleNotFound here for the same reason it is a
-// 404 on the read side. Without it the container would 404 on read and accept a write, which is
-// worse than either behaviour on its own. This is a deliberate, bounded pull-forward of phase 5's
-// anchor guard (docs/features/access-control.md §15): it closes the *container* case only. Phase 5
-// widens it to each individual anchor an edit names.
+// "does this module (or item) exist" through a filtered read before it writes — so an anchor this
+// caller cannot see is NotFound here for the same reason it is a 404 on the read side. Without it
+// the anchor would 404 on read and accept a write, which is worse than either behaviour on its
+// own. This is a deliberate, bounded pull-forward of phase 5's anchor guard
+// (docs/features/access-control.md §15): it closes the *container* case only. Phase 5 widens it to
+// each individual anchor an edit names.
 //
-// The same set is threaded into `discoverAttributeNames` and `objectsOfModule`, the two reads that
-// decide whether a request's attribute names and item ids are ones the caller was entitled to have
-// seen — an unfiltered read there would answer a question about objects the caller cannot see.
+// The same set is threaded into `discoverAttributeNames`, the read that decides whether a
+// request's attribute names are ones the caller was entitled to have seen — an unfiltered read
+// there would answer a question about objects the caller cannot see.
 public class MetaWriter(
     private val graphDriver: GraphDriver,
     private val doorsProjection: DoorsProjection,
@@ -97,14 +102,13 @@ public class MetaWriter(
      * The Modules table's save icon: every changed system level, one transaction
      * (`docs/features/requirements-modules.md`).
      *
-     * Spans modules rather than the objects of one module, which is the only structural difference
-     * from `saveComments`. Everything else matches deliberately: one gesture, one request, one
-     * transaction, and the stored values echoed back so the table clears its dirty marks without a
-     * reload.
+     * Spans modules rather than one dialog's own anchor, which is the only structural difference
+     * from `saveModuleSettings`. Everything else matches deliberately: one gesture, one request,
+     * one transaction, and the stored values echoed back so the table clears its dirty marks
+     * without a reload.
      *
      * A client may only classify a module the list actually returned. Without that check an
-     * arbitrary `__id` in the body would attach a classification to any node in the graph — the
-     * same hole `saveComments` closes for items.
+     * arbitrary `__id` in the body would attach a classification to any node in the graph.
      */
     public suspend fun saveSystemLevels(
         edits: List<SystemLevelEditInput>,
@@ -138,93 +142,95 @@ public class MetaWriter(
     }
 
     /**
-     * The review table's save icon: every dirty comment for one module, one transaction
-     * (docs/REQ_REVIEW.md §5.2). Partial success is impossible — either all of them are written
-     * or none is and the reviewer's edits stay on screen.
+     * Post one message to an item's thread — its own request, its own transaction, the R7
+     * *ordinary* rule now that every reply saves itself (`docs/req-review-comment-threads.md` §1).
+     *
+     * Server-decided, not client-decided, whether this becomes the root or a reply: the first post
+     * on an item creates its thread's root, and this is what enforces "one thread per item" the way
+     * the old single-note write enforced "one note per item" — a `MERGE` on the relationship there,
+     * a read-then-branch here, because there are two different shapes to create depending on the
+     * answer rather than one node to reuse.
      */
-    public suspend fun saveComments(
-        moduleId: String,
-        edits: List<CommentEditInput>,
+    public suspend fun postNote(
+        itemId: String,
+        text: String,
         access: AccessSet,
-        user: String = CurrentUser.PLACEHOLDER,
-    ): SaveCommentsOutcome {
-        if (!doorsProjection.moduleExists(moduleId, access)) {
-            return SaveCommentsOutcome.ModuleNotFound
+        authorSub: String,
+    ): PostNoteOutcome {
+        val rootRows = graphDriver.executeRead(
+            ReviewCypher.READ_THREAD_ROOT, mapOf("itemId" to itemId), access,
+        ) { records -> records.map { it.get("rootMetaId").asString(null) } }
+        // Empty means the item itself does not match — not found, or not visible, which R8 asks to
+        // look the same either way. A single row with a null value means the item is fine and simply
+        // has no thread yet, which is not the same outcome at all.
+        if (rootRows.isEmpty()) {
+            return PostNoteOutcome.ItemNotFound
         }
+        val existingRoot = rootRows.single()
+        val metaId = UuidV7.generate()
 
-        // A client may only comment on objects of the module it loaded. Without this an arbitrary
-        // __id in the body would attach a note to any node in the graph.
-        val itemIds = edits.map { it.itemId }
-        val known = itemIds.takeIf { it.isNotEmpty() }
-            ?.let { objectsOfModule(moduleId, it, access) } ?: emptySet()
-        val unknown = itemIds.filterNot { it in known }.distinct()
-        if (unknown.isNotEmpty()) {
-            return SaveCommentsOutcome.UnknownItems(unknown)
-        }
-
-        val (cleared, written) = edits.partition { it.text.isBlank() }
-        val now = Instant.now().toString()
-
-        val queries = buildList {
-            if (written.isNotEmpty()) {
-                val rows = written.map {
-                    mapOf("itemId" to it.itemId, "text" to it.text, "metaId" to UuidV7.generate())
-                }
-                add(Query(ReviewCypher.UPSERT_COMMENTS, mapOf("comments" to rows, "user" to user, "now" to now)))
-            }
-            if (cleared.isNotEmpty()) {
-                add(Query(ReviewCypher.DELETE_COMMENTS, mapOf("itemIds" to cleared.map { it.itemId })))
-            }
-        }
-
-        if (queries.isNotEmpty()) {
-            graphDriver.executeWrite(queries, access)
-        }
-
-        // Read back what was stored rather than echoing what was asked for: the server decides,
-        // and this is what lets the table clear its dirty marks without reloading (§8).
-        val stored = readComments(written.map { it.itemId }, access)
-        return SaveCommentsOutcome.Saved(
-            comments = edits.map { edit ->
-                stored[edit.itemId] ?: SavedComment(edit.itemId, metaId = null, text = null, updatedAt = null)
-            },
-        )
+        val note = graphDriver.executeWrite(
+            ReviewCypher.CREATE_NOTE,
+            mapOf(
+                "itemId" to itemId,
+                "metaId" to metaId,
+                "text" to text,
+                "user" to authorSub,
+                "now" to Instant.now().toString(),
+                "replyTo" to existingRoot,
+                "extra" to if (existingRoot == null) mapOf("resolved" to false) else emptyMap<String, Any>(),
+            ),
+            access,
+        ) { records -> records.single().toThreadNote() }
+        return PostNoteOutcome.Posted(note)
     }
+
+    /** Root only (`docs/req-review-comment-threads.md` §2.1) — resolving a reply's ref is a 404. */
+    public suspend fun resolveThread(
+        metaId: String,
+        resolved: Boolean,
+        access: AccessSet,
+        authorSub: String,
+    ): ResolveThreadOutcome {
+        val note = graphDriver.executeWrite(
+            ReviewCypher.RESOLVE_NOTE,
+            mapOf("metaId" to metaId, "resolved" to resolved, "user" to authorSub, "now" to Instant.now().toString()),
+            access,
+        ) { records -> records.singleOrNull()?.toThreadNote() }
+        return note?.let(ResolveThreadOutcome::Resolved) ?: ResolveThreadOutcome.NotFound
+    }
+
+    /**
+     * Deletes one thread (its root and every reply) or one lone reply — [ReviewCypher.DELETE_NOTE]
+     * decides which by whether `metaId` names a root, so this needs no branch of its own.
+     */
+    public suspend fun deleteThread(metaId: String, access: AccessSet): DeleteThreadOutcome {
+        val deleted = graphDriver.executeWrite(
+            ReviewCypher.DELETE_NOTE, mapOf("metaId" to metaId), access,
+        ) { records -> records.isNotEmpty() }
+        return if (deleted) DeleteThreadOutcome.Deleted else DeleteThreadOutcome.NotFound
+    }
+
+    /** Every note on one item, root first then chronologically (`ReviewCypher.READ_ANNOTATIONS`). */
+    public suspend fun listAnnotations(itemId: String, access: AccessSet): List<ThreadNote> =
+        graphDriver.executeRead(
+            ReviewCypher.READ_ANNOTATIONS, mapOf("itemId" to itemId), access,
+        ) { records -> records.map { it.toThreadNote() } }
 
     // --- Internals -------------------------------------------------------------------------------
 
-    private suspend fun objectsOfModule(
-        moduleId: String,
-        itemIds: List<String>,
-        access: AccessSet,
-    ): Set<String> =
-        graphDriver.executeRead(
-            ModuleCypher.MODULE_OBJECT_IDS,
-            mapOf("moduleUrl" to moduleId, "itemIds" to itemIds),
-            access,
-        ) { records -> records.map { it.get("id").asString() }.toSet() }
-
-    private suspend fun readComments(
-        itemIds: List<String>,
-        access: AccessSet,
-    ): Map<String, SavedComment> {
-        if (itemIds.isEmpty()) {
-            return emptyMap()
-        }
-        return graphDriver.executeRead(
-            ReviewCypher.READ_COMMENTS, mapOf("itemIds" to itemIds), access,
-        ) { records ->
-            records.associate { record ->
-                val itemId = record.get("ref").asString()
-                itemId to SavedComment(
-                    itemId = itemId,
-                    metaId = record.get("metaId").asString(null),
-                    text = record.get("text").asString(null),
-                    updatedAt = record.get("updatedAt").asString(null),
-                )
-            }
-        }
-    }
+    /** Shared by [postNote], [resolveThread], [listAnnotations] — every `ReviewCypher` note read
+     *  returns the same column shape. */
+    private fun Record.toThreadNote(): ThreadNote =
+        ThreadNote(
+            metaId = get("metaId").asString(),
+            text = get("text").asString(),
+            replyTo = get("replyTo").asString(null),
+            resolved = get("resolved").let { if (it.isNull) null else it.asBoolean() },
+            authorName = get("authorName").asString(),
+            createdAt = get("createdAt").asString(),
+            updatedAt = get("updatedAt").asString(),
+        )
 
     // Unchanged means the request said nothing about system level, so no statement is emitted at
     // all — a dialog that does not show the field must not be able to clear it (SystemLevelChange).
@@ -323,12 +329,6 @@ public class MetaWriter(
         public val visible: Boolean,
         public val verification: Boolean,
         public val excludedFromOpenPoints: Boolean,
-    )
-
-    /** One comment edit. A blank `text` means the reviewer cleared the box: delete the node. */
-    public data class CommentEditInput(
-        public val itemId: String,
-        public val text: String,
     )
 
     /** One system-level change. A null `code` means the user chose "Not set": delete the node. */

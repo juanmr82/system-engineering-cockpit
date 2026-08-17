@@ -58,3 +58,18 @@ public suspend fun <T> GraphDriver.executeAutocommit(query: Query, transform: (L
  */
 public suspend fun GraphDriver.executeWrite(queries: List<Query>, access: AccessSet): Unit =
     executeWrite(queries.map { Query(it.text(), it.parameters().asMap() + access.parameters()) })
+
+/**
+ * The write counterpart of `Read.kt`'s single-statement access-binding overload — for a write
+ * that also needs to read back the row it just wrote, in the same transaction, rather than a
+ * second round trip: `MetaWriter.postNote`/`resolveThread`/`deleteThread` all return the note
+ * their own write produced. The list overload above is for the multi-statement case and returns
+ * nothing, because R7's one-dialog-one-transaction writes never need a row back; this is for the
+ * single-statement case that does.
+ */
+public suspend fun <T> GraphDriver.executeWrite(
+    statement: String,
+    params: Map<String, Any?>,
+    access: AccessSet,
+    transform: (List<Record>) -> T,
+): T = executeWrite(Query(statement, params + access.parameters()), transform)

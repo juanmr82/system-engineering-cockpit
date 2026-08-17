@@ -22,6 +22,7 @@ import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
 import com.sec.security.Oidc
 import com.sec.security.SessionNames
+import com.sec.security.UserDirectory
 import com.sec.security.UserSession
 import com.sec.security.installSecSessions
 import com.sec.source.doors.BreakdownProjection
@@ -232,6 +233,9 @@ internal fun Application.configureApp(
     val breakdownProjection = BreakdownProjection(graphDriver, cardProjection)
     val dependencyGraphProjection = DependencyGraphProjection(graphDriver, cardProjection)
     val metaWriter = MetaWriter(graphDriver, doorsProjection)
+    // The :User display-name cache (docs/req-review-comment-threads.md §2.2) — not :__Meta, so it
+    // is written by its own small class rather than through metaWriter.
+    val userDirectory = UserDirectory(graphDriver)
     val statisticsProjection = StatisticsProjection(graphDriver)
     val tableProjection = DoorsTableProjection(graphDriver)
     // Takes the host because a row's `browseUrl` is derived from it on every read — JIRA's stored
@@ -312,6 +316,7 @@ internal fun Application.configureApp(
         navigationSettings,
         importRunService,
         oidc,
+        userDirectory,
         accessResolver,
         accessReconciler,
         accessAdminService,

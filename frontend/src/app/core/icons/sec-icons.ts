@@ -16,9 +16,13 @@ const SEC_ICONS = {
   alert: '/icons/alert.svg',
   gearbox: '/icons/gearbox.svg',
   'account-circle': '/icons/account-circle.svg',
+  'check-circle': '/icons/check-circle.svg',
   'chevron-down': '/icons/chevron-down.svg',
   close: '/icons/close.svg',
   collapse: '/icons/collapse.svg',
+  // A comment thread's own indicator (docs/req-review-comment-threads.md) — the review table's
+  // Comment column and the thread panel's own header.
+  comment: '/icons/comment.svg',
   expand: '/icons/expand.svg',
   // A hub with three spokes. Deliberately not a tree glyph: the breakdown tab next to it *is* a
   // tree, and the point of this view is that it is not one.
