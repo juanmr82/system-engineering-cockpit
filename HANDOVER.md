@@ -48,6 +48,43 @@ the build order (steps 8–11 build the screens, step 12 wires the routes).
 Verified: lint clean, **282/282** tests (up from 273 baseline), build green — run twice to confirm
 the deadlock fix actually eliminated the flakiness rather than masking it.
 
+### Step 8 (Categories screen) — done, commit `b9fb0aa`
+
+`features/access/categories/` — `AccessCategories` (the ag-grid list, columns Name/Key/
+Description/Any group/Objects/Groups/Actions) and `CategoryDialog` (create + rename, one dialog,
+modelled on `ModuleSettingsDialog`'s Signal Forms pattern). `key` is editable only in create mode
+and is never sent on the rename request — a read-only `.sec-field-readout` in edit mode. Delete
+pre-empts the 409 using the row's own `objectCount`/`groupCount` (already in hand from the list
+query) to build the `ConfirmDialog` message, but still attempts the delete on confirm either way;
+a real 409 is the TOCTOU backstop and surfaces as an inline error under the table, never lost.
+New `trash.svg` icon registered in `sec-icons.ts` — there was no delete/trash glyph before this.
+
+Extended `access.model.ts` (category DTOs) and `access-api.service.ts` (categories list +
+create/rename/delete) — this is the one shared HTTP client file for all four screens, per the
+plan; it grows with each one. **`AccessApiService.categories` now guards its request on
+`AuthStore.hasRole(Role.ACCESS_MANAGER)`**, matching `AccessBadgeService`'s own pattern — every
+`/access/*` route needs the role on the backend, so without this guard a screen's own role
+self-check (rendering `RefusalPanel` instead of content) would still leave the resource firing a
+wasted `403` underneath it. Found by a real test failure, not by inspection — worth checking
+this same guard exists when Grants/Unassigned/Defaults add their own `httpResource`s to this file.
+
+**Two more deadlock-trap variants found while writing these specs** (same family as step 7's,
+now three known shapes — worth reading before writing the next screen's spec):
+1. `httpResource.reload()` *schedules* a refetch, it does not issue one — the request is not
+   pending yet when `reload()` returns, so there is nothing to flush and nothing for
+   `whenStable()` to wait on either. `requirement-review.spec.ts`'s settings-save test already
+   names this and has the fix: `fixture.detectChanges(); await new Promise(r => setTimeout(r, 0));`
+   *then* `httpTesting.expectOne(...)`. Neither `settle()` nor `whenStable()` alone is enough.
+2. A component that injects a service *only* for its write methods (never reads the service's own
+   list resource) still constructs that resource as a side effect of injection. Fixed here by
+   giving the dialog's own spec a fake `AuthStore` whose `hasRole()` answers `false`, which (via
+   fix above) keeps the resource from ever requesting anything — cleaner than flushing a stray
+   request nobody in the test cares about.
+
+Verified: lint clean, **295/295** tests (up from 282), build green. Not wired into
+`app.routes.ts` yet (step 12) — the component compiles and is fully tested but is not reachable
+from the running app.
+
 | Step | Change | Commit |
 |---|---|---|
 | 4 (follow-up) | 7 docker-tagged `AccessAdminServiceTest` cases for `listDefaults`/`saveDefaults`/`summary` — the zero-graph `summary` case is what actually exercises `SUMMARY_COUNTS`'s `COUNT {}` rewrite, previously committed unverified | `b9e35e2` |
@@ -83,22 +120,29 @@ source file ever existed to explain it — worth a `clean` first if it reappears
 
 ### Resume here
 
-**Backend (steps 1–6) and frontend shell/guards (step 7) are both done.** What's left:
+**Backend (steps 1–6), frontend shell/guards (step 7) and the Categories screen (step 8) are all
+done.** What's left:
 
-1. **Steps 8–11, the four Access screens** — Categories, Grants (the per-row-save renderer is the
-   one genuinely novel piece), Unassigned (depends on Categories; exercises the summary badge),
-   Defaults. `features/access/access.model.ts` today only has `AccessSummary` — extend it with
-   each screen's own DTOs as it is built, mirroring `backend/.../api/dto/AccessDtos.kt` exactly
-   (already fully read this session, see the plan file for the shape-by-shape mapping).
-   `category-dialog.ts` should follow `module-settings-dialog.ts`'s Signal Forms pattern
-   (`form(signal(model))`, seed via `effect()`+`model.set()`) — read that file before starting,
-   it is the reference implementation the plan names explicitly.
-2. **Steps 12–13** — `app.routes.ts` wiring (four lazy routes under `/access/*`, matching how
+1. **Steps 9–11, the remaining three Access screens** — Grants (the per-row-save renderer is the
+   one genuinely novel piece: rows = groups from `AccessApiService`'s soon-to-exist `groups`
+   resource, columns = categories from the now-existing `categories` resource, built client-side
+   — the plan is explicit there is no server-built matrix), Unassigned (depends on Categories for
+   its multi-select; exercises the summary badge end-to-end once it can actually assign a
+   category), Defaults (ag-grid, not `mat-table` — it's a top-level page, not inside a dialog).
+   `access.model.ts`/`access-api.service.ts` grow with each one, mirroring
+   `backend/.../api/dto/AccessDtos.kt` exactly — already fully read this session; the plan file
+   has the shape-by-shape mapping if a fresh read is faster than re-deriving it.
+2. **Before writing the next screen's spec, read the "deadlock-trap variants" note above** (three
+   shapes found so far: `whenStable()` before a flush, `reload()` not being synchronous, and a
+   write-only service still constructing its own list resource). A fourth screen almost certainly
+   hits a fourth variant of the same family — the fix is always some combination of "flush before
+   awaiting" and "detectChanges() + a macrotask tick before expecting a scheduled request."
+3. **Step 12** — `app.routes.ts` wiring (four lazy routes under `/access/*`, matching how
    `jira/issues`+`jira/kids` are wired today — no new pattern), full
-   `npm run lint && npm test && npm run build`, then the manual acceptance pass as
-   `sec-dev-user`/`sec-dev-admin`: take a freshly imported module from invisible to visible using
-   only the Access UI.
-3. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
+   `npm run lint && npm test && npm run build`.
+4. **Step 13** — the manual acceptance pass as `sec-dev-user`/`sec-dev-admin`: take a freshly
+   imported module from invisible to visible using only the Access UI, on screen.
+5. **Testing plan items still open**: `VisibilityMatrixTest` extension proving `AccessAdminService`'s
    `invalidate()` calls close the phase-2 staleness gap live (no backend restart needed); the
    dedicated `AccessAcceptanceTest.kt` described in the plan's Testing section.
 
