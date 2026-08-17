@@ -1,0 +1,64 @@
+@use 'mixins' as sec;
+
+// The routed host is created by the router, so shell.scss cannot reach it — a view that fills the
+// height and scrolls internally has to say so itself (see sec.page-shell).
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-access-categories {
+  @include sec.page-shell;
+}
+
+.sec-access-categories__header {
+  flex: none;
+}
+
+.sec-access-categories__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-access-categories__title {
+  @include sec.view-title;
+}
+
+.sec-access-categories__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-access-categories__stats {
+  @include sec.stat-readout;
+}
+
+.sec-access-categories__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sec-access-categories__key-cell {
+  @include sec.mono;
+}
+
+// The table is the sheet in this view, styled the same way Modules' own table is (ADR 0006).
+.sec-access-categories__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-access-categories__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}

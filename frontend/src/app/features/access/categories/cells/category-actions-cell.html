@@ -1,0 +1,20 @@
+<span class="sec-category-actions-cell">
+  <button
+    mat-icon-button
+    type="button"
+    [attr.aria-label]="'Edit ' + name()"
+    matTooltip="Edit category"
+    (click)="edit()"
+  >
+    <mat-icon svgIcon="gearbox" />
+  </button>
+  <button
+    mat-icon-button
+    type="button"
+    [attr.aria-label]="'Delete ' + name()"
+    matTooltip="Delete category"
+    (click)="remove()"
+  >
+    <mat-icon svgIcon="trash" />
+  </button>
+</span>

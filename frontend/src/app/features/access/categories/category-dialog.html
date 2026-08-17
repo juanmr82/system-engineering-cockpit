@@ -1,0 +1,36 @@
+<h2 mat-dialog-title>{{ isEdit ? 'Edit category' : 'New category' }}</h2>
+
+<mat-dialog-content class="sec-category-dialog__content">
+  @if (data.category; as category) {
+    <div class="sec-field-readout">
+      <span class="sec-field-readout__label">Key</span>
+      <span class="sec-field-readout__value">{{ category.key }}</span>
+    </div>
+  } @else {
+    <mat-form-field appearance="outline">
+      <mat-label>Key</mat-label>
+      <input matInput [formField]="categoryForm.key" />
+    </mat-form-field>
+  }
+
+  <mat-form-field appearance="outline">
+    <mat-label>Name</mat-label>
+    <input matInput [formField]="categoryForm.name" />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Description</mat-label>
+    <textarea matInput rows="3" [formField]="categoryForm.description"></textarea>
+  </mat-form-field>
+
+  <mat-checkbox [formField]="categoryForm.everyGroup">Any group</mat-checkbox>
+
+  @if (saveError(); as message) {
+    <p class="sec-category-dialog__error" role="alert">{{ message }}</p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="!canSave()" (click)="save()">Save</button>
+</mat-dialog-actions>

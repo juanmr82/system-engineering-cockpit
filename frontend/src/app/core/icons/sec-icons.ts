@@ -31,6 +31,7 @@ const SEC_ICONS = {
   plus: '/icons/plus.svg',
   save: '/icons/save.svg',
   search: '/icons/search.svg',
+  trash: '/icons/trash.svg',
 } as const;
 
 // Use this in a template as <mat-icon svgIcon="gearbox" /> — the name is checked against the map.
