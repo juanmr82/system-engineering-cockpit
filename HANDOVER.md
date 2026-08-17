@@ -107,21 +107,92 @@ flushing both after the `setTimeout(0)` that lets the scheduled reloads actually
 - Committed as three commits on `feature/access-control`: the Keycloak realm-name fix, the
   `.gitignore` entry, and everything else in this entry together.
 
+**4. The Containers screen driven live, in Chrome, against the real backend/Neo4j/Keycloak — the
+one thing this session had left unit/component-tested only.** Backend and `ng serve` both
+restarted first, to pick up everything above (backend: `mvnw -f backend/pom.xml compile exec:java`
+with the `Backend` run config's own env; frontend: `npm run start`, killed and relaunched rather
+than trusted 13 hours stale).
+
+- **Edit, Clear, and the badge, all live**: clearing a DOORS Spec's category on Containers dropped
+  it from the row ("Not yet assigned"), and the sidenav's "Not assigned" badge updated to `1` with
+  no reload — same for re-assigning it back from the Unassigned queue. Editing an already-granted
+  container (Avionics (dev) → Thermal (dev), one step, no clear-first) worked exactly as designed.
+- **One real bug found live, not by inspection, and fixed**: `AccessContainers.save()` reloaded
+  its own resource and the badge, but not `unassignedContainers` — and `AccessUnassigned.assign()`
+  had the same gap in reverse, not reloading `containers`. A write on either screen left the
+  *other* one's cached `httpResource` stale until a hard reload. Fixed both directions; regression
+  coverage added to both specs (flushing the now-expected second reload).
+- **A real caching artifact, diagnosed and not a bug**: mid-session the sidenav briefly stopped
+  showing "Containers" at all. Root cause: `GET /api/v1/config/navigation`'s `Cache-Control:
+  max-age=3600` (pre-existing, matches `/system-levels`) — the browser profile had a cached
+  pre-change response. Confirmed via a `{cache:'no-store'}` fetch returning the correct 5-item
+  list while a normal fetch returned the stale 4-item one. Resolved itself once the session
+  expired and the user signed back in (a fresh document load past the cache's freshness window).
+  Nothing to fix; worth knowing this endpoint can go stale in a long-lived tab for up to an hour
+  after a nav-config change ships.
+- **The core R8 acceptance line, proven with two real identities**: cleared "Something
+  Specification"'s only category as `sec-dev-admin` (who has `seesAll` via `/SEC/All-Read` and so
+  cannot be used to test this alone), then the user signed out and back in as `sec-dev-user`
+  (`/SEC/Thermal`, no `seesAll`) — Requirements → Modules dropped from 3 rows to 2, "Something
+  Specification" gone entirely, not greyed out or stubbed. Confirms the whole loop: a grant
+  changed through the new screen propagates with no restart and a differently-scoped real user
+  immediately loses exactly that visibility.
+- **Session expiry mid-test, worth knowing about**: after ~10+ minutes of testing plus the backend
+  restart, the browser session expired mid-write and correctly 401'd → redirected to Keycloak's
+  login (frontend/CLAUDE.md's own "401 navigates" rule, working as designed). Signing back in is a
+  credential-entry action, so it had to be handed to the user rather than done by the agent
+  driving the browser — worth remembering this will happen again on any sufficiently long on-screen
+  pass.
+- **`/SEC/Avionics` is a real Keycloak group (`sec-realm.json`) with no members** — none of the
+  three dev accounts (`sec-dev-user`→`/SEC/Thermal`, `sec-dev-admin`→`/SEC/All-Read`,
+  `sec-dev-nogroup`→none) carry it, and `AccessResolver` only seeds a `:__Group` node once someone
+  with that claim actually signs in — so it never appears on the Grants screen. Not a bug; if a
+  fourth dev account is ever wanted for an Avionics-scoped test, it needs adding to
+  `sec-realm.json` and importing into the running Keycloak, or reusing an existing group's grants.
+
+**5. UI polish, found by looking closely at the screens above and fixed in a follow-up commit.**
+Three requests, all real:
+- **The sidenav's unassigned-count badge** sat right after the label text instead of pinned to the
+  row's trailing edge. Switched to Material's `matListItemTitle`/`matListItemMeta` slots — the
+  supported way to add trailing content to a `mat-list-item` — rather than fighting its internal
+  DOM (which frontend/CLAUDE.md already forbids reaching into) with our own CSS.
+- **Every right-aligned numeric column's header was wrong**, app-wide, not just in what this
+  session built: `type: 'rightAligned'` **replaces** `headerClass` rather than merging it with
+  `SEC_GRID_DEFAULT_COL_DEF`'s, so Categories' Objects/Groups and Unassigned's Invisible items all
+  silently lost `sec-grid__header-cell` — rendering in sentence case, unaligned, next to headers
+  that were upper-cased and right-aligned. This predates this session; nobody had looked closely
+  enough at a right-aligned column's header to notice. Fixed with two new modifier classes in
+  `_grid.scss` (`sec-grid__header-cell--right`, `sec-grid__cell--right`), applied explicitly
+  alongside the base classes everywhere `type: 'rightAligned'` used to be the whole colDef.
+- **Source columns showed the raw `sourceId`** (`doors`, `jira`) verbatim on Unassigned, Containers
+  and Defaults. New `shared/text/source-label.ts` maps them to how the app already spells these
+  sources elsewhere (DOORS, JIRA, Windchill) — a small map, not an R5 `Aliases.kt` entry, since
+  `sourceId` sits outside the `__` namespace that rule governs.
+
+Verified again after this commit: lint clean, **329/329**, build green, and all three fixes
+re-confirmed live in the same browser session.
+
 ### Resume here
 
-Phase 6 is code-complete and its acceptance pass (§15.3) already ran clean in session 34. What
-remains, in order of what was already known before this session:
+Phase 6 is code-complete and its acceptance pass (§15.3) has now run clean twice — session 34
+against real DOORS data, this session against the new Containers screen plus a real two-identity
+visibility check. Nothing found this session is still open; what remains is everything §15's table
+already named as not started:
 
-1. Nothing new is blocking a merge from this session's own work — it is additive (a new read path,
-   a new screen, two new test files) and does not touch anything session 34 already verified on
-   screen. Worth a short second look at the new Containers screen live (`ng serve` + real
-   Neo4j/Keycloak) before merging, the same "acceptance answered by running the app" standard
-   session 34 held itself to for the rest of phase 6 — this session did not do that for the new
-   screen specifically, only unit/component-tested it.
+1. **Phase 7, "Hardening"** — not begun. `sec-auditor` is declared (`Role.AUDITOR`,
+   `security/Roles.kt`) but gates nothing yet; there is no audit trail beyond the `__createdBy`/
+   `__updatedBy` pair every Tier-2 write already carries; no IdP-brokering rehearsal; the final
+   `PROFILE` re-measurement against ADR 0016's phase-2 baseline hasn't been re-run with every phase
+   in place; `docs/RUNNING.md` doesn't mention access control yet.
 2. Machine-auth for `POST /access/reconcile` and the DOORS-upload feature that would retire it
    remain exactly where session 32 parked them — still a separate, larger feature, still not
    started, still needing its own ADR before any code (`access-control.md` §15.3's "direction
    favoured" paragraph has the design reasoning already worked out).
+3. **Small, undecided**: this session's live testing left dev data (a couple of DOORS Specs'
+   categories) in whatever state the last click landed on — asked the user once about restoring it
+   and never got a confirmed answer before moving on to the polish work. Worth a two-second check
+   of `/access/containers` before anyone relies on the dev environment's current grants meaning
+   anything.
 
 ## State as of 2026-08-17 (session 34) — phase 6's manual acceptance pass (step 13) is done; one real gap found while doing it
 
