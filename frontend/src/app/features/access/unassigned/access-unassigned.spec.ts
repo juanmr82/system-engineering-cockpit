@@ -77,12 +77,14 @@ describe('AccessUnassigned', () => {
     fixture.detectChanges();
 
     httpTesting.expectOne('/api/v1/access/containers?state=unassigned').flush({ containers });
-    // AccessApiService constructs categories/groups alongside unassignedContainers on injection,
-    // and AccessBadgeService (also injected here, for the post-assign sidenav refresh) fires its
-    // own summary request too — none of them are what this view reads directly, but every stray
-    // request still has to be answered here for verify() not to see it hanging.
+    // AccessApiService constructs categories/groups/defaults alongside unassignedContainers on
+    // injection, and AccessBadgeService (also injected here, for the post-assign sidenav
+    // refresh) fires its own summary request too — none of them are what this view reads
+    // directly, but every stray request still has to be answered here for verify() not to see
+    // it hanging.
     httpTesting.match('/api/v1/access/categories').forEach((request) => request.flush({ categories: [] }));
     httpTesting.match('/api/v1/access/groups').forEach((request) => request.flush({ groups: [] }));
+    httpTesting.match('/api/v1/access/defaults').forEach((request) => request.flush({ defaults: [] }));
     httpTesting
       .match('/api/v1/access/summary')
       .forEach((request) => request.flush({ categoryCount: 0, groupCount: 0, unassignedContainerCount: containers.length }));

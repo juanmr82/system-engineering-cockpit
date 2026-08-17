@@ -61,13 +61,14 @@ describe('AssignCategoriesDialog', () => {
     fixture.detectChanges();
 
     httpTesting.expectOne('/api/v1/access/categories').flush(categories);
-    // AccessApiService constructs groups/unassignedContainers alongside categories on injection;
-    // this dialog reads neither, so the stray requests have to be flushed here or verify() sees
-    // them hanging.
+    // AccessApiService constructs groups/unassignedContainers/defaults alongside categories on
+    // injection; this dialog reads none of them, so the stray requests have to be flushed here
+    // or verify() sees them hanging.
     httpTesting.match('/api/v1/access/groups').forEach((request) => request.flush({ groups: [] }));
     httpTesting
       .match('/api/v1/access/containers?state=unassigned')
       .forEach((request) => request.flush({ containers: [] }));
+    httpTesting.match('/api/v1/access/defaults').forEach((request) => request.flush({ defaults: [] }));
 
     await settle();
   }

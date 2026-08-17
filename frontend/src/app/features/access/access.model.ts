@@ -105,3 +105,23 @@ export interface AccessReconcileSource {
 export interface AccessReconcileResponse {
   readonly sources: AccessReconcileSource[];
 }
+
+/** One row of the Import defaults screen (spec §10.2 screen 4) — "new ‹source› ‹containers› are
+ *  visible to …". A null `categoryRef` is empty, the legitimate and default answer, not an
+ *  absent row: the full `(sourceId, containerLabel)` set is always present. */
+export interface AccessDefault {
+  readonly sourceId: string;
+  readonly containerLabel: string;
+  readonly categoryRef: string | null;
+}
+
+export interface AccessDefaultsResponse {
+  readonly defaults: AccessDefault[];
+}
+
+/** The WHOLE set, one transaction (R7) — every row goes back, changed or not, the same batch
+ *  shape Modules' own system-level save already uses for an identical "N rows, one editable
+ *  select each" grid. */
+export interface SaveAccessDefaultsRequest {
+  readonly defaults: AccessDefault[];
+}

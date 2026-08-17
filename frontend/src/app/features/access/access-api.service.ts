@@ -6,10 +6,12 @@ import { Role } from '../../core/auth/roles';
 import type {
   AccessCategory,
   AccessCategoryListResponse,
+  AccessDefaultsResponse,
   AccessReconcileResponse,
   CreateAccessCategoryRequest,
   GroupListResponse,
   GroupWithGrants,
+  SaveAccessDefaultsRequest,
   SaveDirectCategoriesRequest,
   SaveDirectCategoriesResponse,
   SaveGrantsRequest,
@@ -90,5 +92,15 @@ export class AccessApiService {
         null,
       ),
     );
+  }
+
+  // -- Import defaults (spec §10.2 screen 4) ---------------------------------------------------
+
+  readonly defaults = httpResource<AccessDefaultsResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/defaults' : undefined,
+  );
+
+  saveDefaults(body: SaveAccessDefaultsRequest): Promise<AccessDefaultsResponse> {
+    return firstValueFrom(this.http.put<AccessDefaultsResponse>('/api/v1/access/defaults', body));
   }
 }

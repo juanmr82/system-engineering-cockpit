@@ -1,0 +1,87 @@
+@use 'mixins' as sec;
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.sec-access-defaults {
+  @include sec.page-shell;
+}
+
+.sec-access-defaults__header {
+  flex: none;
+}
+
+.sec-access-defaults__eyebrow {
+  @include sec.eyebrow;
+}
+
+.sec-access-defaults__title {
+  @include sec.view-title;
+}
+
+.sec-access-defaults__bar {
+  @include sec.sticky-bar;
+
+  flex: none;
+}
+
+.sec-access-defaults__hint {
+  @include sec.absent-text;
+
+  color: var(--sec-ink-2);
+  margin: 0;
+  flex: 1;
+}
+
+.sec-access-defaults__action {
+  @include sec.compact-icon-button(20px, 34px);
+
+  position: relative;
+}
+
+.sec-access-defaults__action:not(:disabled) {
+  color: var(--sec-highlight-meta);
+}
+
+// The count of unsaved defaults — the same badge Modules' own save button wears while dirty.
+.sec-access-defaults__badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: var(--sec-radius);
+  background: var(--sec-highlight-meta);
+  color: var(--sec-paper);
+  font-size: var(--sec-text-micro);
+  font-weight: 700;
+  line-height: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sec-access-defaults__error {
+  @include sec.error-panel;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.sec-access-defaults__table-scroll {
+  @include sec.sheet(0);
+
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.sec-access-defaults__grid {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
