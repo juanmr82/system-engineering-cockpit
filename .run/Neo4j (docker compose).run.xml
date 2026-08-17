@@ -5,8 +5,8 @@
         <option name="envVars">
           <list>
             <DockerEnvVarImpl>
-              <option name="name" value="SEC_OIDC_CLIENT_SECRET" />
-              <option name="value" value="sec-backend-dev-secret" />
+              <option name="name" value="SEC_AUTH_FRONTEND_URL" />
+              <option name="value" value="http://localhost:4200" />
             </DockerEnvVarImpl>
             <DockerEnvVarImpl>
               <option name="name" value="SEC_NEO4J_PASSWORD" />
@@ -17,8 +17,12 @@
               <option name="value" value="neo4j" />
             </DockerEnvVarImpl>
             <DockerEnvVarImpl>
-              <option name="name" value="SEC_AUTH_FRONTEND_URL" />
-              <option name="value" value="http://localhost:4200" />
+              <option name="name" value="SEC_OIDC_CLIENT_SECRET" />
+              <option name="value" value="sec-backend-dev-secret" />
+            </DockerEnvVarImpl>
+            <DockerEnvVarImpl>
+              <option name="name" value="SEC_KEYCLOAK_ADMIN_PASSWORD" />
+              <option name="value" value="sec-keycloak-admin1234" />
             </DockerEnvVarImpl>
           </list>
         </option>
