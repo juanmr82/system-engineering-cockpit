@@ -8,13 +8,20 @@ import com.sec.api.dto.AccessCategoryListResponseDto
 import com.sec.api.dto.AccessReconcileResponseDto
 import com.sec.api.dto.AccessReconcileSourceDto
 import com.sec.api.dto.CreateAccessCategoryRequestDto
+import com.sec.api.dto.GroupListResponseDto
+import com.sec.api.dto.GroupWithGrantsDto
+import com.sec.api.dto.SaveGrantsRequestDto
+import com.sec.api.dto.SetSeesAllRequestDto
 import com.sec.api.dto.UpdateAccessCategoryRequestDto
 import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
 import com.sec.domain.AccessCategorySummary
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
+import com.sec.domain.GroupWithGrants
 import com.sec.domain.Ref
+import com.sec.domain.SaveGrantsOutcome
+import com.sec.domain.SetSeesAllOutcome
 import com.sec.domain.UpdateCategoryOutcome
 import com.sec.security.AccessAdminService
 import com.sec.security.AccessContainment
@@ -31,6 +38,7 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 
 /**
@@ -164,6 +172,63 @@ public fun Route.accessRoutes(reconciler: AccessReconciler, adminService: Access
                 }
             }
         }
+
+        route("/groups") {
+            get {
+                call.respond(GroupListResponseDto(adminService.listGroups().map { it.toDto() }))
+            }
+
+            // The whole grant set for this group, one transaction (R7) — never a delta.
+            put("/{ref}/grants") {
+                val groupKey = call.decodeRef() ?: return@put call.respondInvalidRef()
+                val principal = call.principal<SecPrincipal>()
+                    ?: error("${ApiPaths.ACCESS_GROUPS}/{ref}/grants ran without a principal despite the session guard")
+                val body = call.receive<SaveGrantsRequestDto>()
+
+                val malformed = body.categoryRefs.filter { Ref.decodeOrNull(it) == null }
+                if (malformed.isNotEmpty()) {
+                    return@put call.respondProblem(
+                        HttpStatusCode.BadRequest,
+                        "Invalid reference",
+                        "Some category references in this request are not readable. Reload and try again.",
+                        ProblemType.VALIDATION,
+                    )
+                }
+                val categoryIds = body.categoryRefs.mapNotNull { Ref.decodeOrNull(it) }
+
+                when (
+                    val outcome = adminService.saveGrants(groupKey, categoryIds, user = principal.auditName)
+                ) {
+                    is SaveGrantsOutcome.GroupNotFound -> call.respondGroupNotFound()
+
+                    is SaveGrantsOutcome.UnknownCategories ->
+                        call.respondProblem(
+                            HttpStatusCode.BadRequest,
+                            "Unknown category",
+                            "${outcome.categoryIds.size} of the categories in this request no longer exist. " +
+                                "Reload and try again.",
+                            ProblemType.VALIDATION,
+                        )
+
+                    is SaveGrantsOutcome.Saved -> call.respond(outcome.group.toDto())
+                }
+            }
+
+            // seesAll only — "audited loudly" (spec §9); AccessAdminService is what logs it.
+            patch("/{ref}") {
+                val groupKey = call.decodeRef() ?: return@patch call.respondInvalidRef()
+                val principal = call.principal<SecPrincipal>()
+                    ?: error("${ApiPaths.ACCESS_GROUPS}/{ref} ran without a principal despite the session guard")
+                val body = call.receive<SetSeesAllRequestDto>()
+
+                when (
+                    val outcome = adminService.setSeesAll(groupKey, body.seesAll, user = principal.auditName)
+                ) {
+                    is SetSeesAllOutcome.GroupNotFound -> call.respondGroupNotFound()
+                    is SetSeesAllOutcome.Updated -> call.respond(outcome.group.toDto())
+                }
+            }
+        }
     }
 }
 
@@ -177,5 +242,22 @@ private fun AccessCategorySummary.toDto(): AccessCategoryDto = AccessCategoryDto
     groupCount = groupCount,
 )
 
+private fun GroupWithGrants.toDto(): GroupWithGrantsDto = GroupWithGrantsDto(
+    ref = Ref.encode(key),
+    key = key,
+    name = name,
+    seesAll = seesAll,
+    categoryRefs = categoryIds.map { Ref.encode(it) },
+    firstSeenAt = firstSeenAt,
+    lastSeenAt = lastSeenAt,
+)
+
 private suspend fun ApplicationCall.respondCategoryNotFound(): Unit =
     respondProblem(HttpStatusCode.NotFound, "Category not found", "No access category for this reference.")
+
+private suspend fun ApplicationCall.respondGroupNotFound(): Unit =
+    respondProblem(
+        HttpStatusCode.NotFound,
+        "Group not found",
+        "No group for this reference — it may not have signed in yet.",
+    )

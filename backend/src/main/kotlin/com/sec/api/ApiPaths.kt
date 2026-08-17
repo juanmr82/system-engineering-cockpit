@@ -158,6 +158,13 @@ public object ApiPaths {
     public const val ACCESS_CATEGORIES: String = "$ACCESS/categories"
 
     /**
+     * The Grants screen (spec §10.2 screen 2): `GET` here, `PUT $ACCESS_GROUPS/{ref}/grants` (the
+     * whole grant set, one group, one transaction — R7) and `PATCH $ACCESS_GROUPS/{ref}` (`seesAll`
+     * only). `{ref}` is a group's `key`, not an `__id` — groups have no `__metaId` either.
+     */
+    public const val ACCESS_GROUPS: String = "$ACCESS/groups"
+
+    /**
      * `{ref}` is the base64url encoding of `__id` (R5) — an opaque handle, never the raw id, and
      * decoded in exactly one place by the route parameter converter.
      */

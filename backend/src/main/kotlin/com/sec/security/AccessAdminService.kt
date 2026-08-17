@@ -3,15 +3,21 @@ package com.sec.security
 import com.sec.domain.AccessCategorySummary
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
+import com.sec.domain.GroupWithGrants
+import com.sec.domain.SaveGrantsOutcome
+import com.sec.domain.SetSeesAllOutcome
 import com.sec.domain.UpdateCategoryOutcome
 import com.sec.domain.UuidV7
 import com.sec.graph.GraphDriver
 import com.sec.graph.cypher.AccessCypher
 import com.sec.graph.executeRead
 import com.sec.graph.executeWrite
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.neo4j.driver.Query
 import org.neo4j.driver.Record
 import java.time.Instant
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * The write path for categories, grants, containers and defaults (`docs/features/
@@ -135,6 +141,60 @@ public class AccessAdminService(
         return DeleteCategoryOutcome.Deleted
     }
 
+    // -- Groups & Grants (spec §9, §10.2 screen 2) ---------------------------------------------
+
+    public suspend fun listGroups(): List<GroupWithGrants> =
+        graphDriver.executeRead(Query(AccessCypher.GROUPS_WITH_GRANTS)) { records ->
+            records.map { it.toGroupWithGrants() }
+        }
+
+    public suspend fun saveGrants(groupKey: String, categoryIds: List<String>, user: String): SaveGrantsOutcome {
+        val groupExists = graphDriver.executeRead(
+            Query(AccessCypher.GROUP_EXISTS, mapOf("groupKey" to groupKey)),
+        ) { records -> records.single().get("n").asLong() > 0 }
+        if (!groupExists) {
+            return SaveGrantsOutcome.GroupNotFound
+        }
+
+        val unknown = graphDriver.executeRead(
+            Query(AccessCypher.UNKNOWN_CATEGORY_IDS, mapOf("categoryIds" to categoryIds)),
+        ) { records -> records.single().get("unknown").asList { it.asString() } }
+        if (unknown.isNotEmpty()) {
+            return SaveGrantsOutcome.UnknownCategories(unknown)
+        }
+
+        val now = Instant.now().toString()
+        graphDriver.executeWrite(
+            Query(
+                AccessCypher.REPLACE_GRANTS,
+                mapOf("groupKey" to groupKey, "categoryIds" to categoryIds, "user" to user, "now" to now),
+            ),
+        ) { }
+        accessResolver.invalidate()
+
+        val group = graphDriver.executeRead(
+            Query(AccessCypher.GROUP_WITH_GRANTS, mapOf("groupKey" to groupKey)),
+        ) { records -> records.single().toGroupWithGrants() }
+        return SaveGrantsOutcome.Saved(group)
+    }
+
+    /**
+     * "Audited loudly" (spec §9): `:__Group` carries no `__createdBy`/`__updatedBy` of its own
+     * (it is not `:__Meta`, ADR 0016 §6.2, so it has no audit props to set), so the log line below
+     * — at `WARN`, naming who and which group — is the whole of that loudness. [seesAll] is the
+     * one control that turns the entire feature off for a group (§10.2), which is why it gets a
+     * log level none of this class's other writes do.
+     */
+    public suspend fun setSeesAll(groupKey: String, seesAll: Boolean, user: String): SetSeesAllOutcome {
+        val group = graphDriver.executeWrite(
+            Query(AccessCypher.SET_SEES_ALL, mapOf("groupKey" to groupKey, "seesAll" to seesAll)),
+        ) { records -> records.firstOrNull()?.toGroupWithGrants() } ?: return SetSeesAllOutcome.GroupNotFound
+
+        logger.warn { "seesAll set to $seesAll for group '$groupKey' by '$user'" }
+        accessResolver.invalidate()
+        return SetSeesAllOutcome.Updated(group)
+    }
+
     private fun Record.toCategorySummary(): AccessCategorySummary = AccessCategorySummary(
         metaId = get("metaId").asString(),
         key = get("key").asString(),
@@ -143,5 +203,14 @@ public class AccessAdminService(
         everyGroup = get("everyGroup").asBoolean(false),
         objectCount = get("objectCount").asLong(0),
         groupCount = get("groupCount").asLong(0),
+    )
+
+    private fun Record.toGroupWithGrants(): GroupWithGrants = GroupWithGrants(
+        key = get("key").asString(),
+        name = get("name").asString(),
+        seesAll = get("seesAll").asBoolean(false),
+        categoryIds = get("categoryIds").asList { it.asString() },
+        firstSeenAt = get("firstSeenAt").asString(""),
+        lastSeenAt = get("lastSeenAt").asString(""),
     )
 }

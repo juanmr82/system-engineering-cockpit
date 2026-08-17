@@ -293,4 +293,100 @@ public object AccessCypher {
         DETACH DELETE c
         RETURN count(c) AS deleted
     """
+
+    // -- Groups & Grants (spec §9, §10.2 screen 2) — AccessAdminService, phase 6 ---------------
+
+    /**
+     * Every group ever seen, with its granted category ids and its `seesAll` flag — the Grants
+     * screen's rows (spec §9: "every `:__Group` ever seen, with its grants and seesAll"). The
+     * matrix itself is built client-side from this plus [CATEGORIES_WITH_COUNTS]; "saving is per
+     * row" (§10.2) is exactly why there is no server-built matrix shape to maintain.
+     *
+     * Neither `:__Group` nor `:__AccessCategory` is a filtered label, so this needs no exemption.
+     */
+    public val GROUPS_WITH_GRANTS: String = """
+        CYPHER 25
+        MATCH (g:$GROUP)
+        OPTIONAL MATCH (g)-[:$MAY_READ]->(cat:$ACCESS_CATEGORY)
+        RETURN g.$GROUP_KEY AS key, g.$GROUP_NAME AS name, g.$SEES_ALL AS seesAll,
+               g.$FIRST_SEEN_AT AS firstSeenAt, g.$LAST_SEEN_AT AS lastSeenAt,
+               collect(cat.$META_ID) AS categoryIds
+        ORDER BY g.$GROUP_NAME
+    """
+
+    /** One group, in the same shape [GROUPS_WITH_GRANTS] returns every row in — read back after
+     *  [REPLACE_GRANTS] so the caller echoes stored state rather than assumed state. */
+    public val GROUP_WITH_GRANTS: String = """
+        CYPHER 25
+        MATCH (g:$GROUP {$GROUP_KEY: ${'$'}groupKey})
+        OPTIONAL MATCH (g)-[:$MAY_READ]->(cat:$ACCESS_CATEGORY)
+        RETURN g.$GROUP_KEY AS key, g.$GROUP_NAME AS name, g.$SEES_ALL AS seesAll,
+               g.$FIRST_SEEN_AT AS firstSeenAt, g.$LAST_SEEN_AT AS lastSeenAt,
+               collect(cat.$META_ID) AS categoryIds
+    """
+
+    /**
+     * A group's `:__Group` node exists only once the resolver has seen it sign in at least once
+     * (§5 "Caching" — `RESOLVE_GROUPS`'s own `MERGE`), so this is the pre-check that turns "a group
+     * name typed by hand that nobody has signed in with yet" into a stated `GroupNotFound` rather
+     * than a write that silently touches nothing.
+     */
+    public val GROUP_EXISTS: String = """
+        CYPHER 25
+        MATCH (g:$GROUP {$GROUP_KEY: ${'$'}groupKey})
+        RETURN count(g) AS n
+    """
+
+    /**
+     * Which of the requested category ids do not exist — the same "may only reference what
+     * actually exists" discipline `MetaWriter`'s own writes apply to an arbitrary id in a request
+     * body. An empty `${'$'}categoryIds` (revoking every grant) still returns one row, `unknown: []`
+     * — `collect` is an aggregate and produces exactly one row over zero input rows.
+     */
+    public val UNKNOWN_CATEGORY_IDS: String = """
+        CYPHER 25
+        UNWIND ${'$'}categoryIds AS wanted
+        OPTIONAL MATCH (c:$ACCESS_CATEGORY {$META_ID: wanted})
+        WITH wanted, c
+        WHERE c IS NULL
+        RETURN collect(wanted) AS unknown
+    """
+
+    /**
+     * The whole grant set for one group, replaced in one transaction (R7): every grant not in
+     * `${'$'}categoryIds` is removed, every category in it is granted, and a grant already present
+     * is left untouched — `ON CREATE` only, so its own `__createdAt` never moves on a resave.
+     *
+     * Write-only, no `RETURN`: [GROUP_WITH_GRANTS] reads the result back afterward, the same
+     * write-then-read-back shape `MetaWriter.saveComments` already uses.
+     */
+    public val REPLACE_GRANTS: String = """
+        CYPHER 25
+        MATCH (g:$GROUP {$GROUP_KEY: ${'$'}groupKey})
+        OPTIONAL MATCH (g)-[r:$MAY_READ]->(cat:$ACCESS_CATEGORY)
+        WHERE NOT cat.$META_ID IN ${'$'}categoryIds
+        DELETE r
+        WITH DISTINCT g
+        UNWIND ${'$'}categoryIds AS wanted
+        MATCH (cat:$ACCESS_CATEGORY {$META_ID: wanted})
+        MERGE (g)-[r:$MAY_READ]->(cat)
+          ON CREATE SET r.$CREATED_BY = ${'$'}user, r.$CREATED_AT = ${'$'}now
+    """
+
+    /**
+     * `seesAll` only — "audited loudly" (spec §9), a deliberately separate write from
+     * [REPLACE_GRANTS] so the one control that bypasses grants entirely is never folded into an
+     * ordinary grant edit. Returns the group in [GROUPS_WITH_GRANTS]'s shape, same reasoning as
+     * [GROUP_WITH_GRANTS].
+     */
+    public val SET_SEES_ALL: String = """
+        CYPHER 25
+        MATCH (g:$GROUP {$GROUP_KEY: ${'$'}groupKey})
+        SET g.$SEES_ALL = ${'$'}seesAll
+        WITH g
+        OPTIONAL MATCH (g)-[:$MAY_READ]->(cat:$ACCESS_CATEGORY)
+        RETURN g.$GROUP_KEY AS key, g.$GROUP_NAME AS name, g.$SEES_ALL AS seesAll,
+               g.$FIRST_SEEN_AT AS firstSeenAt, g.$LAST_SEEN_AT AS lastSeenAt,
+               collect(cat.$META_ID) AS categoryIds
+    """
 }

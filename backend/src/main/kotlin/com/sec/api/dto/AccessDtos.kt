@@ -52,3 +52,32 @@ public data class UpdateAccessCategoryRequestDto(
     public val description: String? = null,
     public val everyGroup: Boolean? = null,
 )
+
+/** One row of the Grants screen's matrix (spec §10.2 screen 2). `ref` is `key`'s handle — a group
+ *  has no `__metaId`, so its natural key is what [com.sec.domain.Ref] encodes for it. */
+@Serializable
+public data class GroupWithGrantsDto(
+    public val ref: String,
+    public val key: String,
+    public val name: String,
+    public val seesAll: Boolean,
+    public val categoryRefs: List<String>,
+    public val firstSeenAt: String,
+    public val lastSeenAt: String,
+)
+
+@Serializable
+public data class GroupListResponseDto(
+    public val groups: List<GroupWithGrantsDto>,
+)
+
+/** The WHOLE grant set for one group, one transaction (R7) — never a delta. */
+@Serializable
+public data class SaveGrantsRequestDto(
+    public val categoryRefs: List<String>,
+)
+
+@Serializable
+public data class SetSeesAllRequestDto(
+    public val seesAll: Boolean,
+)

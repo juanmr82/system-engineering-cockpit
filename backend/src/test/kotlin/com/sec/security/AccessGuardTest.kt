@@ -145,6 +145,14 @@ class AccessGuardTest {
             AccessCypher.UPDATE_CATEGORY,
             AccessCypher.CATEGORY_USAGE_COUNTS,
             AccessCypher.DELETE_CATEGORY_IF_UNUSED,
+            // Groups & Grants (phase 6, §10.2 screen 2) — indices 17-22, none of which touch a
+            // filtered label (:__Group and :__AccessCategory are both outside filteredLabels).
+            AccessCypher.GROUPS_WITH_GRANTS,
+            AccessCypher.GROUP_WITH_GRANTS,
+            AccessCypher.GROUP_EXISTS,
+            AccessCypher.UNKNOWN_CATEGORY_IDS,
+            AccessCypher.REPLACE_GRANTS,
+            AccessCypher.SET_SEES_ALL,
         )
     }
 

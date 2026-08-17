@@ -177,6 +177,13 @@ class GraphNamesTest {
             AccessCypher.UPDATE_CATEGORY,
             AccessCypher.CATEGORY_USAGE_COUNTS,
             AccessCypher.DELETE_CATEGORY_IF_UNUSED,
+            // Groups & Grants (phase 6, §10.2 screen 2).
+            AccessCypher.GROUPS_WITH_GRANTS,
+            AccessCypher.GROUP_WITH_GRANTS,
+            AccessCypher.GROUP_EXISTS,
+            AccessCypher.UNKNOWN_CATEGORY_IDS,
+            AccessCypher.REPLACE_GRANTS,
+            AccessCypher.SET_SEES_ALL,
         )
     }
 
