@@ -12,6 +12,7 @@ import com.sec.api.routes.statisticsRoutes
 import com.sec.api.routes.tableRoutes
 import com.sec.api.routes.windchillRoutes
 import com.sec.config.JiraSettings
+import com.sec.config.NavigationSettings
 import com.sec.config.WindchillSettings
 import com.sec.graph.GraphDriver
 import com.sec.importer.ImportRunService
@@ -47,7 +48,6 @@ import io.ktor.server.routing.routing
 //   GET  /api/v1/tree
 //   GET  /api/v1/items/{ref}/children, /annotations
 //   POST /api/v1/items/{ref}/annotations, PATCH|DELETE /api/v1/annotations/{ref}
-//   GET  /api/v1/config/navigation
 //   GET  /api/v1/modules/{ref}/checks/attribute-policy
 //   POST /api/v1/cypher/explain, /api/v1/cypher/run   (docs/CYPHER_API_DESIGN.md)
 public fun Application.configureRouting(
@@ -78,6 +78,9 @@ public fun Application.configureRouting(
     windchillSettings: WindchillSettings,
     // Reads documents this graph already holds, so it answers whether or not a host is configured.
     windchillProjection: WindchillProjection,
+    // The sidenav's structure (CLAUDE.md §2 "Where a given piece of state lives") — read from
+    // application.yaml at startup, served read-only, never touched by a request.
+    navigationSettings: NavigationSettings,
     // Source-agnostic: it holds whichever importers were registered, and answers the same five
     // endpoints for each of them.
     importRunService: ImportRunService,
@@ -130,7 +133,7 @@ public fun Application.configureRouting(
             )
             statisticsRoutes(statisticsProjection, accessResolver)
             tableRoutes(doorsProjection, tableProjection, accessResolver)
-            configRoutes()
+            configRoutes(navigationSettings)
 
             // Two whole subtrees, guarded here rather than inside their own files, because every
             // route in each needs the same role — the import console is `/settings`-shaped in the

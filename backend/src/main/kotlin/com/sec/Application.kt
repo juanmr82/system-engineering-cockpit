@@ -7,6 +7,7 @@ import com.sec.config.AuthSettings
 import com.sec.config.ConfigArgs
 import com.sec.config.ImporterSettings
 import com.sec.config.JiraSettings
+import com.sec.config.NavigationSettings
 import com.sec.config.WindchillSettings
 import com.sec.config.loadAppConfig
 import com.sec.config.loadAuthSettings
@@ -127,6 +128,7 @@ public fun Application.module() {
         appConfig.jira,
         windchillSettings = appConfig.windchill,
         importerSettings = appConfig.importer,
+        navigationSettings = appConfig.navigation,
         importRunStore = importRunStore,
         oidc = oidc,
         accessReconciler = accessReconciler,
@@ -152,6 +154,9 @@ internal fun Application.configureApp(
     // document row can link back into Windchill.
     windchillSettings: WindchillSettings = WindchillSettings(host = ""),
     importerSettings: ImporterSettings = ImporterSettings(),
+    // The sidenav's structure. Empty by default so a test of the HTTP surface gets a working
+    // (if navless) app rather than needing application.yaml's full navigation block in scope.
+    navigationSettings: NavigationSettings = NavigationSettings(groups = emptyList()),
     // Defaulted so a test of the HTTP surface gets a store that talks to the same driver every
     // other collaborator here does, and a test with no database can pass its own.
     importRunStore: com.sec.importer.ImportRunStore = GraphImportRunStore(graphDriver),
@@ -304,6 +309,7 @@ internal fun Application.configureApp(
         jiraFieldsProjection,
         windchillSettings,
         windchillProjection,
+        navigationSettings,
         importRunService,
         oidc,
         accessResolver,

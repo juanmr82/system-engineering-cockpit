@@ -132,3 +132,22 @@ navigation:
         - key: cameo-functions
           label: "Functions"
           route: "/mbse/functions"
+    # sec-access-manager only (frontend/CLAUDE.md §9) — role visibility is not a config key
+    # (root CLAUDE.md §9, backend step 9): the frontend hides this group for anyone without the
+    # role, exactly as it would hide any other item a deployment's config lists but a user cannot
+    # reach.
+    - key: access
+      label: "Access"
+      items:
+        - key: access-categories
+          label: "Categories"
+          route: "/access/categories"
+        - key: access-grants
+          label: "Grants"
+          route: "/access/grants"
+        - key: access-unassigned
+          label: "Not assigned"
+          route: "/access/unassigned"
+        - key: access-defaults
+          label: "Defaults"
+          route: "/access/defaults"

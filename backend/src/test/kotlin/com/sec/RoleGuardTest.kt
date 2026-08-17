@@ -10,6 +10,7 @@ import com.sec.security.authenticatedClient
 import io.ktor.client.HttpClient
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.statement.HttpResponse
@@ -97,8 +98,17 @@ class RoleGuardTest {
         // The upload that deletes every document the file does not mention (ADR 0015 §7).
         Call("POST", "/api/v1/windchill/import", Role.ADMIN),
 
-        // The Access views' one built route.
+        // The Access views (spec §10.2, phase 6) — every write in the group, guarded as one
+        // subtree in Routes.kt but still one table entry each, same as every other route here.
         Call("POST", "/api/v1/access/reconcile", Role.ACCESS_MANAGER),
+        Call("POST", "/api/v1/access/categories", Role.ACCESS_MANAGER),
+        Call("PATCH", "/api/v1/access/categories/${Ref.encode("cat-1")}", Role.ACCESS_MANAGER),
+        Call("DELETE", "/api/v1/access/categories/${Ref.encode("cat-1")}", Role.ACCESS_MANAGER),
+        Call("PUT", "/api/v1/access/groups/${Ref.encode("/SEC/Thermal")}/grants", Role.ACCESS_MANAGER),
+        Call("PATCH", "/api/v1/access/groups/${Ref.encode("/SEC/Thermal")}", Role.ACCESS_MANAGER),
+        Call("PUT", "/api/v1/access/containers/${Ref.encode("module-1")}/categories", Role.ACCESS_MANAGER),
+        Call("PUT", "/api/v1/access/items/${Ref.encode("item-1")}/categories", Role.ACCESS_MANAGER),
+        Call("PUT", "/api/v1/access/defaults", Role.ACCESS_MANAGER),
     )
 
     /**
@@ -126,6 +136,7 @@ class RoleGuardTest {
         Call("GET", "/api/v1/windchill/health", Role.USER),
         Call("GET", "/api/v1/windchill/documents", Role.USER),
         Call("GET", "/api/v1/config/system-levels", Role.USER),
+        Call("GET", "/api/v1/config/navigation", Role.USER),
         // Tier 2 by an ordinary reviewer, on an object they can see — spec §3's `sec-user` row.
         Call("POST", "/api/v1/modules/${Ref.encode("module-1")}/comments", Role.USER),
         // Signing out is not a capability, and a user whose roles were revoked mid-session must
@@ -249,6 +260,7 @@ class RoleGuardTest {
         "GET" -> get(call.path)
         "POST" -> post(call.path)
         "PUT" -> put(call.path)
+        "PATCH" -> patch(call.path)
         "DELETE" -> delete(call.path)
         else -> error("unhandled method ${call.method}")
     }
@@ -265,6 +277,14 @@ class RoleGuardTest {
          */
         val WRITE_ROUTES = listOf(
             "POST" to "/api/v1/access/reconcile",
+            "POST" to "/api/v1/access/categories",
+            "PATCH" to "/api/v1/access/categories/{ref}",
+            "DELETE" to "/api/v1/access/categories/{ref}",
+            "PUT" to "/api/v1/access/groups/{ref}/grants",
+            "PATCH" to "/api/v1/access/groups/{ref}",
+            "PUT" to "/api/v1/access/containers/{ref}/categories",
+            "PUT" to "/api/v1/access/items/{ref}/categories",
+            "PUT" to "/api/v1/access/defaults",
             "POST" to "/api/v1/import/{importerId}/runs",
             "DELETE" to "/api/v1/import/runs/{runId}",
             "PUT" to "/api/v1/jira/columns",

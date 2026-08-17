@@ -43,6 +43,7 @@ public data class AppConfig(
     // uploaded file, so the host only decides whether a document row can link back to Windchill.
     public val windchill: WindchillSettings = WindchillSettings(host = ""),
     public val importer: ImporterSettings = ImporterSettings(),
+    public val navigation: NavigationSettings = NavigationSettings(groups = emptyList()),
 )
 
 // Typed config with exactly one source: the Ktor ApplicationConfig. Credentials are still absent
@@ -64,6 +65,7 @@ public fun loadAppConfig(config: ApplicationConfig): AppConfig {
         neo4j = neo4j,
         jira = loadJiraSettings(config),
         windchill = loadWindchillSettings(config),
+        navigation = loadNavigationSettings(config),
         importer = ImporterSettings(
             runHistoryLimit = config.propertyOrNull("importer.runHistoryLimit")
                 ?.getString()?.toIntOrNull()?.coerceAtLeast(1)

@@ -53,6 +53,7 @@ class AuthGuardTest {
             "/api/v1/windchill/health",
             "/api/v1/windchill/documents",
             "/api/v1/config/system-levels",
+            "/api/v1/config/navigation",
             "/api/v1/statistics/requirements",
         )
         protectedGets.forEach { path ->
