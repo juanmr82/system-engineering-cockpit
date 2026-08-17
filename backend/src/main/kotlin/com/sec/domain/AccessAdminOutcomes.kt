@@ -74,6 +74,17 @@ public data class UnassignedContainer(
     public val invisibleItemCount: Long,
 )
 
+/** One row of the Containers screen (spec §10.2 screen 5) — every container of every source,
+ *  with its current direct category set. Unlike [UnassignedContainer], never filtered to
+ *  uncategorised containers: this is "change the grant of any container on demand," the
+ *  Unassigned queue's own screen kept unchanged alongside it for the never-yet-graded case. */
+public data class ContainerCategories(
+    public val containerId: String,
+    public val sourceId: String,
+    public val name: String,
+    public val categoryIds: List<String>,
+)
+
 /**
  * Shared by `PUT /access/containers/{ref}/categories` and `PUT /access/items/{ref}/categories`
  * (spec §8.1's escape hatch) — the anchor's direct category set, replaced whole (R7).

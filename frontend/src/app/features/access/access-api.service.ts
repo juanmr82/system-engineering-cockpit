@@ -8,6 +8,7 @@ import type {
   AccessCategoryListResponse,
   AccessDefaultsResponse,
   AccessReconcileResponse,
+  ContainersResponse,
   CreateAccessCategoryRequest,
   GroupListResponse,
   GroupWithGrants,
@@ -93,6 +94,14 @@ export class AccessApiService {
       ),
     );
   }
+
+  // -- Containers (spec §10.2 screen 5) — "change the grant of any container on demand" -------
+
+  /** `?state=all`, unlike `unassignedContainers` above: every container, categorised or not —
+   *  the Unassigned screen stays exactly what it was, this is a second, general way in. */
+  readonly containers = httpResource<ContainersResponse>(() =>
+    this.authStore.hasRole(Role.ACCESS_MANAGER) ? '/api/v1/access/containers?state=all' : undefined,
+  );
 
   // -- Import defaults (spec §10.2 screen 4) ---------------------------------------------------
 

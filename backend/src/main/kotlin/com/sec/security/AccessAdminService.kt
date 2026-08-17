@@ -3,6 +3,7 @@ package com.sec.security
 import com.sec.domain.AccessCategorySummary
 import com.sec.domain.AccessDefaultEntry
 import com.sec.domain.AccessSummary
+import com.sec.domain.ContainerCategories
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
 import com.sec.domain.GroupWithGrants
@@ -233,6 +234,34 @@ public class AccessAdminService(
             .sortedBy { it.name }
     }
 
+    /**
+     * Every container of every source, with its own current direct category set — `?state=all`
+     * (spec §10.2 screen 5). Unlike [listUnassignedContainers], not filtered to uncategorised
+     * containers: this is "change the grant of any container on demand," kept as a screen of its
+     * own rather than folded into the Unassigned queue, which stays exactly the never-yet-graded
+     * view it always was.
+     *
+     * No [Containment.memberMatch] grouping needed here — [com.sec.graph.cypher.AccessCypher
+     * .containersWithCategories] reads the container node alone, so one query per distinct
+     * [Containment.containerLabel] is enough; DOORS' two containments still collapse into one
+     * `DOORSModule` group, the same `groupBy` [listUnassignedContainers] uses.
+     */
+    public suspend fun listContainers(source: String?, q: String?): List<ContainerCategories> {
+        val byLabel = AccessContainment.all.filterNot { it.containerless }.groupBy { it.containerLabel }
+        val rows = byLabel.flatMap { (containerLabel, containments) ->
+            graphDriver.executeRead(
+                Query(
+                    AccessCypher.containersWithCategories(containerLabel),
+                    mapOf("sourceId" to containments.first().sourceId),
+                ),
+            ) { records -> records.map { it.toContainerCategories() } }
+        }
+        return rows
+            .filter { source == null || it.sourceId == source }
+            .filter { q.isNullOrBlank() || it.name.contains(q, ignoreCase = true) }
+            .sortedBy { it.name }
+    }
+
     public suspend fun saveContainerCategories(
         containerId: String,
         categoryIds: List<String>,
@@ -361,6 +390,13 @@ public class AccessAdminService(
 
         return AccessSummary(categoryCount, groupCount, unassignedContainerCount)
     }
+
+    private fun Record.toContainerCategories(): ContainerCategories = ContainerCategories(
+        containerId = get("containerId").asString(),
+        sourceId = get("sourceId").asString(),
+        name = get("name").asString(""),
+        categoryIds = get("categoryIds").asList { it.asString() },
+    )
 
     private fun Record.toUnassignedContainer(): UnassignedContainer = UnassignedContainer(
         containerId = get("containerId").asString(),

@@ -97,6 +97,11 @@ export const routes: Routes = [
         loadComponent: () => import('./features/access/grants/access-grants').then((m) => m.AccessGrants),
       },
       {
+        path: 'access/containers',
+        loadComponent: () =>
+          import('./features/access/containers/access-containers').then((m) => m.AccessContainers),
+      },
+      {
         path: 'access/unassigned',
         loadComponent: () =>
           import('./features/access/unassigned/access-unassigned').then((m) => m.AccessUnassigned),

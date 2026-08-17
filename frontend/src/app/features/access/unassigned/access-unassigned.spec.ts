@@ -86,6 +86,9 @@ describe('AccessUnassigned', () => {
     httpTesting.match('/api/v1/access/groups').forEach((request) => request.flush({ groups: [] }));
     httpTesting.match('/api/v1/access/defaults').forEach((request) => request.flush({ defaults: [] }));
     httpTesting
+      .match('/api/v1/access/containers?state=all')
+      .forEach((request) => request.flush({ containers: [] }));
+    httpTesting
       .match('/api/v1/access/summary')
       .forEach((request) => request.flush({ categoryCount: 0, groupCount: 0, unassignedContainerCount: containers.length }));
     await settleGrid(fixture);

@@ -410,8 +410,15 @@ GET    /access/groups                      every :__Group ever seen, with its gr
 PUT    /access/groups/{ref}/grants         the WHOLE grant set for one group, one txn (R7)
 PATCH  /access/groups/{ref}                seesAll only. Audited loudly
 GET    /access/containers?state=unassigned&source=&q=
-                                           the queue of §10.2: containers with no direct category
-PUT    /access/containers/{ref}/categories the WHOLE set for one container, one txn (R7)
+                                           the queue of §10.2 screen 3: containers with no direct
+                                           category
+GET    /access/containers?state=all&source=&q=
+                                           §10.2 screen 5: every container, categorised or not, its
+                                           current direct category set included
+PUT    /access/containers/{ref}/categories the WHOLE set for one container, one txn (R7) — the
+                                           same write both screens above use, unconditionally: it
+                                           already supports changing an existing grant, not only
+                                           setting a first one
 PUT    /access/items/{ref}/categories      the single-item escape hatch (§8.1)
 GET    /access/defaults
 PUT    /access/defaults                    per (sourceId, containerLabel)
@@ -456,7 +463,7 @@ session; the absence of such a test is how this regresses.
 
 ### 10.2 The Access views — `/access`, a new sidenav group visible only to `sec-access-manager`
 
-Four screens. All Material, ag-grid for the tables (§6, ADR 0006), Signal Forms for the inputs.
+Five screens. All Material, ag-grid for the tables (§6, ADR 0006), Signal Forms for the inputs.
 
 1. **Categories** — a table of categories: name, key, `everyGroup`, object count, group count.
    Create, rename, delete. Deleting a category in use is a `409` with the counts in the message.
@@ -467,9 +474,29 @@ Four screens. All Material, ag-grid for the tables (§6, ADR 0006), Signal Forms
 3. **Unassigned** — the queue. Every container with no direct category, newest first, with source,
    name, and how many items are invisible because of it. Multi-select → assign categories to all
    selected. This screen is the one an access manager lives in after an import, so it opens with the
-   count in the sidenav badge.
+   count in the sidenav badge. **Stays exactly this — the never-yet-graded view — even now that
+   screen 5 exists**; the two were deliberately kept apart rather than merged (2026-08-17).
 4. **Import defaults** — per source and container type: "new DOORS modules are visible to …".
    Empty is a legitimate, and the default, answer; the screen says out loud what empty means.
+5. **Containers** — every container of every source, categorised or not, with its current category
+   set shown ("Not yet assigned" when empty) and editable at any time: "change the grant of any
+   container on demand," the gap named in session 34's handover (§15's own resume note) — a
+   container that has already been assigned once had no screen to find it again and re-grade it.
+   Reuses screen 3's own write path (`PUT /access/containers/{ref}/categories`, already an
+   unconditional whole-set replace) and its own per-source reconcile trigger, and the same
+   `AssignCategoriesDialog`, pre-filled from the row's current categories instead of assuming
+   empty. A **Clear** action, shown only on a row that already carries a category, sets the set to
+   empty explicitly — deliberately a second, distinct action from "Edit" rather than "confirm with
+   nothing checked," which stayed disallowed in the shared dialog to avoid changing screen 3's own,
+   already-shipped behaviour (an empty confirm there is legitimately a no-op, not a request to
+   clear a queue entry that has nothing to clear).
+
+   **Decided, not left open**: retiring screen 3 in favour of screen 5 (the shape session 34's
+   handover sketched — a `state=all`/`assigned` toggle instead of a fifth screen) was considered and
+   rejected. Screen 3 is the queue an access manager works right after an import; screen 5 is a
+   general directory for a grant that needs changing well after that moment. Conflating them would
+   make the queue's own "how many are left" reading depend on a filter state, which is exactly the
+   ambiguity keeping them separate avoids.
 
 Copy rules: R5 holds. **No `__`-prefixed name appears in any of these templates** — the eslint rule
 `sec/no-internal-namespace` will fail the build, which is the point. The user-facing words are

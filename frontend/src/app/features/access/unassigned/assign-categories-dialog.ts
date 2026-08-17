@@ -12,12 +12,19 @@ import { AccessApiService } from '../access-api.service';
 
 export interface AssignCategoriesDialogData {
   readonly containerCount: number;
+  /** The container's own current categories, when editing one that already carries some (the
+   *  Containers screen, spec §10.2 screen 5). Omitted, or empty, starts from nothing — the
+   *  Unassigned screen's own shape, unchanged. */
+  readonly initialSelection?: readonly string[];
 }
 
 /**
  * Picks the categories to assign to every container selected on the Unassigned screen (spec
- * §10.2 screen 3). A selection list, not an edit of one domain object, so it keeps its own plain
- * signal rather than a Signal Forms model — there is nothing here shaped like a form.
+ * §10.2 screen 3), or to re-grade one container already carrying some from the Containers screen
+ * (spec §10.2 screen 5) — the same dialog either way, pre-filled by [AssignCategoriesDialogData
+ * .initialSelection] in the second case. A selection list, not an edit of one domain object, so
+ * it keeps its own plain signal rather than a Signal Forms model — there is nothing here shaped
+ * like a form.
  *
  * Resolves to the chosen category refs, or `undefined` on cancel. The caller does the actual
  * per-container `PUT`s (one transaction each, R7) and the follow-up reconcile — this dialog only
@@ -42,7 +49,7 @@ export class AssignCategoriesDialog {
   protected readonly api = inject(AccessApiService);
 
   protected readonly categories = computed(() => this.api.categories.value()?.categories ?? []);
-  private readonly selected = signal<ReadonlySet<string>>(new Set());
+  private readonly selected = signal<ReadonlySet<string>>(new Set(this.data.initialSelection ?? []));
   protected readonly canConfirm = computed(() => this.selected().size > 0);
 
   protected isSelected(ref: string): boolean {

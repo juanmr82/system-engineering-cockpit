@@ -11,6 +11,8 @@ import com.sec.api.dto.CreateAccessCategoryRequestDto
 import com.sec.api.dto.AccessDefaultDto
 import com.sec.api.dto.AccessDefaultsResponseDto
 import com.sec.api.dto.AccessSummaryDto
+import com.sec.api.dto.ContainerCategoriesDto
+import com.sec.api.dto.ContainersResponseDto
 import com.sec.api.dto.GroupListResponseDto
 import com.sec.api.dto.GroupWithGrantsDto
 import com.sec.api.dto.SaveAccessDefaultsRequestDto
@@ -25,6 +27,7 @@ import com.sec.api.respondInvalidRef
 import com.sec.api.respondProblem
 import com.sec.domain.AccessCategorySummary
 import com.sec.domain.AccessDefaultEntry
+import com.sec.domain.ContainerCategories
 import com.sec.domain.CreateCategoryOutcome
 import com.sec.domain.DeleteCategoryOutcome
 import com.sec.domain.GroupWithGrants
@@ -243,26 +246,30 @@ public fun Route.accessRoutes(reconciler: AccessReconciler, adminService: Access
         }
 
         route("/containers") {
-            // ?state=unassigned is the only state this screen has today (spec §10.2 screen 3);
-            // named as a query parameter rather than assumed, so a second state has somewhere to
-            // go without a route change.
+            // ?state=unassigned (default, spec §10.2 screen 3) or ?state=all (screen 5, "change
+            // the grant of any container on demand") — named as a query parameter rather than
+            // assumed, exactly as this comment always said a second state would be.
             get {
-                val state = call.request.queryParameters["state"] ?: "unassigned"
-                if (state != "unassigned") {
-                    return@get call.respondProblem(
+                val source = call.request.queryParameters["source"]
+                val q = call.request.queryParameters["q"]
+                when (val state = call.request.queryParameters["state"] ?: "unassigned") {
+                    "unassigned" -> call.respond(
+                        UnassignedContainersResponseDto(
+                            adminService.listUnassignedContainers(source, q).map { it.toDto() },
+                        ),
+                    )
+
+                    "all" -> call.respond(
+                        ContainersResponseDto(adminService.listContainers(source, q).map { it.toDto() }),
+                    )
+
+                    else -> call.respondProblem(
                         HttpStatusCode.BadRequest,
                         "Unknown state",
-                        "'state' must be 'unassigned', not '$state'.",
+                        "'state' must be 'unassigned' or 'all', not '$state'.",
                         ProblemType.VALIDATION,
                     )
                 }
-                val source = call.request.queryParameters["source"]
-                val q = call.request.queryParameters["q"]
-                call.respond(
-                    UnassignedContainersResponseDto(
-                        adminService.listUnassignedContainers(source, q).map { it.toDto() },
-                    ),
-                )
             }
 
             put("/{ref}/categories") {
@@ -390,6 +397,13 @@ private fun AccessDefaultEntry.toDto(): AccessDefaultDto = AccessDefaultDto(
     sourceId = sourceId,
     containerLabel = containerLabel,
     categoryRef = categoryId?.let { Ref.encode(it) },
+)
+
+private fun ContainerCategories.toDto(): ContainerCategoriesDto = ContainerCategoriesDto(
+    ref = Ref.encode(containerId),
+    sourceId = sourceId,
+    name = name,
+    categoryRefs = categoryIds.map(Ref::encode),
 )
 
 private fun UnassignedContainer.toDto(): UnassignedContainerDto = UnassignedContainerDto(

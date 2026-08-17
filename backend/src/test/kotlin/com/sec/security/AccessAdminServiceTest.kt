@@ -12,6 +12,7 @@ import com.sec.domain.UpdateCategoryOutcome
 import com.sec.graph.GraphDriver
 import com.sec.graph.executeWrite
 import com.sec.meta.MetaSchema
+import com.sec.source.doors.ReviewProjection
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -40,6 +41,7 @@ class AccessAdminServiceTest {
     ).withoutAuthentication()
 
     private lateinit var graphDriver: GraphDriver
+    private lateinit var accessResolver: AccessResolver
     private lateinit var service: AccessAdminService
 
     @BeforeAll
@@ -48,7 +50,8 @@ class AccessAdminServiceTest {
         graphDriver = GraphDriver(Neo4jSettings(neo4j.boltUrl, "neo4j", "neo4j", "ignored"))
         graphDriver.verifyConnectivity()
         runBlocking { MetaSchema.apply(graphDriver) }
-        service = AccessAdminService(graphDriver, AccessResolver(graphDriver))
+        accessResolver = AccessResolver(graphDriver)
+        service = AccessAdminService(graphDriver, accessResolver)
     }
 
     @AfterAll
@@ -264,6 +267,45 @@ class AccessAdminServiceTest {
         assertEquals(listOf("proj-unassigned"), byName.map { it.containerId })
     }
 
+    // -- Containers (spec §10.2 screen 5) — "change the grant of any container on demand" -----
+
+    @Test
+    fun `listContainers lists both an uncategorised module and an already-categorised one`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        seedDoorsModule("mod-uncategorised", "Uncategorised", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+        seedDoorsModule("mod-categorised", "Categorised", objectCount = 1, placeholderCount = 0, directCategoryMetaId = catA)
+
+        val byId = service.listContainers(source = null, q = null).associateBy { it.containerId }
+
+        assertTrue("mod-uncategorised" in byId, "an uncategorised container must still be found here")
+        assertEquals(emptyList(), byId.getValue("mod-uncategorised").categoryIds)
+        assertEquals(listOf(catA), byId.getValue("mod-categorised").categoryIds)
+    }
+
+    @Test
+    fun `listContainers filters by source and by name`(): Unit = runBlocking {
+        seedDoorsModule("mod-1", "Thermal SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = null)
+        seedJiraProject("proj-1", "Avionics Board", issueCount = 1)
+
+        val doorsOnly = service.listContainers(source = "doors", q = null)
+        assertEquals(listOf("mod-1"), doorsOnly.map { it.containerId })
+
+        val byName = service.listContainers(source = null, q = "avionics")
+        assertEquals(listOf("proj-1"), byName.map { it.containerId })
+    }
+
+    @Test
+    fun `changing an already-categorised container's grant through saveContainerCategories is reflected in listContainers`(): Unit = runBlocking {
+        val catA = createOne("cat-a", "A", "", everyGroup = false)
+        val catB = createOne("cat-b", "B", "", everyGroup = false)
+        seedDoorsModule("mod-1", "SRD", objectCount = 1, placeholderCount = 0, directCategoryMetaId = catA)
+
+        service.saveContainerCategories("mod-1", listOf(catB), user = "test")
+
+        val row = service.listContainers(source = null, q = null).single { it.containerId == "mod-1" }
+        assertEquals(listOf(catB), row.categoryIds, "the write path already supports changing an existing grant")
+    }
+
     @Test
     fun `saveContainerCategories assigns a direct category and removes the module from the queue`(): Unit = runBlocking {
         val catA = createOne("cat-a", "A", "", everyGroup = false)
@@ -405,6 +447,71 @@ class AccessAdminServiceTest {
         assertEquals(2L, summary.categoryCount)
         assertEquals(2L, summary.groupCount)
         assertEquals(1L, summary.unassignedContainerCount)
+    }
+
+    // -- phase 2's staleness gap, closed live (docs/features/access-control.md §5's "one
+    // operational trap") ---------------------------------------------------------------------
+
+    /**
+     * `accessResolver` is the same instance across every test in this class (`@BeforeAll`), and
+     * that is the point here: nothing is restarted and nothing is re-constructed between the
+     * "before" and "after" resolves below, exactly as a running backend would answer two
+     * successive `/auth/me` calls. Unique group and category keys, never reused by another test
+     * in this file, so no other test's cached [AccessResolver] entry can be mistaken for this one.
+     *
+     * The two halves are deliberately not conflated: a caller's [AccessSet] updates the instant
+     * [AccessAdminService.saveGrants] runs — that is the staleness gap phase 2 named — but an
+     * *object* stays invisible until [AccessReconciler] has actually tagged it. Reconcile never
+     * touches [AccessResolver], so the access set resolved before it remains valid afterwards and
+     * needs no second resolve.
+     */
+    @Test
+    fun `a category created and granted becomes visible only after reconcile, with no restart`(): Unit = runBlocking {
+        seedDoorsModule(
+            "mod-staleness", "Staleness Module", objectCount = 3, placeholderCount = 0, directCategoryMetaId = null,
+        )
+
+        val before = accessResolver.resolve(listOf("/SEC/Staleness"))
+        assertTrue(before.categoryIds.isEmpty() && !before.seesAll, "a freshly seen group starts with nothing")
+
+        val catA = createOne("cat-staleness", "Staleness", "", everyGroup = false)
+        service.saveGrants("/SEC/Staleness", listOf(catA), user = "test")
+
+        val access = accessResolver.resolve(listOf("/SEC/Staleness"))
+        assertEquals(listOf(catA), access.categoryIds, "the grant must resolve immediately, with no restart")
+
+        val review = ReviewProjection(graphDriver)
+        assertEquals(
+            0,
+            review.getModuleObjects("mod-staleness", access).total,
+            "granted, but nothing in the graph is tagged with the category yet",
+        )
+
+        service.saveContainerCategories("mod-staleness", listOf(catA), user = "test")
+        assertEquals(
+            0,
+            review.getModuleObjects("mod-staleness", access).total,
+            "the container itself carries the category now, but reconcile has not propagated it to its objects",
+        )
+
+        AccessReconciler(graphDriver).reconcile(AccessContainment.all.single { it.name == "doors.objects" })
+
+        assertEquals(
+            3,
+            review.getModuleObjects("mod-staleness", access).total,
+            "the same, already-resolved access set now sees every object reconcile just tagged",
+        )
+    }
+
+    @Test
+    fun `a seesAll flip is observable on the very next resolve, with no restart`(): Unit = runBlocking {
+        val before = accessResolver.resolve(listOf("/SEC/StalenessSeesAll"))
+        assertTrue(!before.seesAll, "a freshly seen group starts without seesAll")
+
+        service.setSeesAll("/SEC/StalenessSeesAll", seesAll = true, user = "test")
+
+        val after = accessResolver.resolve(listOf("/SEC/StalenessSeesAll"))
+        assertTrue(after.seesAll, "the flip must be visible on the very next resolve, mirroring /auth/me, no restart")
     }
 
     // -- fixtures ---------------------------------------------------------------------------

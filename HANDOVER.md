@@ -3,6 +3,175 @@
 Transient session-to-session note — not project documentation. Delete once its content is
 absorbed into commits or superseded.
 
+## State as of 2026-08-17 (session 35) — the two backend test items closed; a fifth Access screen
+## (Containers) built, and the Unassigned/Defaults product gap closed a different way than session
+## 34 sketched
+
+Branch **`feature/access-control`**, continuing session 34 (below). Two unrelated pieces of work,
+plus two fixes to session 34's own uncommitted diff found on resume.
+
+**1. Two fixes to what session 34 left uncommitted, found before anything else was touched.**
+`deploy/keycloak/sec-realm.json`'s `sec-access-manager` realm role name had been corrupted to
+`"sI "` in the diff session 34 described as "the ID-token mapper fix, still uncommitted" — an
+unrelated stray edit, not part of that fix. Restored to `"sec-access-manager"`. Separately,
+`docs/JIRA_TOKEN_FOR_EXAMPLE_GIT_IGNORE.md` — a real-looking Atlassian API token and host, sitting
+untracked and **not actually gitignored** despite its own filename — added to `.gitignore`. Neither
+was committed as-is; worth checking `git diff` against a session's own summary before trusting it
+literally.
+
+**2. The two backend test items session 34's "Resume here" named, both done, both docker-verified
+live:**
+
+- Extended `AccessAdminServiceTest.kt` (not `VisibilityMatrixTest.kt` as session 34 suggested —
+  that file's `@BeforeAll`-built fixture is shared, unordered, across all its tests, and adding new
+  categories/objects to it risked silently inflating another test's exact-count assertions;
+  `AccessAdminServiceTest` already resets the graph `@BeforeEach` and already wires
+  `AccessResolver`+`AccessAdminService` together, so it is the safer home) with two tests proving
+  `AccessResolver.invalidate()` closes the phase-2 staleness gap **live**, no restart: a category
+  created and granted resolves into the caller's `AccessSet` on the very next `resolve()` call, but
+  the module's *objects* stay invisible until `AccessReconciler.reconcile()` actually tags them —
+  reconcile itself needs no second resolve, since it never touches `AccessResolver`. A second test
+  does the same for a `seesAll` flip.
+- New `AccessAcceptanceTest.kt` — seeds a real JIRA project via the actual `JiraImporter`/
+  `JiraGraphWriter` against the committed `docs/JIRA.json` export (no hand Cypher), then drives
+  create-category → grant → assign (from the Unassigned queue) → reconcile through the real
+  `AccessAdminService`/`AccessReconciler`, asserting visibility flips from 0 rows to all 9 issues in
+  the project. JIRA rather than a literal DOORS module: DOORS' importer is a separate Python
+  process outside the backend (a JVM test cannot run it without shelling out — the exact question
+  session 32 parked as its own future feature); JIRA's runs in-process (ADR 0013) and is the only
+  source that is both a real importer and a real container-bearing source reachable from a Kotlin
+  test without new machinery. Windchill also runs in-process but is `containerless`, so it never
+  reaches the Unassigned queue and could not exercise the "assign" step.
+
+**3. A fifth Access screen, "Containers" — the user's own correction to session 34's sketched fix.**
+Session 34's handover proposed *retiring* the Unassigned screen's framing (adding a `state=all`/
+`assigned` toggle to the same screen). Redirected by the user: **keep Unassigned exactly as it is**
+— the never-yet-graded queue an access manager works right after an import — and add a **second,
+general screen** that lists every container of every source, categorised or not, and lets an
+access manager change any container's grant at any time. Two capabilities named explicitly: (1)
+change the grant of any container on demand, (2) keep assigning from the Unassigned queue exactly
+as before.
+
+Backend: `AccessCypher.containersWithCategories(containerLabel)` — a new, deliberately simpler
+query than `unassignedContainers` (no per-member-match counting, just the container's own current
+direct category set), same §16.2a-shaped exemption from `visible()` and the same reasoning: an
+access manager has to be able to find a container to re-grade it even when their own account
+cannot yet see it through a category. New domain type `ContainerCategories`, new
+`AccessAdminService.listContainers(source, q)`, new DTOs, and `GET /access/containers` now branches
+on `?state=unassigned` (unchanged) vs `?state=all` (new) rather than 400ing on anything but the
+first — exactly what that route's own comment said a second state would do. `AccessGuardTest` and
+`GraphNamesTest` both extended (indices 32-33, one `containersWithCategories(...)` call per
+distinct `containerLabel`, same grouping `unassignedContainers` already uses). Three new tests in
+`AccessAdminServiceTest.kt`, docker-verified.
+
+Frontend: new `features/access/containers/` (`AccessContainers`, ag-grid list — Container / Source
+/ Categories / Actions — with search, mirroring Unassigned's own shell) and `ContainerActionsCell`
+(Edit, and — only once there is something to clear — Clear). Reuses `AssignCategoriesDialog`
+verbatim for Edit, extended with an `initialSelection` field so it pre-fills from the row's current
+categories instead of assuming empty; `canConfirm` was deliberately **not** relaxed to allow an
+empty confirm, to avoid changing Unassigned's own already-shipped behaviour — Clear is a separate,
+explicit action instead, behind `ConfirmDialog`, shown only when there is something to clear. New
+nav item `access-containers` between Grants and Not assigned, in both `nav-group.ts`'s fallback and
+`application.yaml`.
+
+**One real bug caught by the test suite, not by inspection**: `layout/sidenav/sidenav.ts` filters
+nav items **per item**, via its own `ITEM_ROLE` map — not per group, despite `nav-group.ts`'s own
+comment reading "the sidenav role-filters this group client side," which is only true today because
+every existing item in the group happens to be in the map. Adding `access-containers` to
+`DEFAULT_NAV_GROUPS` without adding it to `ITEM_ROLE` left the new link visible to every signed-in
+user, not only access managers — caught immediately by `sidenav.spec.ts`'s existing "hides the
+Access group entirely for a caller without the role" test failing. Fixed by adding the missing map
+entry. Worth remembering next time a nav item is added: the group-level framing in the docs is a
+description of the *effect*, not the *mechanism* — check `sidenav.ts`'s own map.
+
+**A second real trap, in the new screen's own spec**: `AccessContainers.save()` calls both
+`this.api.containers.reload()` **and** `this.accessBadge.refresh()` (which itself calls
+`summaryResource.reload()`) after a successful write — both schedule a refetch rather than issuing
+one, the same established trap, but there are **two** of them here where Categories/Grants/Defaults
+each only had one. A test that flushes only the containers reload and not the summary reload
+deadlocks `whenStable()` on the second, and because Vitest's `--isolate` is `false`, that hang
+cascaded into unrelated failures in files sharing the same worker (`jira-links-dialog.spec.ts`,
+`module-settings-dialog.spec.ts`, `review-settings-dialog.spec.ts`) — the same "an unrelated file's
+TestBed failure means suspect a deadlock upstream" signature session 33 already named. Fixed by
+flushing both after the `setTimeout(0)` that lets the scheduled reloads actually fire.
+
+### Verified
+
+- `mvn -pl backend -am test` — **367/367**.
+- `mvn -Pdocker -pl backend -am test` — **218/218**, up from 215 (this session's own two earlier
+  additions) before that, up from 212 at session 34's close (+3 AccessAdminServiceTest cases for
+  the staleness gap, +1 AccessAcceptanceTest, +3 AccessAdminServiceTest cases for
+  `listContainers`/re-grading).
+- `npm run lint && npm test && npm run build` from `frontend/` — lint clean, **329/329** (up from
+  319), build green; the new `access-containers` lazy chunk confirmed present in a verbose build.
+- Committed as three commits on `feature/access-control`: the Keycloak realm-name fix, the
+  `.gitignore` entry, and everything else in this entry together.
+
+### Resume here
+
+Phase 6 is code-complete and its acceptance pass (§15.3) already ran clean in session 34. What
+remains, in order of what was already known before this session:
+
+1. Nothing new is blocking a merge from this session's own work — it is additive (a new read path,
+   a new screen, two new test files) and does not touch anything session 34 already verified on
+   screen. Worth a short second look at the new Containers screen live (`ng serve` + real
+   Neo4j/Keycloak) before merging, the same "acceptance answered by running the app" standard
+   session 34 held itself to for the rest of phase 6 — this session did not do that for the new
+   screen specifically, only unit/component-tested it.
+2. Machine-auth for `POST /access/reconcile` and the DOORS-upload feature that would retire it
+   remain exactly where session 32 parked them — still a separate, larger feature, still not
+   started, still needing its own ADR before any code (`access-control.md` §15.3's "direction
+   favoured" paragraph has the design reasoning already worked out).
+
+## State as of 2026-08-17 (session 34) — phase 6's manual acceptance pass (step 13) is done; one real gap found while doing it
+
+Branch **`feature/access-control`**, continuing session 33 (below). Drove the acceptance pass live
+in Chrome as `sec-dev-admin`/`sec-dev-user` against a real backend/Neo4j/Keycloak, per this
+project's own "acceptance answered by running the app" rule.
+
+**1. A real, pre-existing Keycloak bug, unrelated to phase 6's own code**: the built-in "roles"
+client scope's realm-role mapper does not put `realm_access.roles` in the **ID token** by default
+(`id.token.claim` defaults to `false`) — only in the access token. This backend reads only the ID
+token (ADR 0017), so every real-Keycloak-authenticated session has had an empty role set since
+phase 1; unit tests never caught it because they use fake principals. Root-caused via a temporary
+diagnostic log in `Oidc.kt` (removed again) plus the Keycloak Admin REST API. Fixed the same way
+the `groups` claim already was: a client-specific protocol mapper directly on `sec-backend`,
+mirroring the `groups` mapper's shape (`id.token.claim: true` explicit). Patched live on the
+running dev Keycloak via the Admin REST API, **and** the same mapper added to
+`deploy/keycloak/sec-realm.json` under `sec-backend`'s `protocolMappers` — **that file edit is
+still uncommitted**, staged only on disk; worth its own small commit. The live-instance patch is
+separate and does not need redoing unless the Keycloak container/volume is recreated.
+
+**2. The core acceptance claim is proven**: revoking then re-granting a category through the
+Grants UI (as `sec-dev-admin`) takes effect for `sec-dev-user`'s session with **no backend
+restart** — confirming `AccessAdminService`'s unconditional `AccessResolver.invalidate()` closes
+the phase-2 staleness gap. Also exercised the Categories create/delete round trip live against
+real Neo4j (create → toast → row with 0/0 counts → delete → confirm dialog → toast → row gone).
+
+**3. A confirmed product gap, decided with the user, not yet built**: `PUT
+/access/containers/{ref}/categories` already supports changing an *already-assigned* container's
+categories — it's an unconditional whole-set replace, no state check. But the only read path,
+`GET /access/containers?state=unassigned` (`AccessRoutes.kt` ~line 250), hardcodes `state !=
+"unassigned"` as a `400` and only returns containers with **zero** categories. Once an access
+manager assigns a container, it drops out of the Access UI entirely — there is no screen to find
+it again and change the grant. `module-settings-dialog.ts` has no category controls either.
+
+**Decided fix, not yet implemented** (explicitly deferred to a future session — "we dont have
+enough credits, so this is in the plan"): retire the "Unassigned" framing. The screen becomes a
+general container-grants view listing **every imported container** with its current categories
+(or "Unassigned"/empty when it has none), editable at any time via the same
+`AssignCategoriesDialog` — pre-populated from the container's current categories instead of
+assuming empty. Needs: backend accepts a second `state` value (e.g. `all` or `assigned`) on the
+existing route rather than a new one (the route comment already anticipated this: *"named as a
+query parameter rather than assumed, so a second state has somewhere to go without a route
+change"*); frontend renames/reworks `access-unassigned.*` accordingly, dialog pre-fills selection.
+
+Nothing else from session 33 changed. Environment section below (§ "Environment") still applies;
+the backend was restarted mid-session (same env vars, same `mvnw ... exec:java` invocation) with
+no code change, purely to pick up nothing new — just a routine restart during the manual pass.
+
+---
+
 ## State as of 2026-08-17 (session 33) — phase 6's entire build order is code-complete (steps 1–12); only the manual acceptance pass (step 13) is left
 
 Branch **`feature/access-control`**. **Every backend and frontend step in the phase-6 build order

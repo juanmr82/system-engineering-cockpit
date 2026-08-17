@@ -87,6 +87,9 @@ describe('AccessCategories', () => {
     httpTesting
       .match('/api/v1/access/containers?state=unassigned')
       .forEach((request) => request.flush({ containers: [] }));
+    httpTesting
+      .match('/api/v1/access/containers?state=all')
+      .forEach((request) => request.flush({ containers: [] }));
     httpTesting.match('/api/v1/access/defaults').forEach((request) => request.flush({ defaults: [] }));
     await settleGrid(fixture);
   }

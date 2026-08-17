@@ -54,6 +54,7 @@ export const DEFAULT_NAV_GROUPS: NavGroup[] = [
     items: [
       { key: 'access-categories', label: 'Categories', route: '/access/categories' },
       { key: 'access-grants', label: 'Grants', route: '/access/grants' },
+      { key: 'access-containers', label: 'Containers', route: '/access/containers' },
       { key: 'access-unassigned', label: 'Not assigned', route: '/access/unassigned' },
       { key: 'access-defaults', label: 'Defaults', route: '/access/defaults' },
     ],

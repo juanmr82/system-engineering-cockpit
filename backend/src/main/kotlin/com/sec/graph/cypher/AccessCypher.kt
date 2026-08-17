@@ -439,6 +439,31 @@ public object AccessCypher {
     }
 
     /**
+     * Every container of [containerLabel], with its current *direct* category set — never
+     * filtered to uncategorised ones, unlike [unassignedContainers]. This is the Containers
+     * screen (spec §10.2 screen 5): "change the grant of any container on demand," not only one
+     * still sitting in the Unassigned queue.
+     *
+     * **Deliberately exempt from [visible], for the same reason [unassignedContainers] is**: an
+     * access manager has to be able to find a container to re-grade it even when their own
+     * account cannot yet see it through a category. Container-level metadata only — the
+     * container's own name, source and current category ids, never a contained item — which is
+     * what keeps the exemption exactly as narrow as the Unassigned queue's own.
+     *
+     * No [Containment.memberMatch] here, unlike [unassignedContainers]: this statement counts
+     * nothing about a container's members, only reads the container node itself, so DOORS' two
+     * containments sharing `DOORSModule` need no `CALL` per match — one row per module either way.
+     */
+    public fun containersWithCategories(containerLabel: String): String = """
+        CYPHER 25
+        MATCH (c:$containerLabel)
+        OPTIONAL MATCH (c)-[:$IN_ACCESS_CATEGORY {$ORIGIN: '$DIRECT'}]->(cat:$ACCESS_CATEGORY)
+        RETURN ${'$'}sourceId AS sourceId, c.$ID AS containerId, c.$NAME AS name,
+               collect(cat.$META_ID) AS categoryIds
+        ORDER BY c.$NAME
+    """
+
+    /**
      * Whether *any* node — of any label — carries this `__id`. Unlabeled and unfiltered on
      * purpose: the container/item category writes below check only that the anchor exists, never
      * the caller's own visibility, for the same reason [unassignedContainers] is exempt from

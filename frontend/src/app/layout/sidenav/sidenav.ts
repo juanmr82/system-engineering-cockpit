@@ -17,6 +17,7 @@ import { Logo } from './logo';
 const ITEM_ROLE: Readonly<Record<string, string>> = {
   'access-categories': Role.ACCESS_MANAGER,
   'access-grants': Role.ACCESS_MANAGER,
+  'access-containers': Role.ACCESS_MANAGER,
   'access-unassigned': Role.ACCESS_MANAGER,
   'access-defaults': Role.ACCESS_MANAGER,
 };

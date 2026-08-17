@@ -174,6 +174,15 @@ class AccessGuardTest {
             AccessCypher.CLEAR_DEFAULT,
             AccessCypher.SET_DEFAULT,
             AccessCypher.SUMMARY_COUNTS,
+            // Containers (phase 6, §10.2 screen 5) — indices 32-33, one containersWithCategories(...)
+            // call per distinct containerLabel (DOORSModule, JiraProject), same grouping as the
+            // unassignedContainers(...) calls above. Exempt for the same §16.2a-shaped reason,
+            // given below.
+            *AccessContainment.all.filterNot { it.containerless }
+                .map { it.containerLabel }
+                .distinct()
+                .map { label -> AccessCypher.containersWithCategories(label) }
+                .toTypedArray(),
         )
     }
 
@@ -279,6 +288,14 @@ class AccessGuardTest {
             "only (name, source, an invisible-item count), never a contained item; already " +
             "sec-access-manager-gated (Routes.kt), same shape as POST /access/reconcile",
         "AccessCypher[27]" to "same §16.2a exemption as [26], for the JiraProject group",
+        // Containers (§10.2 screen 5) — one entry per distinct containerLabel, in the same order
+        // AccessAdminService.listContainers groups them: DOORSModule first, then JiraProject.
+        "AccessCypher[32]" to "access-control.md §10.2 screen 5, the same §16.2a shape as the " +
+            "Unassigned queue's own exemption: an access manager has to be able to find a " +
+            "container to re-grade it even when their own account cannot yet see it through a " +
+            "category. Container-level metadata only (name, source, current category ids), " +
+            "never a contained item; already sec-access-manager-gated (Routes.kt)",
+        "AccessCypher[33]" to "same exemption as [32], for the JiraProject group",
     )
 
     // -- the checks -----------------------------------------------------------------------------

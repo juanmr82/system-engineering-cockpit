@@ -68,6 +68,9 @@ describe('AssignCategoriesDialog', () => {
     httpTesting
       .match('/api/v1/access/containers?state=unassigned')
       .forEach((request) => request.flush({ containers: [] }));
+    httpTesting
+      .match('/api/v1/access/containers?state=all')
+      .forEach((request) => request.flush({ containers: [] }));
     httpTesting.match('/api/v1/access/defaults').forEach((request) => request.flush({ defaults: [] }));
 
     await settle();
@@ -111,6 +114,16 @@ describe('AssignCategoriesDialog', () => {
     require<HTMLButtonElement>('mat-dialog-actions button:first-of-type').click();
 
     expect(closed).toBeUndefined();
+  });
+
+  it('pre-fills the selection from initialSelection, for re-grading an already-categorised container', async () => {
+    await open({ containerCount: 1, initialSelection: ['Y2F0LTI'] });
+
+    expect(confirmButton().disabled).toBe(false);
+
+    confirmButton().click();
+
+    expect(closed).toEqual(['Y2F0LTI']);
   });
 
   it('says to create a category first when there are none yet', async () => {

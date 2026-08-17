@@ -84,6 +84,22 @@ export interface UnassignedContainersResponse {
   readonly containers: UnassignedContainer[];
 }
 
+/** One row of the Containers screen (spec §10.2 screen 5) — `?state=all`, every container with
+ *  its current direct category set. Unlike `UnassignedContainer`, never filtered to
+ *  uncategorised containers: this is "change the grant of any container on demand," the
+ *  Unassigned queue kept unchanged alongside it for the never-yet-graded case. An empty
+ *  `categoryRefs` is "Not yet assigned," the legitimate, default answer — not an absent row. */
+export interface ContainerCategories {
+  readonly ref: string;
+  readonly sourceId: string;
+  readonly name: string;
+  readonly categoryRefs: string[];
+}
+
+export interface ContainersResponse {
+  readonly containers: ContainerCategories[];
+}
+
 /** Shared by the container and the single-item escape-hatch write (spec §8.1) — the WHOLE direct
  *  set, one transaction (R7). */
 export interface SaveDirectCategoriesRequest {

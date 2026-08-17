@@ -97,6 +97,23 @@ public data class UnassignedContainersResponseDto(
     public val containers: List<UnassignedContainerDto>,
 )
 
+/** One row of the Containers screen (spec §10.2 screen 5) — `?state=all`, every container with
+ *  its current direct category set. `ref` is the container's `__id` handle, same as
+ *  [UnassignedContainerDto]. An empty [categoryRefs] is "Not yet assigned," the legitimate,
+ *  default answer — not an absent row. */
+@Serializable
+public data class ContainerCategoriesDto(
+    public val ref: String,
+    public val sourceId: String,
+    public val name: String,
+    public val categoryRefs: List<String>,
+)
+
+@Serializable
+public data class ContainersResponseDto(
+    public val containers: List<ContainerCategoriesDto>,
+)
+
 /** Shared by `PUT /access/containers/{ref}/categories` and `PUT /access/items/{ref}/categories`
  *  (spec §8.1's escape hatch) — the WHOLE direct set, one transaction (R7). */
 @Serializable

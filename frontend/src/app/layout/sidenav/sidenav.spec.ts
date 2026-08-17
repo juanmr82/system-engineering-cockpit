@@ -84,6 +84,7 @@ describe('Sidenav', () => {
     expect(access?.items.map((i) => i.key)).toEqual([
       'access-categories',
       'access-grants',
+      'access-containers',
       'access-unassigned',
       'access-defaults',
     ]);

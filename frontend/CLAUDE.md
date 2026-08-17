@@ -475,6 +475,7 @@ section as the contract the shell must continue to satisfy.
 │  Access ⚑       │  ← sec-access-manager only; ⚑ is the count of │
 │   · Categories   │     containers not yet assigned                │
 │   · Grants       │                                                │
+│   · Containers   │     change any container's grant on demand    │
 │   · Not assigned │                                                │
 │   · Defaults     │                                                │
 └──────────────────┴────────────────────────────────────────────────┘

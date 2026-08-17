@@ -145,6 +145,9 @@ navigation:
         - key: access-grants
           label: "Grants"
           route: "/access/grants"
+        - key: access-containers
+          label: "Containers"
+          route: "/access/containers"
         - key: access-unassigned
           label: "Not assigned"
           route: "/access/unassigned"

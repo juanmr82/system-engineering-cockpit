@@ -201,6 +201,13 @@ class GraphNamesTest {
             AccessCypher.CLEAR_DEFAULT,
             AccessCypher.SET_DEFAULT,
             AccessCypher.SUMMARY_COUNTS,
+            // Containers (phase 6, §10.2 screen 5) — one containersWithCategories(...) call per
+            // distinct containerLabel, same grouping as the unassignedContainers(...) calls above.
+            *AccessContainment.all.filterNot { it.containerless }
+                .map { it.containerLabel }
+                .distinct()
+                .map { label -> AccessCypher.containersWithCategories(label) }
+                .toTypedArray(),
         )
     }
 
