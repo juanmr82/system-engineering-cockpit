@@ -55,7 +55,7 @@ export class ThreadPanel {
   static open(dialog: MatDialog, data: ThreadPanelData) {
     return dialog.open<ThreadPanel, ThreadPanelData, boolean>(ThreadPanel, {
       ...SEC_MODAL_DIALOG,
-      // A small dialog, not a big one (docs/comments_design.jpg baseline) — a card-sized panel
+      // A small dialog, not a big one — a card-sized panel
       // over a thread, sized to its content up to a cap rather than claiming most of the screen
       // the way the settings dialogs do.
       width: '420px',

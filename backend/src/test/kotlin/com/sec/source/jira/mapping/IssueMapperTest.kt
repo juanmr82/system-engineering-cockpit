@@ -1,5 +1,6 @@
 package com.sec.source.jira.mapping
 
+import com.sec.Fixtures
 import com.sec.source.jira.JiraFieldDefinition
 import com.sec.source.jira.JiraIssueEnvelope
 import com.sec.source.jira.JiraLabel
@@ -7,9 +8,6 @@ import com.sec.source.jira.JiraRel
 import com.sec.source.jira.JiraSearchPage
 import com.sec.source.jira.jiraJson
 import kotlinx.serialization.json.JsonObject
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -473,9 +471,7 @@ class IssueMapperTest {
     )
 
     private fun searchPage(): JiraSearchPage {
-        val path = Path.of("..", "docs", "JIRA.json")
-        assertTrue(path.exists(), "the committed export is missing; this test would pass vacuously")
-        return jiraJson.decodeFromString(path.readText())
+        return jiraJson.decodeFromString(Fixtures.text(Fixtures.JIRA_SEARCH))
     }
 
     private companion object {

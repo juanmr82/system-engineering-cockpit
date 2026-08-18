@@ -1,0 +1,166 @@
+/*
+ * The SEC login page.
+ *
+ * Loaded AFTER keycloak.v2's own stylesheet (theme.properties `styles=`), so everything here is
+ * an override and the stock sheet still supplies layout, spacing and the form controls. Keeping it
+ * to colour, type and the card's frame is what lets a Keycloak upgrade change its markup without
+ * breaking this.
+ *
+ * The palette is copied from frontend/src/styles/_tokens.scss, and copied deliberately: Keycloak
+ * is a separate application that cannot import the Angular build's tokens, so this is the one
+ * place in the repository where these hex values legitimately appear twice. If the brand palette
+ * changes, this file changes with it — that is the cost of the login page looking like the
+ * product, and it is worth paying, because a login page that looks like a different system is how
+ * people learn to type their password into anything that asks.
+ *
+ * The "paper" style of ADR 0003: a blue-grey shell, a white sheet on it, squared corners, a thin
+ * colour rail rather than a colour fill.
+ */
+
+:root {
+  --sec-blue: #00205b;
+  --sec-blue-mid: #0085ad;
+  --sec-shell: #ebf0f4;
+  --sec-paper: #fff;
+  --sec-line: #d5dee5;
+  --sec-ink: #12212e;
+  --sec-ink-2: #4a5b68;
+  --sec-ink-3: #7c8b97;
+  --sec-error: #e4002b;
+  --sec-font: 'Inter', 'Segoe UI', roboto, arial, helvetica, sans-serif;
+}
+
+/* --- the desk --------------------------------------------------------------------------- */
+body,
+.pf-v5-c-background-image,
+.login-pf body {
+  background: var(--sec-shell) !important;
+  background-image: none !important;
+  font-family: var(--sec-font);
+  color: var(--sec-ink);
+}
+
+/* --- the sheet -------------------------------------------------------------------------- */
+/* Squared, hairline-ruled, with a colour rail across the top — the same frame the application's
+   own panels use. Not a shadowed rounded card: that is the one visual decision that would make
+   this page read as somebody else's. */
+.pf-v5-c-login__main,
+.card-pf {
+  background: var(--sec-paper) !important;
+  border: 1px solid var(--sec-line) !important;
+  border-top: 3px solid var(--sec-blue) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-login__header,
+#kc-header-wrapper {
+  color: var(--sec-blue);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* The realm name Keycloak prints in the header. Small, quiet, uppercase — the application's own
+   micro-label treatment, because "sec" is not a title, it is a label. */
+#kc-header-wrapper {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sec-ink-3);
+}
+
+.pf-v5-c-title,
+#kc-page-title {
+  color: var(--sec-blue) !important;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+/* --- fields ----------------------------------------------------------------------------- */
+.pf-v5-c-form-control,
+input[type='text'],
+input[type='password'],
+input[type='email'] {
+  border-radius: 0 !important;
+  border: 1px solid var(--sec-line) !important;
+  color: var(--sec-ink);
+  font-family: var(--sec-font);
+}
+
+.pf-v5-c-form-control:focus,
+input[type='text']:focus,
+input[type='password']:focus,
+input[type='email']:focus {
+  border-color: var(--sec-blue-mid) !important;
+  outline: 2px solid var(--sec-blue-mid);
+  outline-offset: -2px;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form__label,
+label {
+  color: var(--sec-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* --- the button ------------------------------------------------------------------------- */
+.pf-v5-c-button.pf-m-primary,
+input[type='submit'].pf-m-primary,
+#kc-login {
+  background: var(--sec-blue) !important;
+  border: 1px solid var(--sec-blue) !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  font-family: var(--sec-font);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+#kc-login:hover {
+  background: #001845 !important;
+}
+
+/* Never remove the focus ring — this is the only control on the page and it must be reachable by
+   keyboard alone. */
+.pf-v5-c-button:focus-visible {
+  outline: 2px solid var(--sec-blue-mid);
+  outline-offset: 2px;
+}
+
+/* --- messages ---------------------------------------------------------------------------- */
+/* Error red is the application's own #e4002b, and it is used as a rail plus text rather than a
+   filled banner, for the same reason the app does it that way. */
+.pf-v5-c-alert.pf-m-danger,
+.alert-error {
+  background: #fdf2f4 !important;
+  border: 1px solid var(--sec-error) !important;
+  border-left-width: 3px !important;
+  border-radius: 0 !important;
+  color: var(--sec-ink) !important;
+}
+
+.pf-v5-c-alert.pf-m-info,
+.alert-info {
+  background: #f4f8fa !important;
+  border: 1px solid var(--sec-line) !important;
+  border-left: 3px solid var(--sec-blue-mid) !important;
+  border-radius: 0 !important;
+}
+
+/* --- links ------------------------------------------------------------------------------- */
+a {
+  color: var(--sec-blue-mid);
+}
+
+a:hover {
+  color: var(--sec-blue);
+}
+
+/* --- the footer -------------------------------------------------------------------------- */
+#kc-info,
+.pf-v5-c-login__main-footer {
+  color: var(--sec-ink-3);
+  font-size: 12px;
+}

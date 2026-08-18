@@ -54,11 +54,20 @@ def parent_number(n: str) -> str | None:
 
 
 def sort_key(n: str) -> str:
-    """Zero-pad every numeric part to 6 digits for correct document-order sorting."""
-    return ".".join(
-        "-".join(p.zfill(6) for p in seg.split("-"))
-        for seg in n.split(".")
-    )
+    """Zero-pad every numeric part of an objectNumber to 6 digits, for document order (R3).
+
+    '.' and '-' are BOTH level separators and are normalised to one. DOORS renders them
+    differently -- '-' marks a non-heading child -- but they play the same role in the outline, so
+    '6.2.1-1' is the same depth as '6.2.1.1' and compares as such.
+
+    Keeping them distinct is what the first implementation did, and it was wrong: the key kept both
+    characters, and '-' (0x2D) sorts before '.' (0x2E), so '6.2.1-1' came out ahead of '6.2.1.0-7'
+    even though DOORS lists the second one first. One inversion in 2 446 real objects.
+
+    This must stay byte-identical to DoorsDerivations.sortKey in the Kotlin importer -- __sortKey
+    is Tier-1, and R1 requires either importer to regenerate the same value. See ADR 0022.
+    """
+    return ".".join(p.zfill(6) for p in re.split(r"[.-]", n))
 
 
 def derive_type_label(object_type: str) -> tuple[str, bool]:

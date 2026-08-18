@@ -59,11 +59,29 @@ public object DoorsDerivations {
     public fun parentNumber(n: String): String? =
         if (n.contains('.')) n.substringBeforeLast(".") else null
 
-    /** Zero-pads every dash-separated part of every dot-segment to 6 digits, for document order (R3). */
+    /**
+     * Zero-pads every numeric part of an `objectNumber` to 6 digits, for document order (R3).
+     *
+     * **`.` and `-` are both level separators and are normalised to one.** DOORS renders them
+     * differently — `-` marks a non-heading child — but they play the same role in the outline, so
+     * `6.2.1-1` is the same depth as `6.2.1.1` and compares as such.
+     *
+     * Keeping them distinct is what the first implementation did, and it was wrong: the key kept
+     * both characters, and `-` (0x2D) sorts before `.` (0x2E), so `6.2.1-1` came out ahead of
+     * `6.2.1.0-7` even though DOORS lists the second one first. One inversion in 2 446 real
+     * objects, which is exactly the kind of defect that survives a hand-written fixture — it needs
+     * two numbers of *different depth* under one parent to show up at all.
+     *
+     * R3's contract is "a plain string sort on `__sortKey` reproduces the source tool's own
+     * display order", and with this normalisation the three committed real exports sort with zero
+     * inversions and no two distinct `objectNumber`s colliding on one key
+     * (`DoorsRealExportTest`). See ADR 0022.
+     *
+     * **This must stay byte-identical to `sort_key` in `importers/.../doors/derivations.py`** —
+     * `__sortKey` is Tier-1, and R1 requires either importer to regenerate the same value.
+     */
     public fun sortKey(n: String): String =
-        n.split(".").joinToString(".") { segment ->
-            segment.split("-").joinToString("-") { it.padStart(SORT_KEY_WIDTH, '0') }
-        }
+        n.split('.', '-').joinToString(".") { it.padStart(SORT_KEY_WIDTH, '0') }
 
     /** `(label, isUnknown)` — a blank or unrecognised `Object Type` becomes [DoorsLabel.TBD]. */
     public fun deriveTypeLabel(objectType: String): Pair<String, Boolean> {

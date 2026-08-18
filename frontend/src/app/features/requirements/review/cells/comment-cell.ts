@@ -12,7 +12,7 @@ import type { AnnotationsResponse, ReviewRow, ThreadNote, ThreadSummary } from '
 // One preview line's pixel budget, tuned against the table's own default row height
 // (`--ag-row-height: 46px`, styles/_grid.scss) so an ordinary row yields exactly one slot — the
 // compact chip — and only a row a wrapped Description made taller crosses into the per-note
-// preview (docs/comments_design.jpg, the redesign's own baseline).
+// preview.
 const LINE_HEIGHT = 24;
 const MIN_EXPANDED_SLOTS = 2;
 
@@ -20,7 +20,7 @@ type Mode = 'empty' | 'compact' | 'expanded';
 
 /**
  * The Comment cell: the whole cell is the affordance now, not a small icon a reviewer has to hunt
- * for on a row a wrapped Description made tall (docs/comments_design.jpg baseline). Three states:
+ * for on a row a wrapped Description made tall. Three states:
  *
  * - **empty** — no thread yet. The full cell reads "Add a comment…"; clicking anywhere opens the
  *   panel, the same as every other state.

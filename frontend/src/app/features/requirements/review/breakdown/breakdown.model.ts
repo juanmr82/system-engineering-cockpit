@@ -7,7 +7,7 @@ import type {
 // route handle (R5) — never a raw internal id.
 //
 // The node payload is the shared card's, not this tab's: the dependency graph draws the same
-// requirement as a node from the same shape (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1), so there is one
+// requirement as a node from the same shape (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1), so there is one
 // definition of what a requirement looks like and the two views cannot drift apart.
 
 export type BreakdownAttribute = RequirementAttribute;

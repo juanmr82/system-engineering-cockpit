@@ -1,0 +1,128 @@
+---
+# Prove the deployment works, from outside, the way a user reaches it. Nothing here changes
+# anything — it is the difference between "the playbook finished" and "the cockpit is up".
+#
+# Every check goes through https://{{ sec_hostname }} rather than to a local port, because that is
+# what exercises the whole chain: DNS, the certificate, nginx, the proxy pass, and the service.
+
+- name: The certificate this host serves is trusted by this host
+  # Not a tautology: nginx may be serving a different file than the one sec_certs installed, and a
+  # JVM that cannot trust Keycloak's certificate fails OIDC discovery with a PKIX error at startup
+  # while everything else looks fine.
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/api/v1/health"
+    validate_certs: true
+    return_content: true
+  register: sec_verify_health
+  retries: 6
+  delay: 5
+  until: sec_verify_health.status | default(0) == 200
+
+- name: Liveness answers
+  ansible.builtin.assert:
+    that: sec_verify_health.status == 200
+    success_msg: "health: {{ sec_verify_health.content | trim }}"
+
+- name: Readiness answers, which means the graph is reachable
+  # Separate from liveness on purpose: an orchestrator restarts on a failed liveness probe but only
+  # withholds traffic on a failed readiness one, so a briefly unreachable database must not be able
+  # to trigger a restart loop. Only /ready opens a session.
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/api/v1/ready"
+    validate_certs: true
+    return_content: true
+  register: sec_verify_ready
+  retries: 12
+  delay: 10
+  until: sec_verify_ready.status | default(0) == 200
+
+- name: The user interface is inside the jar and being served
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/"
+    validate_certs: true
+    return_content: true
+  register: sec_verify_ui
+
+- name: It is a page, not an API answer
+  ansible.builtin.assert:
+    that:
+      - sec_verify_ui.status == 200
+      - "'text/html' in sec_verify_ui.content_type"
+    fail_msg: >-
+      / did not return HTML. The jar was probably built without -Pui, so it serves the API and no
+      pages.
+
+- name: An Angular route survives a reload
+  # UiRoutes.kt returns index.html for an extensionless non-/api path. If this 404s, the SPA works
+  # until a user presses F5 and then does not, which is reported much later and much less clearly.
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/requirements/modules"
+    validate_certs: true
+    status_code: 200
+
+- name: A missing asset is a 404, not the index page
+  # The inverse rule, and the one that matters after a redeploy: answering index.html for a stale
+  # main-A1B2C3.js hands the browser an HTML document with status 200, which it reports as a
+  # syntax error rather than as a missing file.
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/main-DEADBEEF.js"
+    validate_certs: true
+    status_code: 404
+
+- name: An unknown API path stays a problem detail
+  ansible.builtin.uri:
+    url: "https://{{ sec_hostname }}/api/v1/definitely-not-a-route"
+    validate_certs: true
+    status_code: 404
+    return_content: true
+  register: sec_verify_api_404
+
+- name: And is JSON, not a page
+  ansible.builtin.assert:
+    that: "'application/problem+json' in sec_verify_api_404.content_type or 'json' in sec_verify_api_404.content_type"
+    fail_msg: >-
+      /api/** answered with something other than an RFC 9457 problem detail. nginx is probably
+      serving a page for it, which is the least useful possible answer to a mistyped API call.
+
+- name: Keycloak's discovery document is reachable at the public URL
+  # Through nginx, at the /auth prefix — the exact URL the backend and the browser both use. A 404
+  # here means KC_HTTP_RELATIVE_PATH and the nginx location disagree.
+  ansible.builtin.uri:
+    url: "{{ sec_oidc_issuer }}/.well-known/openid-configuration"
+    validate_certs: true
+    return_content: true
+  register: sec_verify_oidc_disco
+
+- name: The issuer it advertises matches the one the backend is configured with
+  # If these differ, every login fails token validation with a message about the issuer, and the
+  # cause is usually KC_HOSTNAME rather than anything in SEC.
+  ansible.builtin.assert:
+    that: (sec_verify_oidc_disco.content | from_json).issuer == sec_oidc_issuer
+    fail_msg: >-
+      Keycloak advertises issuer '{{ (sec_verify_oidc_disco.content | from_json).issuer }}' but the
+      backend is configured for '{{ sec_oidc_issuer }}'. Fix KC_HOSTNAME.
+
+- name: Nothing internal is reachable from outside
+  # The inverse of every check above, and the one nobody runs. Delegated to the Ansible controller
+  # so it asks from off-host, which is the only place the question means anything.
+  ansible.builtin.wait_for:
+    host: "{{ sec_hostname }}"
+    port: "{{ item }}"
+    state: stopped
+    timeout: 5
+  loop:
+    - "{{ sec_backend_port }}"
+    - "{{ sec_keycloak_port }}"
+    - "{{ sec_neo4j_bolt_port }}"
+  delegate_to: localhost
+  become: false
+
+- name: Done
+  ansible.builtin.debug:
+    msg:
+      - "The cockpit is up:  https://{{ sec_hostname }}/"
+      - ""
+      - "It will look EMPTY when you sign in, for everyone including administrators. That is"
+      - "ADR 0016 working: visibility comes from access categories and nothing has one yet."
+      - "As a sec-access-manager: Access -> Categories, then Grants, then Containers, then"
+      - "Reconcile, then Defaults. docs/DEPLOY_RHEL9.md §11.4 walks it, and it takes five minutes."

@@ -1,0 +1,41 @@
+# MANAGED BY ANSIBLE — edits here are overwritten on the next run.
+# Source: deploy/rhel9/ansible/roles/sec_backend/templates/sec.yaml.j2
+#
+# An OVERLAY on the packaged application.yaml (config/ConfigArgs.kt), so it states only what this
+# environment changes.
+
+ktor:
+  deployment:
+    # Loopback only. nginx is the only thing that may reach the backend, which is also what makes
+    # server.behindProxy below safe (ADR 0021).
+    host: "{{ sec_bind_address }}"
+    port: {{ sec_backend_port }}
+
+server:
+  behindProxy: true
+
+neo4j:
+  uri: "bolt://{{ sec_bind_address }}:{{ sec_neo4j_bolt_port }}"
+  database: "neo4j"
+  readTimeoutSeconds: 10
+  writeTimeoutSeconds: 30
+
+auth:
+  issuer: "{{ sec_oidc_issuer }}"
+  clientId: "{{ sec_oidc_client_id }}"
+  callbackUrl: "https://{{ sec_hostname }}/api/v1/auth/callback"
+  # Empty = same origin. nginx serves the UI and the API from one hostname.
+  frontendBaseUrl: ""
+
+jira:
+  host: "{{ sec_jira_host }}"
+  auth: "{{ sec_jira_auth }}"
+  deployment: "{{ sec_jira_deployment }}"
+  email: "{{ sec_jira_email }}"
+  scheduleMinutes: {{ sec_jira_schedule_minutes }}
+
+windchill:
+  host: "{{ sec_windchill_host }}"
+
+importer:
+  runHistoryLimit: 25

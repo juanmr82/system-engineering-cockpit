@@ -390,7 +390,7 @@ class JiraIssuesReadTest {
      * A link the depth cut off is counted, not silently dropped.
      *
      * A diagram that stops with nothing to say it stopped is read as a diagram that ended, which is
-     * the failure the badge exists to prevent (`REQ_BREAKDOWN_GRAPH_VIEW` §1.1).
+     * the failure the badge exists to prevent (`REQ_BREAKDOWN_GRAPH_VIEW.md` §1.1).
      */
     @Test
     fun `a link outside the picture is counted on the node it belongs to`() = runBlocking {

@@ -298,7 +298,7 @@ Reference alias map — extend it here when you add a field, do not invent alias
 | `refersTo` | **References** (outgoing) |
 | `refersTo` **in the Breakdown tab only** | **refines ‹parent id›** — `A -[:refersTo]-> B` reads as *A refines B*, at every level, and the row names B. A display convention of that one tab, stated visibly in it, and never to be confused with an authored `:__Meta:__Link` carrying `semantics: 'refines'` (`docs/requirement-breakdown-tree.md` §2). A requirement with several parents is drawn under each of them, so naming the parent is what tells two copies apart (§10.1) |
 | a `refersTo` the Breakdown tree cannot follow | **loops back to ‹id›** — the branch stops rather than repeating |
-| the dependency graph's direction control | **What these refine** / **What refines these** / **Both directions** — never *upstream* / *downstream*. An outgoing `refersTo` is read as *refines*, so following it goes **up** the decomposition, and the two words would point opposite ways at the same arrow (`docs/REQ_BREAKDOWN_GRAPH_VIEW` §3.1, ADR 0011) |
+| the dependency graph's direction control | **What these refine** / **What refines these** / **Both directions** — never *upstream* / *downstream*. An outgoing `refersTo` is read as *refines*, so following it goes **up** the decomposition, and the two words would point opposite ways at the same arrow (`docs/REQ_BREAKDOWN_GRAPH_VIEW.md` §3.1, ADR 0011) |
 | the dependency graph's level bands | the `:__Classification` system level's own wording — *L2 – Segment* — so the band and the badge inside it never disagree. Unplaced nodes get one explicit band, **No system level set**, always last and never folded into a real level |
 | a dependency-graph node with links outside the picture | **+n**, a badge, with *This requirement has links to objects that are not in this graph* on hover. A graph that stops with nothing to say it stopped is read as a graph that ended (§1.1) |
 | the dependency graph's incoming arrows | **no caveat at all** — and its removal is load-bearing rather than tidy-up. The importer reads `__inputLinks`, so a link into a requirement is in the graph whether or not its source module has been imported, and a missing incoming arrow really is a missing dependency. The standing sentence that used to say otherwise is now *wrong*: it would tell a reviewer to distrust an emptiness that carries real information. What remains is the unresolved-modules banner, which names modules and only appears when there are some (ADR 0012) |
@@ -493,15 +493,29 @@ system-engineering-cockpit/
 │   ├── sec-backend.ps1 / sec-frontend.ps1
 │   ├── sec-importers-setup.ps1   ← venv + install, honouring a company pip mirror
 │   └── sec-import-doors.ps1      ← -Smoke, -Test, or straight through to the importer CLI
+├── scripts/linux/
+│   └── sec-package.sh            ← the same jar, built on a Linux build machine
 ├── docs/
+│   ├── README.md                 ← THE MAP. Deployment / development / running, then reference
 │   ├── RUNNING.md                ← no-admin, proxy-only, mirror-only, no-Docker Windows box
+│   ├── DEPLOY_RHEL9.md           ← the SERVER's contract: proxy-only RHEL 9, company PKI, no toolchain
+│   ├── KEYCLOAK_SETUP.md         ← the realm SEC expects; DEPLOY_RHEL9 stands it up, this says what goes in it
 │   ├── features/                 ← one spec per dynamic-content view
-│   ├── REQ_BREAKDOWN_GRAPH_VIEW  ← the dependency graph; see ADR 0011 for where it was amended
+│   ├── REQ_BREAKDOWN_GRAPH_VIEW.md  ← the dependency graph; see ADR 0011 for where it was amended
 │   └── adr/                      ← one short ADR per non-obvious decision
 ├── deploy/
-│   └── docker-compose.dev.yml    ← Neo4j Community for local dev
+│   ├── docker-compose.dev.yml    ← Neo4j + Keycloak for local dev
+│   ├── keycloak/sec-realm.json   ← the dev realm: test users, fixed dev secrets
+│   └── rhel9/                    ← the production kit (ADR 0021). ansible/ IS the deployment;
+│                                   compose/, systemd/, nginx/, config/, keycloak/ are the files
+│                                   it templates, and are also the by-hand route. See its README
 └── .run/                         ← IntelliJ run configurations, committed
 ```
+
+**The server and the DOORS workstation are different machines with different contracts, and
+neither document is a variant of the other.** `docs/RUNNING.md` is a locked-down Windows laptop
+with no admin rights; `docs/DEPLOY_RHEL9.md` is a RHEL 9 server you administer, behind a proxy,
+with certificates issued by the company PKI and no build toolchain. Test a change against both.
 
 **Not every machine that builds this has Docker, direct internet, or administrator rights.**
 `docs/RUNNING.md` is the environment contract for the workstation the DOORS importer actually
@@ -513,7 +527,9 @@ machine — which is the only machine that can talk to DOORS.
 
 ### Cross-platform hygiene — check this every time you add a file
 
-- `.gitattributes`: `* text=auto eol=lf`, `*.bat text eol=crlf`, `*.ps1 text eol=crlf`.
+- `.gitattributes`: `* text=auto eol=lf`, `*.bat text eol=crlf`, `*.ps1 text eol=crlf`, and
+  `*.sh` / `*.service` / `*.timer` pinned to `lf` — a CRLF shell script dies at the shebang with
+  `bad interpreter: ...^M`, and a CRLF unit file is ignored by systemd without a word.
 - Never hardcode `/` or `\` in a path. Kotlin: `Path`. Python: `pathlib.Path`. Angular
   build config: forward slashes only, they are POSIX-normalised.
 - No `bash`-only steps in Maven plugin config or npm scripts. Anything shell-shaped goes in a
@@ -546,6 +562,7 @@ Pin these in the root `pom.xml` and `package.json`. Do not float versions.
 | ngx-echarts | **22.0.0**, exact | Apache-2.0, matched major to Angular. The standalone `NgxEchartsDirective` only; `NgxEchartsModule` is in the package and is never imported |
 | elkjs | **0.11.0**, exact | EPL-2.0. The **only** graph-layout implementation — see ADR 0011. Loaded solely inside `features/requirements/graph/layout/elk.worker.ts`, so it never enters the initial bundle; it is CommonJS, hence the one entry in `allowedCommonJsDependencies`. Pinned exactly for the same reason ag-grid and echarts are |
 | Keycloak | **26.x**, or whatever the company runs | The IdP. SEC depends on **three claims and nothing else**: `sub`, `groups`, `realm_access.roles`. No Admin API, no service account, no group sync — `docs/KEYCLOAK_SETUP.md`. Group membership is administered in **our own realm and stays there**; brokering moves authentication and the user id outward, nothing else (ADR 0016 §3.1) |
+| `ktor-server-forwarded-header` | `${ktor.version}` | `XForwardedHeaders`, for the proxied deployments in `docs/DEPLOY_RHEL9.md`. **Gated on `server.behindProxy`, default false** — the plugin believes `X-Forwarded-For` from whoever sent it, so it is safe only while nothing but the proxy can reach the port. The flag and a loopback bind are one decision (ADR 0021). It is half a feature on its own: `CallLogging`'s `clientIp` MDC field is what makes the corrected address visible |
 | `ktor-server-auth`, `ktor-server-auth-jwt`, `ktor-server-sessions` | `${ktor.version}` | The backend is the OIDC client (ADR 0017). `auth-jwt` brings the JWKS machinery transitively — **do not add a separate JWT or OIDC library**. Every artifact is `${ktor.version}`: one version, one decision |
 | Python | **3.11+** | importers |
 
@@ -583,7 +600,7 @@ Each loads when you work in that directory; numbering is unchanged, so "§6" sti
 ## 6a. JIRA integration
 
 See `docs/JIRA_ISSUES_FEATURE_SPEC.md` for the importer and the Issues dynamic view, and
-**`docs/adr/0014` for the twenty-four places the implementation departs from it** — read that before
+**`docs/adr/0014-jira-graph-shape-and-departures-from-the-spec.md` for the twenty-four places the implementation departs from it** — read that before
 "fixing" something that looks inconsistent with the spec.
 
 Non-negotiables: JIRA data is stored verbatim; app-derived data hangs off `__`-prefixed
@@ -612,7 +629,7 @@ disagrees with what `/myself` looked like. Details and evidence in ADR 0014.
 
 ## 6b. Windchill integration
 
-See **`docs/adr/0015`** — the whole design is there, and it is short. What must not be re-derived:
+See **`docs/adr/0015-windchill-import-from-an-uploaded-export.md`** — the whole design is there, and it is short. What must not be re-derived:
 
 - **Windchill's importer runs in the backend**, fed by an uploaded OData export. There is no Python
   importer and no credential: this application never talks to Windchill. `WindchillGraphWriter` is

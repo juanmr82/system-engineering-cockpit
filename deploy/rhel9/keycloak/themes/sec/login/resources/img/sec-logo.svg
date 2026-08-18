@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder mark for the login page. Replace with the real one, keeping the filename so
+  theme.properties needs no edit.
+
+  Deliberately a plain SVG with no external references and no embedded font: Keycloak serves this
+  from its own origin under a strict CSP, and a <text> element depending on a font the login page
+  has not loaded renders differently on every machine. The wordmark is drawn as paths-free text
+  only because this is a placeholder; a real logo should be outlines.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="40" viewBox="0 0 180 40" role="img" aria-label="System Engineering Cockpit">
+  <rect x="0" y="8" width="4" height="24" fill="#00205b"/>
+  <text x="16" y="011" fill="#00205b" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="15" font-weight="600" dy="16">SEC</text>
+  <text x="58" y="011" fill="#7c8b97" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="10" letter-spacing="0.8" dy="16">SYSTEM ENGINEERING</text>
+  <text x="58" y="023" fill="#7c8b97" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="10" letter-spacing="0.8" dy="16">COCKPIT</text>
+</svg>

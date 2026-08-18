@@ -196,13 +196,35 @@ public object DoorsExportParser {
         val objectType = flat["Object Type"].orEmpty()
         if (DoorsDerivations.deriveTypeLabel(objectType).second) props["__typeRaw"] = objectType
 
+        // Drop the empty ones among the DERIVED properties above. "" there means "we had nothing
+        // to put here" — an object with no table id is not in a table — so storing it adds no
+        // information. Done before the source attributes are added, deliberately: the same is not
+        // true of them.
+        val out = LinkedHashMap<String, Any?>(props.filterValues { it != "" && it != null })
+
+        // An empty SOURCE attribute is KEPT, and that is why the filter above is separate.
+        //
+        // `""` from DOORS means "this attribute exists on this object and has no value", which is
+        // a different fact from "this object does not have this attribute" (CLAUDE.md §11). The
+        // alias map renders the first as *Empty*, in `--sec-ink-3`, precisely because a blank cell
+        // would read as the panel having failed to show something. Dropping them made the two
+        // states indistinguishable downstream and left that *Empty* state unreachable for DOORS
+        // data — the rule was stated and then not implemented.
+        //
+        // Measured over the three committed real exports: empties are 2 % of all attribute values,
+        // and no attribute is empty across a whole module — so keeping them costs almost nothing
+        // and adds no column to any view, because attribute discovery already finds each of these
+        // through the objects that do populate them. See ADR 0022.
+        //
+        // A JSON null is still skipped by the `?: continue` above; the DXL export does not emit
+        // one for an attribute an object carries.
         for ((key, value) in raw) {
             if (key in OBJECT_META_KEYS) continue
             val content = (value as? JsonPrimitive)?.content ?: continue
-            props[key] = if (key == "Absolute Number") content.toIntOrNull() ?: content else content
+            out[key] = if (key == "Absolute Number") content.toIntOrNull() ?: content else content
         }
 
-        return props.filterValues { it != "" && it != null }
+        return out
     }
 
     /** `_prepare_module_props`, ported: every top-level key except `__contents`, then `__id`,

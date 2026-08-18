@@ -1,0 +1,78 @@
+---
+# Accounts, directories, firewall, SELinux. Everything both paths need before anything is installed.
+
+- name: Install the base packages
+  ansible.builtin.dnf:
+    name:
+      - policycoreutils-python-utils   # semanage, for the SELinux port rules below
+      - openssl                        # the certificate checks
+      - unzip
+      - curl
+    state: present
+
+- name: Create the service account
+  # --system, no home, no shell: nothing should ever log in as this account. Its only job is to
+  # own the process, so that a compromise of the application is not a compromise of a login.
+  ansible.builtin.user:
+    name: sec
+    system: true
+    create_home: false
+    shell: /sbin/nologin
+    comment: System Engineering Cockpit
+
+- name: Create the directories
+  # /etc/sec is root:sec 0750 — the service may READ its configuration and may not write it.
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /etc/sec, owner: root, group: sec, mode: '0750' }
+    - { path: /opt/sec, owner: root, group: root, mode: '0755' }
+    - { path: /var/log/sec, owner: sec, group: sec, mode: '0750' }
+
+# --- SELinux -------------------------------------------------------------------------------------
+# The single most common cause of "502 from nginx and the configuration is obviously correct".
+# On an enforcing host nginx may not open outbound connections at all without this boolean.
+- name: Let nginx connect to the backend and Keycloak
+  ansible.posix.seboolean:
+    name: httpd_can_network_connect
+    state: true
+    persistent: true
+  when:
+    - sec_manage_selinux | bool
+    - ansible_facts['selinux']['status'] | default('disabled') == 'enabled'
+
+# --- firewall --------------------------------------------------------------------------------------
+- name: Open https, and http for the redirect
+  ansible.posix.firewalld:
+    service: "{{ item }}"
+    permanent: true
+    immediate: true
+    state: enabled
+  loop:
+    - https
+    - http
+  when:
+    - sec_manage_firewall | bool
+    - ansible_facts['services']['firewalld.service'] is defined
+
+# The inverse, and the more important half. These ports are reached through nginx and loopback
+# only; an explicit removal means a hand-opened port does not survive the next run.
+- name: Make sure the internal ports are NOT open to the network
+  ansible.posix.firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    immediate: true
+    state: disabled
+  loop:
+    - "{{ sec_backend_port }}"
+    - "{{ sec_keycloak_port }}"
+    - "{{ sec_neo4j_bolt_port }}"
+    - 5432
+    - 7474
+  when:
+    - sec_manage_firewall | bool
+    - ansible_facts['services']['firewalld.service'] is defined

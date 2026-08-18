@@ -91,8 +91,13 @@ class TestSortKey:
     def test_two_segments(self):
         assert sort_key("1.2") == "000001.000002"
 
-    def test_non_heading(self):
-        assert sort_key("7.2.0-4") == "000007.000002.000000-000004"
+    def test_non_heading_dash_is_a_level_separator_like_a_dot(self):
+        # ADR 0022: keeping both characters made "6.2.1-1" sort ahead of "6.2.1.0-7", because
+        # "-" is 0x2D and "." is 0x2E.
+        assert sort_key("7.2.0-4") == "000007.000002.000000.000004"
+
+    def test_deeper_branch_sorts_before_a_later_sibling(self):
+        assert sorted(["6.2.1-1", "6.2.1.0-7"], key=sort_key) == ["6.2.1.0-7", "6.2.1-1"]
 
     def test_document_order(self):
         nums = ["10", "9", "2.1", "2.10", "2.2"]
@@ -100,7 +105,7 @@ class TestSortKey:
         assert sorted_nums == ["2.1", "2.2", "2.10", "9", "10"]
 
     def test_from_spec(self):
-        assert sort_key("7.2.0-4") == "000007.000002.000000-000004"
+        assert sort_key("7.2.0-4") == "000007.000002.000000.000004"
 
 
 class TestDeriveTypeLabel:

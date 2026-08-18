@@ -58,6 +58,12 @@
       <groupId>io.ktor</groupId>
       <artifactId>ktor-server-sse-jvm</artifactId>
     </dependency>
+    <!-- Behind nginx in both deployment paths (docs/DEPLOY_RHEL9.md); gated by
+         server.behindProxy, off by default. -->
+    <dependency>
+      <groupId>io.ktor</groupId>
+      <artifactId>ktor-server-forwarded-header-jvm</artifactId>
+    </dependency>
 
     <!-- ADR 0017 / docs/features/access-control.md: the backend is the OIDC client and the only
          session store. -->

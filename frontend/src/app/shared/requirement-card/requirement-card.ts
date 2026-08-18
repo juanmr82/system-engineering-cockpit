@@ -16,7 +16,7 @@ import type { RequirementCardDensity, RequirementCardNode } from './requirement-
 
 /**
  * One requirement, drawn as a card — the shared unit of the Breakdown tab and the dependency graph
- * (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+ * (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
  *
  * **Same data, same component, two layouts.** This is a hard requirement of the graph spec, not a
  * convenience: the graph is opened from the breakdown tree and shows the same requirements, so a

@@ -1,0 +1,138 @@
+---
+# The ONE file a deployer edits. Copy to group_vars/all.yml and work down it.
+#
+#     cp group_vars/all.yml.example group_vars/all.yml
+#
+# Nothing secret goes here — this file is committed and readable. Secrets live in the vault
+# (vault.yml.example), encrypted, and are referenced from here as vault_* variables.
+
+# =================================================================================================
+# 1. Identity — the only things you MUST change
+# =================================================================================================
+
+# This server's real FQDN. It must match the certificate's subjectAltName, nginx's server_name,
+# and the redirect URIs on the sec-backend Keycloak client. The playbook refuses to run while this
+# is still the example value.
+sec_hostname: sec.example.corp
+
+# 'native'  — Neo4j, Keycloak and the backend as systemd services (docs/DEPLOY_RHEL9.md §7)
+# 'compose' — the same three in containers, nginx still on the host (§6)
+sec_deployment_mode: native
+
+# =================================================================================================
+# 2. The artifact
+# =================================================================================================
+
+# Path ON THE MACHINE RUNNING ANSIBLE to the jar built by scripts/linux/sec-package.sh, or
+# downloaded from the company repository once §13 is done.
+sec_jar_src: ../../../backend/target/backend-0.1.0-all.jar
+
+# Installed as /opt/sec/<this>.jar with a /opt/sec/sec.jar symlink pointing at it, so a rollback is
+# one symlink change. Keep it distinct per release.
+sec_jar_version: "0.1.0"
+
+# =================================================================================================
+# 3. The certificate bundle — issued by the company PKI, not generated here
+# =================================================================================================
+#
+# Request a server certificate for sec_hostname from your PKI team, with a subjectAltName covering
+# it. Put the three files somewhere Ansible can read them and name them here. The playbook
+# validates them before installing (key matches cert, SAN covers the host, chain verifies, not
+# expired) and refuses on any of those, because nginx would accept most of them and then fail at
+# handshake time for some clients and not others.
+#
+# Paths are on the machine running Ansible.
+sec_cert_src: files/certs/{{ sec_hostname }}.crt
+sec_key_src: files/certs/{{ sec_hostname }}.key
+# The issuing chain, root included. Installed into the system trust store, which is what makes the
+# JVM trust it too (/etc/pki/java/cacerts) — without which OIDC discovery fails and nobody logs in.
+sec_ca_chain_src: files/certs/company-ca-chain.crt
+
+# Set false if your company CA is already in this host's trust store by other means (a baseline
+# image, a configuration-management run that owns /etc/pki). The check still runs.
+sec_install_ca_chain: true
+
+# =================================================================================================
+# 4. Keycloak
+# =================================================================================================
+
+sec_oidc_realm: sec
+# Served under /auth on the same hostname, so the login redirect stays same-site.
+sec_oidc_issuer: "https://{{ sec_hostname }}/auth/realms/{{ sec_oidc_realm }}"
+sec_oidc_client_id: sec-backend
+
+# Imported on first run only; never re-imported over a realm that exists, because that would
+# discard the groups an access manager created. Set false once you administer the realm by hand.
+sec_keycloak_import_realm: true
+sec_keycloak_theme: sec
+
+# Native path only. Download the distribution yourself and put it where Ansible can read it —
+# there is no internet on the target, and this playbook will not invent one.
+sec_keycloak_version: "26.0.0"
+sec_keycloak_zip_src: files/keycloak-{{ sec_keycloak_version }}.zip
+
+# =================================================================================================
+# 5. Sizing
+# =================================================================================================
+# Page cache first for this workload: it is read-heavy over a graph that should fit in memory.
+sec_neo4j_heap: 2G
+sec_neo4j_pagecache: 2G
+
+# =================================================================================================
+# 6. Optional sources — leave empty and the feature reports itself as not configured
+# =================================================================================================
+sec_jira_host: ""
+sec_jira_auth: bearer          # bearer = Data Center · basic = Cloud
+sec_jira_deployment: datacenter # datacenter = /search · cloud = /search/jql
+sec_jira_email: ""
+sec_jira_schedule_minutes: 60
+sec_windchill_host: ""
+
+# =================================================================================================
+# 7. Things you probably should not change
+# =================================================================================================
+sec_backend_port: 8080
+sec_keycloak_port: 8180
+sec_neo4j_bolt_port: 7687
+
+# Every service binds here. Not a firewall rule — an actual loopback bind, so it holds even where
+# firewalld is off, and it is what makes trusting X-Forwarded-For safe (ADR 0021).
+sec_bind_address: 127.0.0.1
+
+# The largest export a user may upload. A DOORS module is several MB; nginx's own default is 1m,
+# which rejects the upload with a 413 the backend never sees.
+sec_max_upload_size: 64m
+
+sec_manage_firewall: true
+sec_manage_selinux: true
+
+# =================================================================================================
+# 8. Who may reach the Keycloak admin console
+# =================================================================================================
+#
+# The console lives at https://<host>/auth/admin/ and is restricted by SOURCE ADDRESS. Empty means
+# loopback only, which means nobody — and that is the right state until you know the answer, since
+# the application itself does not need the console to work.
+#
+# This is a fact about YOUR network, not about SEC. It is the range that administrators' machines
+# have as their source address when they reach this server. To find it, from a machine you would
+# actually administer from:
+#
+#     ssh <this server> 'echo $SSH_CLIENT' | awk '{print $1}'
+#
+# ...then ask your network team which block that address belongs to. Use the RANGE, not your own
+# single address, or you lock out your colleagues.
+#
+# Two traps:
+#   * Over VPN, the answer is the VPN client pool, not the office LAN. They differ, and people
+#     usually quote the office one.
+#   * These rules read the real TCP peer. If a corporate load balancer is ever placed in front of
+#     nginx, every request arrives from the balancer and this list stops meaning anything.
+#
+# Prefer the tightest thing that works — often a single bastion host. Do NOT widen this to
+# something like 10.0.0.0/8 to make it work; that is most of the corporate network and the control
+# then means nothing. If you cannot pin a range down, leave it empty and administer the realm with
+# /opt/keycloak/bin/kcadm.sh on the server instead.
+sec_admin_allow_cidrs: []
+#   - 10.20.30.0/24      # the ops subnet
+#   - 10.0.0.5/32        # the bastion

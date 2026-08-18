@@ -1,0 +1,88 @@
+# /etc/sec/sec.yaml — the deployment's configuration overlay.
+#
+# This file is an OVERLAY, not a replacement (config/ConfigArgs.kt). The packaged application.yaml
+# inside the jar holds every default and all the plumbing; this file states only what THIS
+# environment changes. That is why there is no `ktor.application.modules` here, and why there must
+# never be one: the module's fully-qualified Kotlin function name is an implementation detail no
+# operator should have to know, and it becomes wrong the day the class is renamed.
+#
+#     java -jar /opt/sec/sec.jar -config=/etc/sec/sec.yaml
+#
+# Copy to /etc/sec/sec.yaml, edit the three hostnames, and leave the rest alone unless you have a
+# reason. Ownership root:sec, mode 0640 — it holds no secret (those are environment variables, see
+# sec.env.example) but it does hold your topology.
+
+# ---------------------------------------------------------------------------------------------
+# Where this process listens.
+#
+# LOOPBACK ONLY, and this is load-bearing rather than tidy. nginx is the only thing that may reach
+# the backend, for two reasons: the session cookie is `Secure` unconditionally (ADR 0017), so a
+# plain-http origin cannot hold a session at all; and `server.behindProxy` below tells this process
+# to believe X-Forwarded-For, which is safe exactly while nobody but nginx can send it.
+#
+# Changing host to 0.0.0.0 without also turning behindProxy off lets any caller on the network
+# write its own address into your audit log.
+# ---------------------------------------------------------------------------------------------
+ktor:
+  deployment:
+    host: "127.0.0.1"
+    port: 8080
+
+server:
+  behindProxy: true
+
+# ---------------------------------------------------------------------------------------------
+# Neo4j. Credentials are NOT here — application.yaml resolves them from $SEC_NEO4J_USER and
+# $SEC_NEO4J_PASSWORD, and fails to load when they are unset, on purpose.
+#
+# bolt:// on loopback is right when Neo4j runs on this host, which is what the guide assumes. For
+# a Neo4j on another machine use bolt+s:// (TLS) — never plain bolt:// across a network, because
+# the service-account password is the only credential the database has (CLAUDE.md §7).
+# ---------------------------------------------------------------------------------------------
+neo4j:
+  uri: "bolt://127.0.0.1:7687"
+  database: "neo4j"
+  # Community has no query governor. These are the only limit on a runaway query, and the defaults
+  # (10s / 30s) are deliberately tight. Raise readTimeoutSeconds only if a real, measured view
+  # needs it — a large DOORS module's dependency graph is the usual candidate.
+  readTimeoutSeconds: 10
+  writeTimeoutSeconds: 30
+
+# ---------------------------------------------------------------------------------------------
+# Authentication (ADR 0017). The client secret is an environment variable, never a value here.
+#
+# Every URL below must match the sec-backend client in Keycloak EXACTLY, trailing path included —
+# a mismatch is refused by Keycloak with its own error page, not an SEC one, which is the second
+# most likely thing to go wrong on a first deployment (docs/KEYCLOAK_SETUP.md §8).
+# ---------------------------------------------------------------------------------------------
+auth:
+  issuer: "https://sec.example.corp/auth/realms/sec"
+  clientId: "sec-backend"
+  callbackUrl: "https://sec.example.corp/api/v1/auth/callback"
+  # Empty means "same origin as this backend", which is correct for the packaged deployment: nginx
+  # serves the UI and the API from one hostname. Set it only if the UI is served from elsewhere.
+  frontendBaseUrl: ""
+
+# ---------------------------------------------------------------------------------------------
+# Sources. Every one of these is optional; an unset source reports itself as not configured and
+# the rest of the application works.
+# ---------------------------------------------------------------------------------------------
+
+# JIRA — the one source this process connects to itself (ADR 0013). The token is an environment
+# variable ($SEC_JIRA_TOKEN). Set `auth` and `deployment` together for a Cloud host; both default
+# to the Data Center answer. See ADR 0014.
+jira:
+  host: ""
+  # auth: bearer      # bearer = Data Center / Server (default) · basic = Cloud
+  # deployment: datacenter   # datacenter = /search (default) · cloud = /search/jql
+  # email: ""         # required by basic, ignored by bearer
+  scheduleMinutes: 60
+
+# Windchill — fed by an uploaded export, never connected to, so there is no credential. The host
+# decides one thing only: where a document row links out to. Empty means no link, and importing
+# still works.
+windchill:
+  host: ""
+
+importer:
+  runHistoryLimit: 25

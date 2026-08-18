@@ -119,9 +119,26 @@ class DoorsDerivationsTest {
         assertEquals("000001.000002", DoorsDerivations.sortKey("1.2"))
     }
 
+    /**
+     * A dash is a level separator like a dot, and the key normalises it to one (ADR 0022). Keeping
+     * both characters is what made `6.2.1-1` sort ahead of `6.2.1.0-7`, because `-` is 0x2D and
+     * `.` is 0x2E.
+     */
     @Test
-    fun `sort key, non-heading`() {
-        assertEquals("000007.000002.000000-000004", DoorsDerivations.sortKey("7.2.0-4"))
+    fun `sort key, non-heading — a dash is a level separator like a dot`() {
+        assertEquals("000007.000002.000000.000004", DoorsDerivations.sortKey("7.2.0-4"))
+    }
+
+    /**
+     * The case the separator bug produced, pinned as a unit test as well as against real data: a
+     * deeper number under the same parent sorts before a shallower one with a higher index.
+     */
+    @Test
+    fun `sort key orders a deeper branch before a later sibling`() {
+        assertEquals(
+            listOf("6.2.1.0-7", "6.2.1-1"),
+            listOf("6.2.1-1", "6.2.1.0-7").sortedBy { DoorsDerivations.sortKey(it) },
+        )
     }
 
     @Test

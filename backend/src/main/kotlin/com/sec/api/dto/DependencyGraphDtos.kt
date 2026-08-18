@@ -2,7 +2,7 @@ package com.sec.api.dto
 
 import kotlinx.serialization.Serializable
 
-// Wire shapes for docs/REQ_BREAKDOWN_GRAPH_VIEW §3.3. `ref` is always the base64url encoding of
+// Wire shapes for docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3.3. `ref` is always the base64url encoding of
 // __id (R5) — never __id itself, and no __-prefixed name appears in a field name or a value.
 
 /**

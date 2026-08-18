@@ -36,7 +36,6 @@ importers/dist/
 
 # --- Local machine setup (site paths, proxy, credentials) ---
 scripts/win/sec-env.local.ps1
-docs/JIRA_TOKEN_FOR_EXAMPLE_GIT_IGNORE.md
 
 # --- Reports / local artifacts ---
 importers/reports/
@@ -45,3 +44,14 @@ importers/reports/
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+# --- Deployment: a deployer's own values, and anything holding a secret ---
+# The *.example files are the templates and ARE committed. These are the filled-in copies.
+# An encrypted vault.yml is safe to commit, but only after `ansible-vault encrypt` — and there is
+# no way for git to tell an encrypted one from a forgotten plaintext one, so neither is tracked.
+deploy/rhel9/ansible/inventory/hosts.yml
+deploy/rhel9/ansible/group_vars/all.yml
+deploy/rhel9/ansible/group_vars/vault.yml
+deploy/rhel9/ansible/files/certs/*
+!deploy/rhel9/ansible/files/certs/.gitkeep
+.sec-vault-pass

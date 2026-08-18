@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { DependencyGraphDialog } from './dependency-graph-dialog';
 import type { DependencyGraph, GraphNode } from './graph.model';
 
-// The rendering half of docs/REQ_BREAKDOWN_GRAPH_VIEW §7. The canvas itself is invisible to jsdom
+// The rendering half of docs/REQ_BREAKDOWN_GRAPH_VIEW.md §7. The canvas itself is invisible to jsdom
 // — no layout, no canvas, no ResizeObserver — so what is asserted here is what a screen reader and
 // a reviewer would read: the cards, the mandatory caveat, the banner and the reading table.
 

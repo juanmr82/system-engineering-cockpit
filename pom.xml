@@ -118,6 +118,22 @@
         <artifactId>ktor-server-config-yaml-jvm</artifactId>
         <version>${ktor.version}</version>
       </dependency>
+      <!--
+        X-Forwarded-* handling, for the deployments in docs/DEPLOY_RHEL9.md: nginx terminates TLS
+        and the backend only ever sees a connection from 127.0.0.1, so without this every access
+        log line and every CallLogging record names the proxy instead of the caller. On an
+        application whose whole authorization story is "who is asking" (R8), an audit log that
+        cannot say where a request came from is worth one Ktor artifact.
+
+        It is `${ktor.version}` like every other Ktor dependency - one version, one decision - and
+        it is NOT installed unconditionally: `server.behindProxy` gates it, defaulting to false,
+        because the plugin trusts the header from whoever sent it. See ADR 0021.
+      -->
+      <dependency>
+        <groupId>io.ktor</groupId>
+        <artifactId>ktor-server-forwarded-header-jvm</artifactId>
+        <version>${ktor.version}</version>
+      </dependency>
       <dependency>
         <groupId>io.ktor</groupId>
         <artifactId>ktor-server-test-host-jvm</artifactId>

@@ -1,6 +1,6 @@
 import type { RequirementCardNode } from '../../../shared/requirement-card/requirement-card.model';
 
-// Wire shapes for docs/REQ_BREAKDOWN_GRAPH_VIEW §3.3, mirroring `api/dto/DependencyGraphDtos.kt`.
+// Wire shapes for docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3.3, mirroring `api/dto/DependencyGraphDtos.kt`.
 // Every `ref` is the opaque route handle (R5) — never a raw internal id.
 
 /**

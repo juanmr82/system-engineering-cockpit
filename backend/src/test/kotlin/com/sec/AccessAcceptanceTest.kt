@@ -36,9 +36,6 @@ import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.testcontainers.containers.Neo4jContainer
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -60,7 +57,7 @@ import kotlin.test.assertTrue
  * Unassigned queue at all, so it cannot exercise the "assign" step this test is about. A JIRA
  * project can, because `AccessContainment.jira` is a real container.
  *
- * The export is the committed `docs/JIRA.json` sample — the same file `JiraIssueImportTest` reads —
+ * The export is the committed [Fixtures.JIRA_SEARCH] sample — the same file `JiraIssueImportTest` reads —
  * scoped to one project so the "every row" half of the assertion is a small, known number.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -185,11 +182,7 @@ class AccessAcceptanceTest {
     private fun MockRequestHandleScope.respondJson(body: String) =
         respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
 
-    private fun sample(name: String): String {
-        val path: Path = Path.of("..", "docs", name)
-        assertTrue(path.exists(), "sample export $name is missing; this test would pass vacuously.")
-        return path.readText()
-    }
+    private fun sample(name: String): String = Fixtures.text(name)
 
     /** The JIRA importer is self-driving (no upload), so a run of it never carries a request. */
     private class RecordingContext : ImportContext {
@@ -207,9 +200,9 @@ class AccessAcceptanceTest {
 
     private companion object {
         const val HOST = "https://jira.example.com"
-        const val SEARCH = "JIRA.json"
-        const val FIELDS = "JIRA_FIELDS.json"
-        const val ISSUE_TYPES = "JIRA_ISSUE_TYPES_DTO_EXAMPLE.md"
+        const val SEARCH = Fixtures.JIRA_SEARCH
+        const val FIELDS = Fixtures.JIRA_FIELDS
+        const val ISSUE_TYPES = Fixtures.JIRA_ISSUE_TYPES
 
         /** The project most tests in `JiraIssueImportTest` also scope to. Nine issues carry it. */
         const val PROJECT = "ProjectCRPT"

@@ -2,7 +2,7 @@ import type { SystemLevelOption } from '../../features/requirements/modules/modu
 
 // The card payload, mirroring `api/dto/RequirementCardDtos.kt`. One requirement as every view that
 // draws one shows it — the Breakdown tab as a row, the dependency graph as a node
-// (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+// (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
 //
 // `ref` is always the opaque route handle (R5), never a raw internal id.
 
@@ -41,7 +41,7 @@ export interface RequirementCardNode {
 
 /**
  * How a card is laid out. **Padding and clamping only — never which fields are shown**
- * (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+ * (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
  *
  * That is the whole contract of the shared component: if the breakdown row gains a field the graph
  * node gains it too, with no second change, so the two can never drift into showing different

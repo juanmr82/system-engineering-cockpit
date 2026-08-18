@@ -5,7 +5,7 @@ Date: 2026-08-05
 
 ## Context
 
-`docs/BACKEND_REVIEW.md` §3.1 found `StatusPages` installed but empty: a malformed `:ref` returned
+A 2026 backend review found `StatusPages` installed but empty: a malformed `:ref` returned
 `500` with the JDK's `Illegal base64 character 21`, a malformed body returned the fully-qualified
 name of an internal DTO, and an unmatched path returned `404` with no body at all. Two of those
 leak internals, and the first reports a client error as a server error.

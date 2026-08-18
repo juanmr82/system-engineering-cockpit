@@ -39,7 +39,7 @@ const LEVEL_LABELS: Record<GraphLevelStrategy, string> = {
 };
 
 /**
- * The dependency graph dialog (docs/REQ_BREAKDOWN_GRAPH_VIEW §2).
+ * The dependency graph dialog (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §2).
  *
  * Opens at a fixed near-fullscreen size and fits the *diagram* inside it, rather than sizing itself
  * to the diagram: above about thirty nodes a graph is already wider than any screen, so "fit the

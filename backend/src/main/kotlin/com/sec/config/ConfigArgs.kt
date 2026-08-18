@@ -5,7 +5,7 @@ package com.sec.config
  * replacement for it.
  *
  * Ktor's `EngineMain` accepts `-config=` already, which is why this project adds no `-c` flag of
- * its own (`docs/REFACTOR_BACKEND.md` item 6). What it does *not* do is merge: given one
+ * its own (a 2026 backend review, item 6). What it does *not* do is merge: given one
  * `-config=`, the packaged file is dropped entirely, so a deployment file omitting the `ktor:`
  * block dies with *"Neither port nor sslPort specified"*. That would make every operator's file
  * carry `com.sec.ApplicationKt.module` — the module's fully-qualified Kotlin function name, which

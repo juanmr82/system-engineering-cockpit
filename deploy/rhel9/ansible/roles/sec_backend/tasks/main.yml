@@ -1,0 +1,92 @@
+---
+# The jar, its configuration, its secrets and its unit. Also the upgrade path: re-run with
+# --tags backend after changing sec_jar_src / sec_jar_version.
+
+- name: Install a JDK
+  ansible.builtin.dnf:
+    name: java-21-openjdk-headless
+    state: present
+  # The packaged JDK on purpose: it uses /etc/pki/java/cacerts, which update-ca-trust maintains,
+  # so the company CA installed by sec_certs is trusted with nothing further to do. A tarball JDK
+  # has its own trust store and would need the chain imported again on every JDK upgrade.
+
+- name: Upload the jar, versioned
+  ansible.builtin.copy:
+    src: "{{ sec_jar_src }}"
+    dest: "/opt/sec/backend-{{ sec_jar_version }}-all.jar"
+    owner: root
+    group: root
+    mode: '0644'
+  register: sec_backend_jar_uploaded
+
+# Versioned file plus a stable symlink: the unit never changes, and a rollback is one symlink swap
+# (`ln -sfn /opt/sec/backend-<previous>-all.jar /opt/sec/sec.jar && systemctl restart sec-backend`).
+- name: Point sec.jar at this version
+  ansible.builtin.file:
+    src: "/opt/sec/backend-{{ sec_jar_version }}-all.jar"
+    dest: /opt/sec/sec.jar
+    state: link
+    owner: root
+    group: root
+  notify: Restart the backend
+
+- name: Warn when the jar carries no user interface
+  # A jar built without -Pui serves a working API and no pages, and is indistinguishable from a
+  # good one until somebody opens a browser.
+  # noqa command-instead-of-module — this LISTS an archive member; unarchive has no list mode.
+  ansible.builtin.command:
+    cmd: unzip -l /opt/sec/sec.jar static/index.html
+  register: sec_backend_jar_ui
+  changed_when: false
+  failed_when: false
+
+- name: Say so
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ sec_jar_version }} does not contain static/index.html — it was built without
+      -Pui, so it serves the API but no user interface.
+  when: sec_backend_jar_ui.rc != 0
+
+# --- configuration ---------------------------------------------------------------------------------
+
+- name: Write the configuration overlay
+  # An overlay on the packaged application.yaml, not a replacement (config/ConfigArgs.kt), so this
+  # file states only what this environment changes and never has to name a Kotlin module path.
+  ansible.builtin.template:
+    src: sec.yaml.j2
+    dest: /etc/sec/sec.yaml
+    owner: root
+    group: sec
+    mode: '0640'
+  notify: Restart the backend
+
+- name: Write the secrets
+  # 0640 root:sec — systemd reads it as pid 1, before dropping to User=sec, so the service never
+  # needs to be able to read it as itself. Not in the unit file: `systemctl show` prints
+  # Environment= lines to any user.
+  ansible.builtin.template:
+    src: sec.env.j2
+    dest: /etc/sec/sec.env
+    owner: root
+    group: sec
+    mode: '0640'
+  no_log: true
+  notify: Restart the backend
+
+- name: Install the unit
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../systemd/sec-backend.service"
+    dest: /etc/systemd/system/sec-backend.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart the backend
+
+- name: Enable and start it
+  ansible.builtin.systemd_service:
+    name: sec-backend
+    enabled: true
+    state: started
+    daemon_reload: true

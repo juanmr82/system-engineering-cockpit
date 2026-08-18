@@ -59,6 +59,6 @@ flag a legitimate `__`-leading string if one is ever genuinely needed in a liter
 Cypher console (R5's one deliberate exception) will need a disable comment when it lands. That is
 the right trade: the exception is a single documented view, and the default is safe.
 
-**The backend still has no static analysis.** ktlint or detekt was flagged in `BACKEND_REVIEW.md`
+**The backend still has no static analysis.** ktlint or detekt was flagged in a 2026 backend review
 §5 as needing its own decision and is not taken here; `explicitApi()` carries part of the weight
 already.

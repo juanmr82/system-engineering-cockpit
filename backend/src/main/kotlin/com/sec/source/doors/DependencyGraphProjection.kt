@@ -15,7 +15,7 @@ import com.sec.graph.executeRead
 import com.sec.security.AccessSet
 
 /**
- * The dependency graph's read model (docs/REQ_BREAKDOWN_GRAPH_VIEW §3).
+ * The dependency graph's read model (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3).
  *
  * A bounded neighbourhood of `refersTo` around one or more seeds, returned as the **induced**
  * subgraph: every `refersTo` between two nodes in the picture, not only the edges the walk itself

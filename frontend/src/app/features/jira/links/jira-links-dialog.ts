@@ -23,7 +23,7 @@ export interface JiraLinksDialogData {
  *
  * Opens at a fixed near-fullscreen size and fits the *diagram* inside it rather than sizing itself
  * to the diagram: the extent changes with every depth change, and a frame that resized under the
- * cursor would be unusable (`REQ_BREAKDOWN_GRAPH_VIEW` §2.1).
+ * cursor would be unusable (`REQ_BREAKDOWN_GRAPH_VIEW.md` §2.1).
  */
 @Component({
   selector: 'sec-jira-links-dialog',

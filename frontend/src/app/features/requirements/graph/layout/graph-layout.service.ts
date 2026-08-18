@@ -4,7 +4,7 @@ import { buildElkGraph, readElkResult } from './elk-graph';
 import type { LayoutRequest, LayoutResult } from './elk-graph';
 
 /**
- * Runs ELK, in a Web Worker when there is one (docs/REQ_BREAKDOWN_GRAPH_VIEW §4.2).
+ * Runs ELK, in a Web Worker when there is one (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §4.2).
  *
  * **ELK owns the worker; we do not.** The spec says to run ELK in a worker, and the shape that
  * looks right — our own worker file importing `elk.bundled.js` — cannot work: see the comment in

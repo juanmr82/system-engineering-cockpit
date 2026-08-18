@@ -1,0 +1,93 @@
+# /etc/systemd/system/sec-backend.service
+#
+#   install -o root -g root -m 0644 sec-backend.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now sec-backend
+#
+# The native (non-container) path of docs/DEPLOY_RHEL9.md. One jar, one JDK, one unit.
+
+[Unit]
+Description=System Engineering Cockpit — API and UI
+Documentation=file:/opt/sec/docs/DEPLOY_RHEL9.md
+# Ordering only, not a hard dependency, and the difference matters. The backend calls
+# verifyConnectivity() at startup and dies if the graph is unreachable, so Restart= below is what
+# actually handles a slow Neo4j — After= just avoids the pointless first attempt. Keycloak is not
+# named at all: the backend survives it being absent by design (KEYCLOAK_SETUP.md §7).
+After=network-online.target neo4j.service
+Wants=network-online.target
+
+# Five failures inside a minute means the cause is not transient — stop and leave it failed, so
+# somebody reads the log instead of watching it loop. These two live in [Unit], not [Service]:
+# systemd moved them in v229 and silently ignores them in the wrong section, which turns the rate
+# limit off without a word (`systemd-analyze verify` is what catches it).
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+[Service]
+Type=exec
+User=sec
+Group=sec
+
+# The secrets, root-read at 0640 (see config/sec.env.example for why not .bashrc and why not
+# Environment= lines here). systemd reads this as pid 1, before dropping to User= above.
+EnvironmentFile=/etc/sec/sec.env
+
+# -config= is an OVERLAY on the packaged application.yaml, not a replacement (config/ConfigArgs.kt).
+# The deployment file states only what this environment changes.
+#
+# -XX:MaxRAMPercentage rather than -Xmx: the box may be resized, and a percentage survives that.
+# UseSerialGC because this is a small heap serving modest concurrency — G1's background threads
+# cost more here than they return. Revisit both under real load, not before.
+ExecStart=/usr/bin/java \
+    -XX:MaxRAMPercentage=60 \
+    -XX:+UseSerialGC \
+    -XX:+ExitOnOutOfMemoryError \
+    -Dfile.encoding=UTF-8 \
+    -Djava.security.egd=file:/dev/urandom \
+    -Dlogback.configurationFile=logback-production.xml \
+    -jar /opt/sec/sec.jar \
+    -config=/etc/sec/sec.yaml
+
+# ExitOnOutOfMemoryError above plus this: a heap-exhausted JVM that keeps running answers requests
+# wrongly and slowly, which is worse than being restarted. Restart= brings it back.
+Restart=on-failure
+RestartSec=5s
+
+# JSON to the journal (logback-production.xml). `journalctl -u sec-backend -o cat | jq` reads it.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sec-backend
+
+# --- hardening -----------------------------------------------------------------------------------
+# The service reads a jar and a config file and talks to two local ports. It has no business
+# writing anywhere, and every line below has been checked against that.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# ^ false, not true: the JVM's JIT writes executable pages, and true kills it at startup.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# ProtectSystem=strict makes everything read-only; the JVM still needs somewhere to put its
+# performance-instrumentation files. PrivateTmp gives it a private /tmp, and this is the only
+# writable path granted.
+ReadWritePaths=/var/log/sec
+
+# An upload is held in memory while it is parsed (a DOORS export is a few MB, ADR 0019), and the
+# graph driver's pools are not large. 2G of address space is generous; lower it once measured.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

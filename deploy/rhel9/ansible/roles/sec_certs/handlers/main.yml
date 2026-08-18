@@ -1,0 +1,14 @@
+---
+- name: Rebuild the trust store
+  ansible.builtin.command:
+    cmd: update-ca-trust extract
+  changed_when: true
+
+# Declared here as well as in sec_nginx because this role installs the certificate and nginx may
+# not be configured yet on a first run. `listen: ` would need a shared handler name; a plain
+# service reload guarded on the unit existing is simpler and does the same thing.
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  when: ansible_facts['services']['nginx.service'] is defined

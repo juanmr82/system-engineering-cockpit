@@ -1,7 +1,6 @@
 package com.sec.source.jira
 
-import java.nio.file.Path
-import kotlin.io.path.readText
+import com.sec.Fixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -181,12 +180,12 @@ class JiraGraphWriterRowsTest {
     private fun props(row: Map<String, Any?>): Map<String, Any?> = row["props"] as Map<String, Any?>
 
     private fun fieldDefinitions(): List<JiraFieldDefinition> =
-        jiraJson.decodeFromString(sample("JIRA_FIELDS.json"))
+        jiraJson.decodeFromString(sample(Fixtures.JIRA_FIELDS))
 
     // `.md` rather than `.json`, which is how the issue-type export was added. Nothing here parses
     // by extension; only the name differs from its siblings.
     private fun issueTypes(): List<JiraIssueTypeDefinition> =
-        jiraJson.decodeFromString(sample("JIRA_ISSUE_TYPES_DTO_EXAMPLE.md"))
+        jiraJson.decodeFromString(sample(Fixtures.JIRA_ISSUE_TYPES))
 
-    private fun sample(name: String): String = Path.of("..", "docs", name).readText()
+    private fun sample(name: String): String = Fixtures.text(name)
 }

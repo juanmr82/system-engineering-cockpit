@@ -117,10 +117,29 @@ def _prepare_object_props(obj: dict, module_version: str) -> dict:
     if is_unknown:
         props["__typeRaw"] = object_type
 
-    # All DOORS attributes (keys not in metadata set, not links)
+    # Drop the empty ones among the DERIVED properties above. "" there means "we had nothing to
+    # put here" -- an object with no table id is not in a table -- so storing it adds no
+    # information. Applied before the source attributes are added, deliberately: the same is NOT
+    # true of them (see below).
+    props = {k: v for k, v in props.items() if v != "" and v is not None}
+
+    # All DOORS attributes (keys not in metadata set, not links).
+    #
+    # An empty SOURCE attribute is KEPT, and that is the whole point of doing the filter above
+    # separately. '""' from DOORS means "this attribute exists on this object and has no value",
+    # which is different from "this object does not have this attribute" -- CLAUDE.md section 11,
+    # and the alias map renders the first as *Empty* in its own colour. Dropping them made those
+    # two states indistinguishable downstream and the *Empty* state unreachable for DOORS data.
+    #
+    # Measured on the three committed real exports: empties are 2% of all attribute values, and no
+    # attribute is empty across a whole module -- so keeping them costs almost nothing and adds no
+    # column to any view. See ADR 0022.
+    #
+    # None is still dropped: that is a JSON null, which the DXL export does not emit for an
+    # attribute an object carries.
     skip = OBJECT_META_KEYS
     for key, value in obj.items():
-        if key in skip:
+        if key in skip or value is None:
             continue
         if key == "Absolute Number":
             coerced = _coerce_int(value)
@@ -128,8 +147,7 @@ def _prepare_object_props(obj: dict, module_version: str) -> dict:
         else:
             props[key] = value
 
-    # Remove empty-string values and None that add no information (keep False, 0)
-    return {k: v for k, v in props.items() if v != "" and v is not None}
+    return props
 
 
 # --------------------------------------------------------------------------- #

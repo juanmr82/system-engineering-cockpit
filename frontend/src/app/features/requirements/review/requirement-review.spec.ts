@@ -614,7 +614,7 @@ describe('RequirementReview', () => {
     expect(text).toContain('1 shown');
   });
 
-  // docs/comments_design.jpg: the Comment column fills the whole cell now, not a small icon — SRD-1
+  // The Comment column fills the whole cell now, not a small icon — SRD-1
   // has no thread yet ("Add a comment…"), SRD-2 already has one and shows its count and who is in it.
   it('shows a ghost affordance for a row with no thread, and a compact chip for one that has one', () => {
     expect(element().querySelector('.sec-comment-cell__empty')).not.toBeNull();

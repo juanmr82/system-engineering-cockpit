@@ -18,7 +18,7 @@ import org.neo4j.driver.types.Node
  * Builds the shared requirement card (`RequirementCardDto`) for a set of items.
  *
  * One card shape, one place that builds it. The Breakdown tab draws it as a row and the dependency
- * graph draws it as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1), and both read it from here — so
+ * graph draws it as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1), and both read it from here — so
  * "the graph node and the breakdown row render the same field set for the same DTO" (§7) is true
  * by construction rather than by two implementations agreeing.
  *

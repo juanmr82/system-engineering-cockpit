@@ -5,7 +5,9 @@ Date: 2026-08-05
 
 ## Context
 
-`docs/proposed_new_style.md` arrived as a plain stylesheet — a design for a requirement-tree
+A design proposal (`proposed_new_style.md`, handed over as an external document and **never
+committed to this repository** — this ADR and `frontend/src/styles/_tokens.scss` are what
+survive of it) arrived as a plain stylesheet — a design for a requirement-tree
 document viewer, with its own token set (`--ab-*`), a paper-on-desk surface model, and a
 vocabulary of cards, depth rails and annotation panels. It is the intended look for the product,
 but it covers about half of what the application actually renders: it has no navigation, no data

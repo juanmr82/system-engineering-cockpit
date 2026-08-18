@@ -1,7 +1,7 @@
 import type { LayoutBox, Point } from './graph-layout';
 
 /**
- * Turning a route into an SVG path (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.3).
+ * Turning a route into an SVG path (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.3).
  *
  * Pure, and separate from the canvas, because a path string is exactly the kind of thing that is
  * easy to get subtly wrong and impossible to see in jsdom — which has no layout and no canvas.

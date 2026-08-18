@@ -7,7 +7,7 @@ import com.sec.domain.Prop.SORT_KEY
 import com.sec.source.doors.DoorsRel.REFERS_TO
 
 /**
- * Cypher for docs/REQ_BREAKDOWN_GRAPH_VIEW — the dependency graph's scope query.
+ * Cypher for docs/REQ_BREAKDOWN_GRAPH_VIEW.md — the dependency graph's scope query.
  *
  * ## Two statements, used for three things
  *

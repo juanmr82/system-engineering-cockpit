@@ -10,7 +10,7 @@
 // Colour tokens are NOT imported here: _tokens.scss emits CSS custom properties once, globally,
 // from styles.scss. Components reference them as var(--sec-blue) and never re-declare them.
 //
-// The vocabulary below is the paper style of docs/proposed_new_style.md. Where that stylesheet
+// The vocabulary below is the paper style of ADR 0003. Where the original proposal
 // defines a pattern (.paper, .eyebrow, .xattrs, .verif, .level, .btn, .stats) the mixin carries
 // the same name and geometry. Where it does not — tables, dialogs, tabs, navigation, form
 // controls — the pattern is extrapolated from the same four rules the proposal follows

@@ -1,0 +1,19 @@
+---
+# The collections the roles use beyond ansible.builtin.
+#
+#     ansible-galaxy collection install -r requirements.yml
+#
+# On a machine with no internet, install them from a company Galaxy mirror or from tarballs:
+#     ansible-galaxy collection install ./community-crypto-*.tar.gz
+# Requires ansible-core 2.17+. community.crypto 2.17 warns on older cores; the playbook still
+# runs, but the certificate-validation modules are the ones it warns about, so do not ignore it.
+collections:
+  # x509_certificate_info / openssl_privatekey_info — the certificate validation in sec_certs.
+  - name: community.crypto
+  # seboolean, firewalld — the SELinux boolean and the firewall rules in sec_common.
+  - name: ansible.posix
+  # postgresql_user / postgresql_db — Keycloak's database in sec_keycloak.
+  - name: community.postgresql
+  # docker compose is driven through the plain command module rather than community.docker, so
+  # that collection is deliberately NOT a dependency: one fewer thing to mirror, and the compose
+  # CLI is what a human would type when debugging.

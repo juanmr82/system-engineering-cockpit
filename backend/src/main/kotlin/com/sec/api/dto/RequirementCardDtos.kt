@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 // The card payload: one requirement as every view that draws one shows it.
 //
 // Shared, deliberately and by contract. The Breakdown tab draws it as a row and the dependency
-// graph draws it as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1), and both read *this* shape — so a
+// graph draws it as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1), and both read *this* shape — so a
 // column added here appears in both with no second change, and the two can never drift into
 // showing different facts about the same requirement.
 //

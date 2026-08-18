@@ -1,7 +1,7 @@
 package com.sec.domain
 
 /**
- * The dependency graph's request options (docs/REQ_BREAKDOWN_GRAPH_VIEW §3.1, §4.1).
+ * The dependency graph's request options (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3.1, §4.1).
  *
  * Both are closed enums parsed at the API boundary, so an unknown value is a `400` rather than a
  * silently substituted default — the same discipline `__metaKind` gets (R2).

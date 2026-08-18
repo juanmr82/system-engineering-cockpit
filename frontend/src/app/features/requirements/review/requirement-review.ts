@@ -458,7 +458,7 @@ export class RequirementReview {
         colId: 'comment',
         headerName: 'Comment',
         // Last, and no longer pinned — see the note on Issues above. Wider than Issues/References:
-        // the cell now holds a preview of the thread itself, not a count (docs/comments_design.jpg).
+        // the cell now holds a preview of the thread itself, not a count.
         width: 240,
         sortable: false,
         // Off, deliberately — the opposite of every other column. This cell never dictates the

@@ -96,7 +96,7 @@ export class Breakdown {
 
   /**
    * The same requirements, drawn as a graph rather than as a tree
-   * (docs/REQ_BREAKDOWN_GRAPH_VIEW §2).
+   * (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §2).
    *
    * Enabled only once there is a scope — the requirement this tab is open on. **Never an unscoped
    * whole-module graph** (§8): a module is twelve thousand objects, which is an unreadable hairball

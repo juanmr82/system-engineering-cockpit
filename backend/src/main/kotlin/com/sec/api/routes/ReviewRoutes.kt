@@ -170,7 +170,7 @@ public fun Route.reviewRoutes(
         }
 
         /**
-         * The dependency graph (docs/REQ_BREAKDOWN_GRAPH_VIEW §3).
+         * The dependency graph (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3).
          *
          * Scope is always `seed + depth + direction` and there is no unscoped form (§8): a whole
          * module is 12 000 objects, which is an unreadable hairball and a rendering problem this

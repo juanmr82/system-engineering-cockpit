@@ -5,7 +5,7 @@ Date: 2026-08-09
 
 ## Context
 
-`docs/REQ_BREAKDOWN_GRAPH_VIEW` specifies a node-and-edge view of `refersTo`, opened from the
+`docs/REQ_BREAKDOWN_GRAPH_VIEW.md` specifies a node-and-edge view of `refersTo`, opened from the
 Breakdown tab. Its central design idea is that **the vertical axis is the level axis**: a
 requirement's y position says which system level it belongs to, and a small step down inside a band
 says "still this level, but refined by the thing above it".

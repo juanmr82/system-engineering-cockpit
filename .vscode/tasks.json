@@ -1,0 +1,136 @@
+{
+  // Everything a developer needs to run, test and package, without a terminal or a shell script.
+  // The IntelliJ equivalents live in .run/ — keep the two in step: a task added here should have a
+  // counterpart there, or half the team loses it.
+  //
+  // Ctrl+Shift+P -> "Tasks: Run Task", or Ctrl+Shift+B for the default build.
+  "version": "2.0.0",
+
+  "tasks": [
+    {
+      // The whole gate, exactly as CLAUDE.md §11 defines "before saying you are done".
+      "label": "Verify everything",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Backend: verify", "Frontend: lint", "Frontend: test", "Frontend: build"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+
+    // --- backend ---------------------------------------------------------------------------
+    {
+      "label": "Backend: run",
+      "type": "shell",
+      // mvnw, not mvn: not every workstation has Maven on PATH, and the wrapper is committed
+      // (ADR 0007). It is the "only-script" flavour, so there is no jar to be quarantined.
+      "command": "${workspaceFolder}/mvnw",
+      "windows": { "command": "${workspaceFolder}/mvnw.cmd" },
+      "args": ["-pl", "backend", "compile", "exec:java"],
+      "options": {
+        // The dev realm's own values (deploy/keycloak/sec-realm.json). Fine to commit because
+        // they only ever address a Keycloak on localhost:8081; a real secret goes in the vault
+        // (deploy/rhel9/ansible/group_vars/vault.yml), never here.
+        "env": {
+          "SEC_NEO4J_USER": "neo4j",
+          "SEC_NEO4J_PASSWORD": "admin1234",
+          "SEC_OIDC_CLIENT_SECRET": "sec-backend-dev-secret",
+          // ng serve is on :4200 but Keycloak only ever redirects to the backend's registered
+          // callback on :8080, so the backend hands the browser onward itself (ADR 0017).
+          "SEC_AUTH_FRONTEND_URL": "http://localhost:4200"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "kotlin",
+        "fileLocation": ["absolute"],
+        "pattern": {
+          "regexp": "^\\[ERROR\\]\\s+(.*\\.kt):\\[(\\d+),(\\d+)\\]\\s+(.*)$",
+          "file": 1, "line": 2, "column": 3, "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Scanning for projects.*",
+          "endsPattern": ".*Responding at.*|.*Application started.*"
+        }
+      }
+    },
+    {
+      "label": "Backend: verify",
+      "type": "shell",
+      "command": "${workspaceFolder}/mvnw",
+      "windows": { "command": "${workspaceFolder}/mvnw.cmd" },
+      "args": ["verify"],
+      "group": "test",
+      "problemMatcher": "$maven"
+    },
+    {
+      // Testcontainers, tagged `docker`, excluded from the default build on purpose — not every
+      // workstation has Docker, and a gate that cannot pass locally is a gate that gets skipped.
+      "label": "Backend: container tests (needs Docker)",
+      "type": "shell",
+      "command": "${workspaceFolder}/mvnw",
+      "windows": { "command": "${workspaceFolder}/mvnw.cmd" },
+      "args": ["-Pdocker", "test"],
+      "group": "test",
+      "problemMatcher": "$maven"
+    },
+
+    // --- frontend -----------------------------------------------------------------------------
+    {
+      "label": "Frontend: serve",
+      "type": "npm",
+      "script": "start",
+      // From frontend/, never `npm --prefix frontend` from the root: --prefix also changes where
+      // npm install writes, which silently creates frontend/frontend/node_modules (CLAUDE.md §11).
+      "path": "frontend",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch"
+    },
+    { "label": "Frontend: build", "type": "npm", "script": "build", "path": "frontend", "group": "build", "problemMatcher": "$tsc" },
+    { "label": "Frontend: test",  "type": "npm", "script": "test",  "path": "frontend", "group": "test",  "problemMatcher": [] },
+    { "label": "Frontend: lint",  "type": "npm", "script": "lint",  "path": "frontend", "problemMatcher": "$eslint-stylish" },
+
+    // --- the deployable artifact ---------------------------------------------------------------
+    {
+      // The two steps in order, because the second copies what the first produced. -Pui only
+      // COPIES frontend/dist; without the build first, the jar is silently built with no UI.
+      "label": "Package: jar with UI",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Frontend: build", "Package: jar only"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Package: jar only",
+      "type": "shell",
+      "command": "${workspaceFolder}/mvnw",
+      "windows": { "command": "${workspaceFolder}/mvnw.cmd" },
+      "args": ["-Pui", "clean", "package"],
+      "problemMatcher": "$maven"
+    },
+
+    // --- the dev services -----------------------------------------------------------------------
+    {
+      // Neo4j + Keycloak. Only works where a container engine is installed — most company
+      // workstations have none, and that is expected: docs/RUNNING.md §2.4 runs both as unpacked
+      // distributions from the console instead, which needs no admin rights and no Docker.
+      "label": "Dev services: up (needs Docker)",
+      "type": "shell",
+      "command": "docker",
+      "args": ["compose", "-f", "deploy/docker-compose.dev.yml", "up", "-d"],
+      "options": {
+        "env": {
+          "SEC_NEO4J_PASSWORD": "admin1234",
+          "SEC_KEYCLOAK_ADMIN_PASSWORD": "admin"
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev services: down",
+      "type": "shell",
+      "command": "docker",
+      "args": ["compose", "-f", "deploy/docker-compose.dev.yml", "down"],
+      "problemMatcher": []
+    }
+  ]
+}

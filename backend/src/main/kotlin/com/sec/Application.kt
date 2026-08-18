@@ -8,6 +8,7 @@ import com.sec.config.ConfigArgs
 import com.sec.config.ImporterSettings
 import com.sec.config.JiraSettings
 import com.sec.config.NavigationSettings
+import com.sec.config.ServerSettings
 import com.sec.config.WindchillSettings
 import com.sec.config.loadAppConfig
 import com.sec.config.loadAuthSettings
@@ -63,6 +64,8 @@ import io.ktor.server.plugins.callid.CallId
 import io.ktor.server.plugins.callid.callIdMdc
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
+import io.ktor.server.plugins.origin
 import io.ktor.server.sessions.SessionStorage
 import io.ktor.server.sessions.SessionStorageMemory
 import io.ktor.server.sessions.clear
@@ -133,6 +136,7 @@ public fun Application.module() {
     configureApp(
         graphDriver,
         appConfig.jira,
+        serverSettings = appConfig.server,
         windchillSettings = appConfig.windchill,
         importerSettings = appConfig.importer,
         navigationSettings = appConfig.navigation,
@@ -156,6 +160,9 @@ internal fun Application.configureApp(
     // value is its connection pool, and a client per request discards it.
     jiraClient: JiraHttpClient? =
         if (jiraSettings.isConfigured) JiraHttpClient(jiraSettings) else null,
+    // Off by default, exactly as the packaged application.yaml has it — a test of the HTTP surface
+    // gets the posture of a process nobody has put behind a proxy (ADR 0021).
+    serverSettings: ServerSettings = ServerSettings(),
     // Unconfigured by default. Unlike JIRA's, an absent host does not switch the source off: the
     // importer is fed by an upload, so it runs regardless, and the host decides only whether a
     // document row can link back into Windchill.
@@ -180,6 +187,15 @@ internal fun Application.configureApp(
     // else in this function is, without needing to run a reconcile pass of its own first.
     accessReconciler: AccessReconciler = AccessReconciler(graphDriver),
 ) {
+    // Before everything else, so CallId, CallLogging and every handler below see the caller's own
+    // address rather than the proxy's (ADR 0021). Installed only when the deployment says it is
+    // proxied: the plugin trusts X-Forwarded-For from whoever sent it, so on a directly reachable
+    // port it would let a caller choose what this application logs about it.
+    if (serverSettings.behindProxy) {
+        install(XForwardedHeaders)
+        logger.info { "Trusting X-Forwarded-* headers; this port must not be reachable except through the proxy" }
+    }
+
     installSecSessions(sessionStorage)
     install(Authentication) {
         session<UserSession>(SessionNames.PROVIDER) {
@@ -251,6 +267,18 @@ internal fun Application.configureApp(
     }
     install(CallLogging) {
         callIdMdc("callId")
+        // The caller's address, as a structured field beside callId rather than inside the
+        // message — the production encoder emits the MDC as JSON (logback-production.xml), so a
+        // log search can filter on it, which it cannot do with text interpolated into a sentence.
+        //
+        // This is the half of ADR 0021 that makes `ktor-server-forwarded-header` worth having:
+        // the plugin corrects `origin`, but CallLogging's default format logs no address at all,
+        // so on its own it changes nothing anybody can see. With behindProxy off this is the
+        // socket's own peer — correct, just less interesting.
+        //
+        // remoteAddress, not remoteHost: the latter may be a name, and a name in an audit log is
+        // a name that needed resolving at some point.
+        mdc("clientIp") { call -> call.request.origin.remoteAddress }
     }
     // An import's live progress feed. The plugin itself is configuration-free; everything about
     // the stream — the heartbeat, the throttle, the terminal event — is in ImportRoutes.
@@ -262,7 +290,7 @@ internal fun Application.configureApp(
     val doorsProjection = DoorsProjection(graphDriver)
     val reviewProjection = ReviewProjection(graphDriver)
     // One card shape, one thing that builds it: the Breakdown tab and the dependency graph both
-    // read requirement cards from here (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+    // read requirement cards from here (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
     val cardProjection = RequirementCardProjection(graphDriver)
     val breakdownProjection = BreakdownProjection(graphDriver, cardProjection)
     val dependencyGraphProjection = DependencyGraphProjection(graphDriver, cardProjection)

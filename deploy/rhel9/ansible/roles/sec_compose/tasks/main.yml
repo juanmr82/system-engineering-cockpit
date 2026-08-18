@@ -1,0 +1,161 @@
+---
+# The container path: the same three services, plus PostgreSQL, under docker compose. nginx stays
+# on the host (sec_nginx), so the certificate lives in one place whichever path was chosen.
+
+- name: Install docker and the compose plugin
+  ansible.builtin.dnf:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+
+- name: Enable and start the daemon
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Create the compose directory
+  ansible.builtin.file:
+    path: /opt/sec/compose
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Ship the theme the keycloak container mounts
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../keycloak"
+    dest: /opt/sec/
+    owner: root
+    group: root
+    mode: '0644'
+    directory_mode: '0755'
+
+- name: Write the compose file
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../compose/docker-compose.yml"
+    dest: /opt/sec/compose/docker-compose.yml
+    owner: root
+    group: root
+    mode: '0640'
+  register: sec_compose_file
+
+- name: Write compose's own variables
+  # Topology and image tags. NOT the application's secrets — those are /etc/sec/sec.env, handed to
+  # one container through env_file. Different readers, different lifetimes.
+  ansible.builtin.template:
+    src: compose.env.j2
+    dest: /opt/sec/compose/.env
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  register: sec_compose_env
+
+- name: Write the application's secrets
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/roles/sec_backend/templates/sec.env.j2"
+    dest: /etc/sec/sec.env
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  register: sec_compose_secrets
+
+- name: Write the configuration overlay the backend container mounts
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/roles/sec_backend/templates/sec.yaml.j2"
+    dest: /etc/sec/sec.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  register: sec_compose_yaml
+
+- name: Upload the jar for the image build
+  ansible.builtin.copy:
+    src: "{{ sec_jar_src }}"
+    dest: "/opt/sec/backend-{{ sec_jar_version }}-all.jar"
+    owner: root
+    group: root
+    mode: '0644'
+  register: sec_compose_jar_uploaded
+
+- name: Build the backend image from it
+  # From the uploaded jar, not from source: the server has no toolchain, and building on one
+  # machine while deploying a jar from another is how a deployment stops being reproducible.
+  ansible.builtin.command:
+    cmd: >
+      {{ playbook_dir }}/../scripts/sec-build-image.sh
+      /opt/sec/backend-{{ sec_jar_version }}-all.jar
+      --tag sec/backend:{{ sec_jar_version }}
+  # noqa no-handler — a handler fires at the end of the play, but `docker compose up` below needs
+  # this image to exist already. The ordering is the point, so this stays an ordinary task.
+  when: sec_compose_jar_uploaded.changed
+  changed_when: true
+
+- name: Bring the stack up
+  ansible.builtin.command:
+    cmd: docker compose up -d --remove-orphans
+    chdir: /opt/sec/compose
+  register: sec_compose_up_result
+  changed_when: "'Started' in sec_compose_up_result.stderr or 'Created' in sec_compose_up_result.stderr or 'Recreated' in sec_compose_up_result.stderr"
+
+# --- the realm ------------------------------------------------------------------------------------
+# The native path does this in sec_keycloak; compose mode skips that role entirely, so without
+# these three tasks a container deployment would come up with no realm and no way to log in.
+#
+# First run ONLY, same as the native path: re-importing over a realm somebody has administered
+# would discard the groups an access manager created, which is the authorization model itself.
+
+- name: Wait for Keycloak to report ready
+  ansible.builtin.uri:
+    url: "http://{{ sec_bind_address }}:{{ sec_keycloak_port }}/auth/realms/master/.well-known/openid-configuration"
+    status_code: 200
+  register: sec_compose_kc_ready
+  until: sec_compose_kc_ready.status | default(0) == 200
+  retries: 30
+  delay: 10
+
+- name: Does the realm already exist?
+  ansible.builtin.uri:
+    url: "http://{{ sec_bind_address }}:{{ sec_keycloak_port }}/auth/realms/{{ sec_oidc_realm }}/.well-known/openid-configuration"
+    status_code: [200, 404]
+  register: sec_compose_realm_probe
+  failed_when: false
+
+- name: Stage the realm file where the container can read it
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/roles/sec_keycloak/templates/sec-realm-prod.json.j2"
+    dest: /opt/sec/keycloak/sec-realm-prod.json
+    owner: root
+    group: root
+    mode: '0644'
+  when: sec_keycloak_import_realm | bool and sec_compose_realm_probe.status != 200
+
+- name: Import it
+  ansible.builtin.command:
+    cmd: >
+      docker compose exec -T keycloak
+      /opt/keycloak/bin/kc.sh import --file /opt/keycloak/data/import/sec-realm-prod.json
+    chdir: /opt/sec/compose
+  when: sec_keycloak_import_realm | bool and sec_compose_realm_probe.status != 200
+  changed_when: true
+
+- name: Restart Keycloak so it serves the imported realm
+  ansible.builtin.command:
+    cmd: docker compose restart keycloak
+    chdir: /opt/sec/compose
+  when: sec_keycloak_import_realm | bool and sec_compose_realm_probe.status != 200
+  changed_when: true
+
+- name: Wait for the backend container to report healthy
+  ansible.builtin.command:
+    cmd: docker inspect -f '{{ "{{" }}.State.Health.Status{{ "}}" }}' sec-backend
+  register: sec_compose_health_result
+  until: sec_compose_health_result.stdout == 'healthy'
+  retries: 30
+  delay: 10
+  changed_when: false

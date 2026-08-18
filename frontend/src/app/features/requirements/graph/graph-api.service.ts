@@ -1,7 +1,7 @@
 import type { GraphScope } from './graph.model';
 
 /**
- * The dependency graph's one endpoint (docs/REQ_BREAKDOWN_GRAPH_VIEW §3).
+ * The dependency graph's one endpoint (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §3).
  *
  * A URL builder rather than an injectable, because the dialog owns its own `httpResource` — created
  * with the dialog and torn down with it, so a closed graph is not still holding a response.
