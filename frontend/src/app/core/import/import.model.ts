@@ -150,4 +150,14 @@ export const COUNTER_LABELS: Readonly<Record<string, string>> = {
   unresolvedCreated: 'Placeholders created',
   unresolvedResolved: 'Placeholders resolved',
   deleted: 'Deleted',
+  // DOORS (ADR 0019) — the upload-fed importer's own counters.
+  objectsSeen: 'Objects',
+  childRelsSeen: 'Hierarchy links',
+  refersToSeen: 'Outgoing references',
+  incomingLinksSeen: 'Incoming references',
+  objectsDeletedInSource: 'Deleted in DOORS',
+  objectsNewlyDeleted: 'Newly deleted in DOORS',
+  ghostMetaDeleted: 'Annotations removed',
+  ghostsCollected: 'Deleted objects cleared',
+  placeholdersRemoved: 'Placeholders removed',
 };

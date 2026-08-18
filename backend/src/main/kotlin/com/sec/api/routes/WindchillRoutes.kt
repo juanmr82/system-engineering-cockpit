@@ -172,5 +172,14 @@ private fun describe(problem: WindchillExportProblem?): String = when (problem) 
  * starts with and still small enough that parsing it cannot exhaust the heap. A limit stated here
  * is a `413` that says what to do; the same file without one is an `OutOfMemoryError` that takes the
  * process with it.
+ *
+ * **Ops note — a reverse proxy in front of this backend must be told about this limit, or this
+ * constant never gets a chance to run.** nginx's own default `client_max_body_size` is 1 MB, so a
+ * production deployment fronted by nginx (`docs/REFACTOR_BACKEND.md`'s recommended topology) rejects
+ * anything past 1 MB with its own `413` before the request reaches Ktor at all. The fix is one
+ * directive on whatever `location` proxies `/api` to this service: `client_max_body_size 64m;` (or
+ * higher — never lower than this constant). [com.sec.api.routes.DoorsRoutes]'s own upload limit
+ * carries the same note. A full deployment/nginx guide is tracked separately; this is the pointer to
+ * it until that exists.
  */
 private const val MAX_UPLOAD_CHARS = 64 * 1024 * 1024

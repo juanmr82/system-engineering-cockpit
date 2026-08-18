@@ -27,6 +27,8 @@ import com.sec.security.UserSession
 import com.sec.security.installSecSessions
 import com.sec.source.doors.BreakdownProjection
 import com.sec.source.doors.DependencyGraphProjection
+import com.sec.source.doors.DoorsGraphWriter
+import com.sec.source.doors.DoorsImporter
 import com.sec.source.doors.DoorsProjection
 import com.sec.source.doors.DoorsTableProjection
 import com.sec.source.doors.RequirementCardProjection
@@ -296,6 +298,12 @@ internal fun Application.configureApp(
     // which uploading an export should not work.
     importRunService.register(WindchillImporter(WindchillGraphWriter(graphDriver)))
 
+    // ADR 0019: a second DOORS importer, fed by an upload — the Python one is unaffected and keeps
+    // running out-of-process. One writer instance, shared between the importer and the route's own
+    // pre-run gate (DoorsGraphWriter.gate), so both read the same graph through the same collaborator.
+    val doorsGraphWriter = DoorsGraphWriter(graphDriver)
+    importRunService.register(DoorsImporter(doorsGraphWriter))
+
     configureRouting(
         graphDriver,
         doorsProjection,
@@ -313,6 +321,7 @@ internal fun Application.configureApp(
         jiraFieldsProjection,
         windchillSettings,
         windchillProjection,
+        doorsGraphWriter::gate,
         navigationSettings,
         importRunService,
         oidc,

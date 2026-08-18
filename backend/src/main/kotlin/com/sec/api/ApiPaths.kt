@@ -131,6 +131,19 @@ public object ApiPaths {
     public const val WINDCHILL_IMPORT: String = "$WINDCHILL/import"
 
     /**
+     * The DOORS-from-an-upload integration (ADR 0019). The Python importer that talks to a live
+     * DOORS client is unaffected and lives entirely outside this API — this is the second, upload-fed
+     * way an export becomes graph data, the same relationship [WINDCHILL_IMPORT] has to a Windchill
+     * export produced by a browser session rather than an API call.
+     */
+    public const val DOORS: String = "$V1/doors"
+
+    /** Upload an export and import it — one gesture, one request (R7), admin-guarded like
+     *  [WINDCHILL_IMPORT]. `202` starts a run; `200` means this exact file was already imported;
+     *  `404` means the module exists and is not visible to the caller (ADR 0019 §4). */
+    public const val DOORS_IMPORT: String = "$DOORS/import"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *

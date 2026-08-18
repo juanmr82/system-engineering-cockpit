@@ -115,6 +115,28 @@ public object DoorsProp {
 
     /** The owning table, as a fallback when the `__child` walk finds nothing mid-re-import. */
     public const val TABLE_URL: String = "__tableURL"
+
+    /**
+     * The run stamp (ADR 0012): written on every object, `__child` and `refersTo` an import run
+     * confirms. Anything still carrying an older stamp when the run finishes is something the
+     * export did not mention — the comparison the seven-statement reconciliation runs itself,
+     * with no parameter that grows with the module.
+     */
+    public const val IMPORTED_AT: String = "__importedAt"
+
+    /**
+     * The module URL a `refersTo` edge's *source* module asserted it from — set once, `ON CREATE`,
+     * because DOORS's own outgoing-link list is what makes an edge authoritative for the module
+     * that owns it, and a later import of the *target's* module must not overwrite that.
+     */
+    public const val SOURCE_MODULE_URL: String = "__sourceModuleUrl"
+
+    /**
+     * A `:__UNDEFINED` placeholder's Absolute Number, from the link that created it. Deliberately
+     * **not** `__`-prefixed, matching the Python importer this is ported from — it predates R1's
+     * closed reading of the namespace and is not reopened here; see ADR 0019 §7.
+     */
+    public const val ABSOLUTE_NUMBER: String = "absoluteNumber"
 }
 
 /** The DOORS traceability relationship. Un-prefixed because DOORS actually asserts it (R3). */

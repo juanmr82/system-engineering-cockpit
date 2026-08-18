@@ -61,6 +61,11 @@ export const routes: Routes = [
           ),
       },
       {
+        path: 'settings/doors',
+        loadComponent: () =>
+          import('./features/settings/doors/doors-settings').then((m) => m.DoorsSettings),
+      },
+      {
         path: 'settings/importers',
         loadComponent: () =>
           import('./features/settings/importers/import-runs').then((m) => m.ImportRuns),

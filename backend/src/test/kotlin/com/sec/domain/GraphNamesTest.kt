@@ -3,6 +3,7 @@ package com.sec.domain
 import com.sec.graph.cypher.AccessCypher
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
+import com.sec.graph.cypher.DoorsImportCypher
 import com.sec.graph.cypher.ImportRunCypher
 import com.sec.graph.cypher.ItemCypher
 import com.sec.graph.cypher.JiraCypher
@@ -72,9 +73,10 @@ class GraphNamesTest {
 
     private val declaredNamespaceNames: Set<String> = setOf(
         Prop.ID, Prop.NAME, Prop.VERSION, Prop.SORT_KEY, Prop.MODULE_URL, Prop.OBJECT_URL,
-        Prop.TYPE_RAW, Prop.META_ID, Prop.META_KIND, Prop.SCHEMA_VERSION,
+        Prop.TYPE_RAW, Prop.EXPORT_CHECKSUM, Prop.META_ID, Prop.META_KIND, Prop.SCHEMA_VERSION,
         Prop.CREATED_BY, Prop.CREATED_AT, Prop.UPDATED_BY, Prop.UPDATED_AT,
         DoorsProp.TABLE_ROW_INDEX, DoorsProp.TABLE_COLUMN_INDEX, DoorsProp.TABLE_URL,
+        DoorsProp.IMPORTED_AT, DoorsProp.SOURCE_MODULE_URL,
     ) + JiraProp.namespaced +
         declaredLabels.filter { it.startsWith(Prop.NAMESPACE) } +
         declaredRelationships.filter { it.startsWith(Prop.NAMESPACE) }
@@ -158,6 +160,21 @@ class GraphNamesTest {
             ImportRunCypher.UPSERT, ImportRunCypher.LOAD, ImportRunCypher.HISTORY,
             ImportRunCypher.PRUNE,
             *ImportRunCypher.SCHEMA.toTypedArray(),
+        )
+        add(
+            "DoorsImportCypher",
+            DoorsImportCypher.MERGE_MODULE,
+            // The full closed vocabulary in one call, so every object label mergeObjects can ever
+            // write is exercised here regardless of which combination a real module produces.
+            DoorsImportCypher.mergeObjects(DoorsImportCypher.VALID_OBJECT_LABELS),
+            DoorsImportCypher.MERGE_CHILD, DoorsImportCypher.MERGE_REFERS_TO,
+            DoorsImportCypher.MERGE_INCOMING,
+            DoorsImportCypher.MARK_DELETED, DoorsImportCypher.DELETE_STALE_CHILD,
+            DoorsImportCypher.DELETE_STALE_REFERS_TO, DoorsImportCypher.DELETE_GHOST_META,
+            DoorsImportCypher.STRIP_GHOST_EDGES, DoorsImportCypher.COLLECT_GHOSTS,
+            DoorsImportCypher.COLLECT_PLACEHOLDERS,
+            DoorsImportCypher.MODULE_GATE, DoorsImportCypher.STAMP_CHECKSUM,
+            *DoorsImportCypher.SCHEMA.toTypedArray(),
         )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
         // visible("o") stands in for every alias the predicate is actually called with — the name

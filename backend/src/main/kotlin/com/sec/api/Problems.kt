@@ -75,4 +75,13 @@ public object ProblemType {
     /** `DELETE /access/categories/{ref}` — an object or a grant still references it (spec §9). The
      *  frontend branches on this to render the count-bearing message rather than a generic error. */
     public const val ACCESS_CATEGORY_IN_USE: String = "${PREFIX}access-category-in-use"
+
+    /**
+     * `POST /doors/import` — the module already exists and is not visible to the caller's own
+     * [com.sec.security.AccessSet] (ADR 0019 §4). Deliberately a `404`, not a `403`: this is R8's
+     * object-level refusal applied to a write for the first time, not a capability check — the
+     * caller already holds `sec-admin`, or this route would have answered `403` before the gate
+     * ever ran.
+     */
+    public const val DOORS_MODULE_NOT_VISIBLE: String = "${PREFIX}doors-module-not-visible"
 }

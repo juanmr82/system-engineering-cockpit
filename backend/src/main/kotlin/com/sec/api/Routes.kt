@@ -1,8 +1,10 @@
 package com.sec.api
 
+import com.sec.api.routes.DoorsModuleGateway
 import com.sec.api.routes.accessRoutes
 import com.sec.api.routes.authRoutes
 import com.sec.api.routes.configRoutes
+import com.sec.api.routes.doorsRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.importRoutes
 import com.sec.api.routes.jiraRoutes
@@ -79,6 +81,10 @@ public fun Application.configureRouting(
     windchillSettings: WindchillSettings,
     // Reads documents this graph already holds, so it answers whether or not a host is configured.
     windchillProjection: WindchillProjection,
+    // ADR 0019 §3, §4 — the pre-run gate doorsRoutes asks before starting a run. A method reference
+    // to the same DoorsGraphWriter the importer itself was registered with (Application.kt), so the
+    // route's read and the importer's writes share one collaborator.
+    doorsGateway: DoorsModuleGateway,
     // The sidenav's structure (CLAUDE.md §2 "Where a given piece of state lives") — read from
     // application.yaml at startup, served read-only, never touched by a request.
     navigationSettings: NavigationSettings,
@@ -126,6 +132,7 @@ public fun Application.configureRouting(
                 accessResolver,
             )
             windchillRoutes(windchillSettings, windchillProjection, importRunService, accessResolver)
+            doorsRoutes(doorsGateway, importRunService, accessResolver)
             moduleRoutes(doorsProjection, metaWriter, accessResolver)
             reviewRoutes(
                 doorsProjection,

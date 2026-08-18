@@ -53,6 +53,19 @@ public object Prop {
     /** The source's own type wording, preferred over a label chip whenever it is present (R5). */
     public const val TYPE_RAW: String = "__typeRaw"
 
+    /**
+     * SHA-256 of the raw bytes of the uploaded export that most recently produced this container's
+     * current state, hex-encoded. Passes R1's own test: the same file re-hashes to the same value,
+     * so it is exactly as regenerable as [SORT_KEY] or [ID].
+     *
+     * Source-agnostic on purpose (ADR 0019 §3) even though only the DOORS upload path writes it
+     * today — any upload-fed importer answers the same question the same way, the reasoning R3
+     * already applies to [MODULE_URL]. Written last, after a run's whole pipeline succeeds, and read
+     * *before* a run starts: an unchanged checksum on an existing container is a re-import with
+     * nothing to do, and the write is skipped rather than repeated for free.
+     */
+    public const val EXPORT_CHECKSUM: String = "__exportChecksum"
+
     // --- Tier 2: the contract of every :__Meta node (R2) ---
 
     public const val META_ID: String = "__metaId"

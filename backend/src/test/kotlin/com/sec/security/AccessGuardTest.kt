@@ -4,6 +4,7 @@ import com.sec.domain.NodeLabel
 import com.sec.graph.cypher.AccessCypher
 import com.sec.graph.cypher.BreakdownCypher
 import com.sec.graph.cypher.DependencyGraphCypher
+import com.sec.graph.cypher.DoorsImportCypher
 import com.sec.graph.cypher.ImportRunCypher
 import com.sec.graph.cypher.ItemCypher
 import com.sec.graph.cypher.JiraCypher
@@ -132,6 +133,19 @@ class AccessGuardTest {
             ImportRunCypher.PRUNE,
             *ImportRunCypher.SCHEMA.toTypedArray(),
         )
+        add(
+            "DoorsImportCypher",
+            DoorsImportCypher.MERGE_MODULE,
+            DoorsImportCypher.mergeObjects(DoorsImportCypher.VALID_OBJECT_LABELS),
+            DoorsImportCypher.MERGE_CHILD, DoorsImportCypher.MERGE_REFERS_TO,
+            DoorsImportCypher.MERGE_INCOMING,
+            DoorsImportCypher.MARK_DELETED, DoorsImportCypher.DELETE_STALE_CHILD,
+            DoorsImportCypher.DELETE_STALE_REFERS_TO, DoorsImportCypher.DELETE_GHOST_META,
+            DoorsImportCypher.STRIP_GHOST_EDGES, DoorsImportCypher.COLLECT_GHOSTS,
+            DoorsImportCypher.COLLECT_PLACEHOLDERS,
+            DoorsImportCypher.MODULE_GATE, DoorsImportCypher.STAMP_CHECKSUM,
+            *DoorsImportCypher.SCHEMA.toTypedArray(),
+        )
         add("MetaSchema", *MetaSchema.statements.toTypedArray())
         // The reconciler's own writes, read straight from AccessContainment.all so a new source's
         // containment is checked — and, below, exempted with a reason — the moment it is added.
@@ -249,6 +263,34 @@ class AccessGuardTest {
         "WindchillCypher[4]" to "schema (index/constraint), not a data read",
         "WindchillCypher[5]" to "schema (index/constraint), not a data read",
         "WindchillCypher[6]" to "schema (index/constraint), not a data read",
+        // DOORS-from-an-upload (ADR 0019) — importer write paths, the same exemption class as
+        // WindchillCypher's own [0]/[1] above, plus the seven-statement ADR-0012 reconciliation
+        // and the checksum stamp. [11] (COLLECT_PLACEHOLDERS) and [12] (MODULE_GATE) are absent on
+        // purpose: [11] touches only :__UNDEFINED, which is not a filtered label, and [12] already
+        // carries the /*ACL*/ marker via AccessCypher.visible("m") — neither needs an exemption.
+        "DoorsImportCypher[0]" to "importer write path — DOORS module upsert (ADR 0019)",
+        "DoorsImportCypher[1]" to "importer write path — DOORS object upsert, one statement per " +
+            "label-set group (ADR 0019)",
+        "DoorsImportCypher[2]" to "importer write path — __child merge",
+        "DoorsImportCypher[3]" to "importer write path — outgoing refersTo merge, from __outputLinks",
+        "DoorsImportCypher[4]" to "importer write path — incoming refersTo merge, from __inputLinks",
+        "DoorsImportCypher[5]" to "importer write path — reconciliation step 1, mark deleted (ADR 0012)",
+        "DoorsImportCypher[6]" to "importer write path — reconciliation step 2, stale __child",
+        "DoorsImportCypher[7]" to "importer write path — reconciliation step 3, stale refersTo",
+        "DoorsImportCypher[8]" to "importer write path — reconciliation step 4a, ghost annotations " +
+            "(the one place this importer touches Tier 2, R2)",
+        "DoorsImportCypher[9]" to "importer write path — reconciliation step 4b, strip ghost edges",
+        "DoorsImportCypher[10]" to "importer write path — reconciliation step 5, collect ghosts " +
+            "(global, not module-scoped — ADR 0012)",
+        "DoorsImportCypher[13]" to "importer write path — the checksum stamp, written only after " +
+            "every earlier phase succeeds (ADR 0019 §3)",
+        "DoorsImportCypher[14]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[15]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[16]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[17]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[18]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[19]" to "schema (index/constraint), not a data read",
+        "DoorsImportCypher[20]" to "schema (index/constraint), not a data read",
         // Indexed by position in AccessContainment.all — [doors, doorsPlaceholders, jira,
         // windchill] — so the propagate/retract pairs run [1]..[6] and the seeds [7]..[10].
         // Adding a containment renumbers every entry after it; that is what this comment is for.
