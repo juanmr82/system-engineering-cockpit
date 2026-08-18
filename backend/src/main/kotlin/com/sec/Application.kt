@@ -20,7 +20,10 @@ import com.sec.meta.MetaWriter
 import com.sec.security.AccessAdminService
 import com.sec.security.AccessReconciler
 import com.sec.security.AccessResolver
+import com.sec.security.DoorsPushNotConfiguredException
+import com.sec.security.KeycloakUnavailableException
 import com.sec.security.Oidc
+import com.sec.security.PushAuthNames
 import com.sec.security.SessionNames
 import com.sec.security.UserDirectory
 import com.sec.security.UserSession
@@ -53,6 +56,7 @@ import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.bearer
 import io.ktor.server.auth.session
 import io.ktor.server.netty.EngineMain
 import io.ktor.server.plugins.callid.CallId
@@ -200,6 +204,34 @@ internal fun Application.configureApp(
                     "Sign-in required",
                     "Your session has ended. Sign in again to continue.",
                 )
+            }
+        }
+
+        // The DOORS push front door (ADR 0020): a bearer access token from the sec-doors-push
+        // Keycloak client, not a session cookie — a second, independent provider, never composed
+        // with SessionNames.PROVIDER on the same route. Unlike `session<UserSession>` above,
+        // BearerAuthenticationProvider has no `challenge { }` hook to override in this Ktor
+        // version: every rejection (no header, wrong scheme, or `authenticate` returning null)
+        // answers Ktor's own bare 401 with a `WWW-Authenticate: Bearer` header, not this
+        // application's usual RFC 9457 problem-detail body. Accepted as a deliberate, narrow
+        // exception for a route with no browser or human reader on the other end — the standard
+        // challenge header is exactly the machine-readable signal a scripted caller needs, and
+        // hand-rolling this provider the way `requireSecSession`/`requireRole` are hand-rolled
+        // would trade a cosmetic gain for custom authentication-state plumbing this codebase
+        // otherwise avoids. `oidc.validatePushAccessToken`'s own service-level failures
+        // (Keycloak unreachable, the feature unconfigured) are deliberately not swallowed here —
+        // they propagate to StatusPages, which already answers both as RFC 9457 problem details.
+        bearer(PushAuthNames.PROVIDER) {
+            authenticate { credential ->
+                try {
+                    oidc.validatePushAccessToken(credential.token)
+                } catch (cause: KeycloakUnavailableException) {
+                    throw cause
+                } catch (cause: DoorsPushNotConfiguredException) {
+                    throw cause
+                } catch (cause: Exception) {
+                    null
+                }
             }
         }
     }

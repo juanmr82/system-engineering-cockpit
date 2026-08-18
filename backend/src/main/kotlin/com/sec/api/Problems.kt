@@ -84,4 +84,7 @@ public object ProblemType {
      * ever ran.
      */
     public const val DOORS_MODULE_NOT_VISIBLE: String = "${PREFIX}doors-module-not-visible"
+
+    /** `POST /doors/import/push` — this deployment has no `auth.doorsPushClientId` set (ADR 0020). */
+    public const val DOORS_PUSH_NOT_CONFIGURED: String = "${PREFIX}doors-push-not-configured"
 }

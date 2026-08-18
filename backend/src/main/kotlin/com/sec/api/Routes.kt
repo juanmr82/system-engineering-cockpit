@@ -4,6 +4,7 @@ import com.sec.api.routes.DoorsModuleGateway
 import com.sec.api.routes.accessRoutes
 import com.sec.api.routes.authRoutes
 import com.sec.api.routes.configRoutes
+import com.sec.api.routes.doorsPushRoutes
 import com.sec.api.routes.doorsRoutes
 import com.sec.api.routes.healthRoutes
 import com.sec.api.routes.importRoutes
@@ -116,6 +117,14 @@ public fun Application.configureRouting(
         // /health, /ready, and the two of /auth/* that create a session rather than needing one.
         healthRoutes(graphDriver)
         authRoutes(oidc, accessResolver, userDirectory)
+
+        // A third kind of exception, added by ADR 0020: not session-less like the two above, but
+        // authenticated by a *different* provider (PushAuthNames.PROVIDER, a bearer token) than
+        // every route inside requireSecSession below. It cannot be nested inside that wrapper —
+        // authenticate(SessionNames.PROVIDER) would demand a session cookie this caller never
+        // has — so it is registered here instead, sharing doorsRoutes' own gate via
+        // handleDoorsImport (DoorsRoutes.kt) rather than duplicating it.
+        doorsPushRoutes(doorsGateway, importRunService, accessResolver)
 
         // Every other route needs a session (ADR 0017 §5) and the CSRF check on every non-GET
         // (§11). One wrapper, so a feature route file registered here is guarded whether or not

@@ -1,6 +1,7 @@
 package com.sec.api
 
 import com.sec.api.routes.respondPackagedUi
+import com.sec.security.DoorsPushNotConfiguredException
 import com.sec.security.KeycloakUnavailableException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.HttpStatusCode
@@ -49,6 +50,19 @@ public fun Application.configureProblemDetails() {
                 HttpStatusCode.ServiceUnavailable,
                 "Identity provider unreachable",
                 "Keycloak is not reachable right now. Try signing in again shortly.",
+            )
+        }
+
+        // Thrown by Oidc.validatePushAccessToken when a deployment has no auth.doorsPushClientId
+        // set (ADR 0020). Never a 401: an unset feature is not a rejected credential.
+        exception<DoorsPushNotConfiguredException> { call, cause ->
+            logger.warn(cause) { "DOORS push importer called but not configured" }
+            call.respondProblem(
+                HttpStatusCode.ServiceUnavailable,
+                "DOORS push import is not set up",
+                "This server has no push-import client configured. Ask an administrator to set " +
+                    "auth.doorsPushClientId.",
+                ProblemType.DOORS_PUSH_NOT_CONFIGURED,
             )
         }
 

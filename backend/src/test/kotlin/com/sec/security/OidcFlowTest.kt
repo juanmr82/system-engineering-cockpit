@@ -1,38 +1,14 @@
 package com.sec.security
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import com.sec.config.AuthSettings
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
-import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
-import io.ktor.server.application.call
-import io.ktor.server.application.install
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.netty.Netty
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.request.receiveParameters
-import io.ktor.server.response.respond
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.routing
-import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
-import kotlinx.serialization.json.buildJsonObject
-import java.math.BigInteger
-import java.security.KeyPairGenerator
-import java.security.interfaces.RSAPrivateKey
-import java.security.interfaces.RSAPublicKey
-import java.time.Duration
-import java.time.Instant
-import java.util.Base64
-import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -167,8 +143,70 @@ class OidcFlowTest {
         }
     }
 
+    // -- DOORS push access token (ADR 0020) ------------------------------------------------------
+
+    @Test
+    fun `a push access token with the right azp resolves to a principal carrying its claims`() = runBlocking {
+        withFakeKeycloak { keycloak, oidc ->
+            val principal = oidc.validatePushAccessToken(keycloak.signedAccessToken())
+
+            assertEquals("push-account-1", principal.sub)
+            assertEquals("svc-doors-push", principal.username)
+            assertEquals(emptySet(), principal.roles)
+            assertEquals(listOf("/SEC/Importers"), principal.groups)
+            assertEquals("", principal.csrfToken)
+        }
+    }
+
+    @Test
+    fun `a push access token minted for the browser client is rejected, not just any client`() = runBlocking {
+        withFakeKeycloak { keycloak, oidc ->
+            assertFailsWith<IllegalArgumentException> {
+                oidc.validatePushAccessToken(keycloak.signedAccessToken(azp = "sec-backend"))
+            }
+        }
+    }
+
+    @Test
+    fun `a push access token with no azp claim at all is rejected`() = runBlocking {
+        withFakeKeycloak { keycloak, oidc ->
+            assertFailsWith<IllegalArgumentException> {
+                oidc.validatePushAccessToken(keycloak.signedAccessToken(azp = null))
+            }
+        }
+    }
+
+    @Test
+    fun `a push access token signed by a key not in the JWKS is rejected`() = runBlocking {
+        withFakeKeycloak(signWithAnUntrustedKey = true) { keycloak, oidc ->
+            assertFails { oidc.validatePushAccessToken(keycloak.signedAccessToken()) }
+        }
+    }
+
+    @Test
+    fun `an already-expired push access token is rejected`() = runBlocking {
+        withFakeKeycloak(expiresInThePast = true) { keycloak, oidc ->
+            assertFails { oidc.validatePushAccessToken(keycloak.signedAccessToken()) }
+        }
+    }
+
+    @Test
+    fun `validatePushAccessToken refuses to run at all when no push client is configured`() = runBlocking {
+        val unconfigured = Oidc(
+            AuthSettings(issuer = "", clientId = "sec-backend", clientSecret = "x", callbackUrl = "http://x"),
+            HttpClient(OkHttp),
+        )
+
+        assertFailsWith<DoorsPushNotConfiguredException> {
+            unconfigured.validatePushAccessToken("irrelevant-token")
+        }
+    }
+
     // -- harness ----------------------------------------------------------------------------------
 
+    // FakeKeycloak itself lives in AuthTestSupport.kt (same package) — AuthGuardTest needs it too,
+    // for the HTTP-level proof that a wrong-azp push token is rejected the same way at the routing
+    // layer that this file already proves it is at the Oidc.validatePushAccessToken layer.
     private suspend fun withFakeKeycloak(
         signWithAnUntrustedKey: Boolean = false,
         audienceOverride: String? = null,
@@ -183,136 +221,6 @@ class OidcFlowTest {
         } finally {
             client.close()
             keycloak.stop()
-        }
-    }
-
-    /**
-     * A minimal, real Keycloak stand-in — discovery, JWKS, and a token endpoint that only accepts
-     * a `code_verifier` matching the PKCE challenge it can compute from what this test captured
-     * off the authorize redirect. Runs on an actual loopback port because [Oidc]'s JWKS fetch does
-     * too (see the class doc above).
-     */
-    private class FakeKeycloak(
-        private val signWithAnUntrustedKey: Boolean,
-        private val audienceOverride: String?,
-        private val expiresInThePast: Boolean,
-    ) {
-        private val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        private val untrustedKeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-
-        var nextRoles: Set<String> = setOf(Role.USER, Role.ACCESS_MANAGER)
-        var nextGroups: List<String> = listOf("/SEC/Thermal", "/SEC/Avionics")
-        var currentNonce: String? = null
-        var tokenRequests = 0
-        var lastAcceptedChallenge: String? = null
-
-        private var boundPort = 0
-        private lateinit var server: io.ktor.server.engine.EmbeddedServer<*, *>
-
-        fun start() {
-            server = embeddedServer(Netty, port = 0) {
-                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-                routing {
-                    get("/realms/test/.well-known/openid-configuration") {
-                        val base = "http://localhost:$boundPort/realms/test"
-                        call.respond(
-                            buildJsonObject {
-                                put("issuer", JsonPrimitive(base))
-                                put("authorization_endpoint", JsonPrimitive("$base/protocol/openid-connect/auth"))
-                                put("token_endpoint", JsonPrimitive("$base/protocol/openid-connect/token"))
-                                put("jwks_uri", JsonPrimitive("$base/protocol/openid-connect/certs"))
-                                put("end_session_endpoint", JsonPrimitive("$base/protocol/openid-connect/logout"))
-                            },
-                        )
-                    }
-                    get("/realms/test/protocol/openid-connect/certs") {
-                        call.respond(
-                            buildJsonObject {
-                                put(
-                                    "keys",
-                                    buildJsonArray { add(jwk(keyPair.public as RSAPublicKey)) },
-                                )
-                            },
-                        )
-                    }
-                    post("/realms/test/protocol/openid-connect/token") {
-                        tokenRequests++
-                        val body = call.receiveParameters()
-                        if (body["client_id"] != "sec-backend" || body["client_secret"] != "test-secret") {
-                            call.respond(
-                                HttpStatusCode.Unauthorized,
-                                buildJsonObject { put("error", JsonPrimitive("invalid_client")) },
-                            )
-                            return@post
-                        }
-                        val verifier = body["code_verifier"]
-                        val challenge = verifier?.let(::codeChallengeS256)
-                        if (body["grant_type"] == "authorization_code" && challenge == null) {
-                            call.respond(
-                                HttpStatusCode.BadRequest,
-                                buildJsonObject { put("error", JsonPrimitive("invalid_grant")) },
-                            )
-                            return@post
-                        }
-                        lastAcceptedChallenge = challenge
-                        call.respond(
-                            buildJsonObject {
-                                put("access_token", JsonPrimitive("fake-access-token"))
-                                put("refresh_token", JsonPrimitive("fake-refresh-token"))
-                                put("id_token", JsonPrimitive(signedIdToken()))
-                                put("token_type", JsonPrimitive("Bearer"))
-                                put("expires_in", JsonPrimitive(300))
-                            },
-                        )
-                    }
-                }
-            }
-            server.start(wait = false)
-            boundPort = runBlocking { server.engine.resolvedConnectors() }.first().port
-        }
-
-        fun stop() = server.stop(gracePeriodMillis = 0, timeoutMillis = 200)
-
-        fun authSettings(): AuthSettings = AuthSettings(
-            issuer = "http://localhost:$boundPort/realms/test",
-            clientId = "sec-backend",
-            clientSecret = "test-secret",
-            callbackUrl = "http://localhost:9999/api/v1/auth/callback",
-        )
-
-        private fun signedIdToken(): String {
-            val now = Instant.now()
-            val exp = if (expiresInThePast) now.minus(Duration.ofHours(1)) else now.plus(Duration.ofMinutes(5))
-            val signingKeyPair = if (signWithAnUntrustedKey) untrustedKeyPair else keyPair
-            return JWT.create()
-                .withKeyId("test-key")
-                .withIssuer("http://localhost:$boundPort/realms/test")
-                .withAudience(audienceOverride ?: "sec-backend")
-                .withSubject("user-42")
-                .withIssuedAt(Date.from(now))
-                .withExpiresAt(Date.from(exp))
-                .withClaim("preferred_username", "ada.lovelace")
-                .withClaim("name", "Ada Lovelace")
-                .withClaim("email", "ada@example.com")
-                .withClaim("nonce", currentNonce)
-                .withClaim("realm_access", mapOf("roles" to nextRoles.toList()))
-                .withClaim("groups", nextGroups)
-                .sign(Algorithm.RSA256(signingKeyPair.public as RSAPublicKey, signingKeyPair.private as RSAPrivateKey))
-        }
-
-        private fun jwk(publicKey: RSAPublicKey) = buildJsonObject {
-            val encoder = Base64.getUrlEncoder().withoutPadding()
-            put("kty", JsonPrimitive("RSA"))
-            put("use", JsonPrimitive("sig"))
-            put("kid", JsonPrimitive("test-key"))
-            put("alg", JsonPrimitive("RS256"))
-            put("n", JsonPrimitive(encoder.encodeToString(publicKey.modulus.toUnsignedBytes())))
-            put("e", JsonPrimitive(encoder.encodeToString(publicKey.publicExponent.toUnsignedBytes())))
-        }
-
-        private fun BigInteger.toUnsignedBytes(): ByteArray {
-            val bytes = toByteArray()
-            return if (bytes.isNotEmpty() && bytes[0] == 0.toByte()) bytes.copyOfRange(1, bytes.size) else bytes
         }
     }
 }

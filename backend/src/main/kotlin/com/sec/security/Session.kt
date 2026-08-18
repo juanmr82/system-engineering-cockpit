@@ -36,6 +36,17 @@ public object SessionNames {
 }
 
 /**
+ * The bearer-token authentication provider a DOORS push request authenticates through instead of
+ * [SessionNames] (ADR 0020) — a second, independent provider, not a variant of the session one:
+ * there is no cookie, no CSRF token and no `SecPrincipal.csrfToken` to check on this path. Declared
+ * once, beside [SessionNames], for the same reason that object is.
+ */
+public object PushAuthNames {
+    /** The name the DOORS-push bearer-authentication provider is registered and looked up under. */
+    public const val PROVIDER: String = "sec-doors-push"
+}
+
+/**
  * The full server-side truth for one signed-in user — everything [UserSession.toPrincipal] does
  * *not* expose, plus what it does. Lives only in [SessionStorage] (one process, in memory; ADR
  * 0017 §3 — a restart signs everyone out, and that is accepted, not a bug to fix here).

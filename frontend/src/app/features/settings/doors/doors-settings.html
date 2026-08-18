@@ -4,81 +4,94 @@
     <h1 class="sec-doors-settings__title">DOORS</h1>
   </header>
 
-  @if (error(); as message) {
-    <p class="sec-doors-settings__error" role="alert">{{ message }}</p>
-  }
-
-  <!-- The import itself. Choosing a file writes nothing; pressing Import is the one act (R7). -->
+  <!-- Choosing files writes nothing; pressing Import all is the one act that starts anything (R7). -->
   <section class="sec-doors-settings__sheet">
-    <h2 class="sec-doors-settings__section">Import an export</h2>
+    <h2 class="sec-doors-settings__section">Import exports</h2>
     <p class="sec-doors-settings__hint">
-      Upload a module export produced by the DOORS DXL step. The file is read into memory to import
-      it and is never stored — only its checksum is kept, on the module, so uploading the same file
-      again is recognised and does nothing.
+      Upload one or more module exports produced by the DOORS DXL step. Each file is read into
+      memory to import it and is never stored — only its checksum is kept, on the module, so
+      uploading the same file again is recognised and does nothing. Only one import can run at a
+      time, so files are imported one after another.
     </p>
 
     <div class="sec-doors-settings__picker">
       <label class="sec-doors-settings__file">
         <input
           type="file"
+          multiple
           accept="application/json,.json"
-          aria-label="Choose a DOORS export file"
-          (change)="onFile($event)"
+          aria-label="Choose DOORS export files"
+          (change)="onFiles($event)"
         />
-        <span>Choose export file</span>
+        <span>Choose export files</span>
       </label>
 
-      @if (reading()) {
-        <span class="sec-doors-settings__absent">Reading…</span>
-      } @else if (file(); as chosen) {
-        <span class="sec-doors-settings__chosen">
-          {{ chosen.name }} <span>({{ sizeOf(chosen.size) }})</span>
-        </span>
-      } @else {
-        <span class="sec-doors-settings__absent">No file chosen.</span>
-      }
+      <button mat-flat-button type="button" [disabled]="!canRunQueue()" (click)="runImport()">
+        Import all
+      </button>
     </div>
 
-    @if (uploadPercent(); as percent) {
-      <p class="sec-doors-settings__running">Uploading — {{ percent }}%</p>
-      <mat-progress-bar mode="determinate" [value]="percent" />
+    @if (files().length > 0) {
+      <ul class="sec-doors-settings__queue">
+        @for (item of files(); track item.id) {
+          <li
+            class="sec-doors-settings__queue-row"
+            [class.sec-doors-settings__queue-row--active]="
+              item.status === 'uploading' || item.status === 'importing'
+            "
+          >
+            <span class="sec-doors-settings__queue-name">
+              {{ item.name }} <span>({{ sizeOf(item.size) }})</span>
+            </span>
+            <span
+              class="sec-doors-settings__queue-status"
+              [class]="'sec-doors-settings__queue-status--' + item.status"
+              role="status"
+            >
+              {{ statusLabel(item) }}
+            </span>
+            @if (item.status === 'queued') {
+              <button mat-icon-button type="button" aria-label="Remove" (click)="remove(item.id)">
+                <mat-icon svgIcon="close" />
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    }
+
+    <!-- The one progress bar, exactly as before — it now names whichever file is currently in
+         flight, since there can be several queued. -->
+    @if (active(); as item) {
+      @if (item.status === 'uploading') {
+        <p class="sec-doors-settings__running">Uploading {{ item.name }} — {{ item.percent ?? 0 }}%</p>
+        <mat-progress-bar mode="determinate" [value]="item.percent ?? 0" />
+      } @else {
+        <p class="sec-doors-settings__running">
+          Importing {{ item.name }} — {{ liveRun()?.phase ?? 'starting'
+          }}@if (liveRun()?.percent !== null && liveRun()?.percent !== undefined) {, {{ liveRun()?.percent }}%}
+        </p>
+        <mat-progress-bar
+          [mode]="liveRun()?.percent === null || liveRun()?.percent === undefined ? 'indeterminate' : 'determinate'"
+          [value]="liveRun()?.percent ?? 0"
+        />
+        @if (!watching()) {
+          <p class="sec-doors-settings__absent">
+            This import's progress cannot be followed from this page. Open the import console to
+            watch it.
+          </p>
+        }
+      }
     } @else if (activeRun(); as run) {
       <p class="sec-doors-settings__running">
-        Importing — {{ run.phase ?? 'starting' }}@if (run.percent !== null) {, {{ run.percent }}%}
+        An import is already running elsewhere — {{ run.phase ?? 'starting'
+        }}@if (run.percent !== null) {, {{ run.percent }}%}. You can still choose files here;
+        Import all becomes available once it finishes.
       </p>
       <mat-progress-bar
         [mode]="run.percent === null ? 'indeterminate' : 'determinate'"
         [value]="run.percent ?? 0"
       />
-    } @else {
-      <button mat-flat-button type="button" [disabled]="!canImport()" (click)="runImport()">
-        Import module
-      </button>
-    }
-
-    @if (result(); as outcome) {
-      @if (outcome.status === 'skipped') {
-        <p class="sec-doors-settings__accepted" role="status">
-          '{{ outcome.moduleName }}' is unchanged since its last import — this file is identical to
-          what is already here, so nothing was imported.
-        </p>
-      } @else {
-        <p class="sec-doors-settings__accepted" role="status">
-          '{{ outcome.moduleName }}' — {{ outcome.objects }} object{{ outcome.objects === 1 ? '' : 's' }}
-          read from the file.
-        </p>
-      }
-
-      @for (warning of outcome.warnings; track warning) {
-        <p class="sec-doors-settings__warning">{{ warning }}</p>
-      }
-
-      @if (outcome.status === 'started' && !watching()) {
-        <p class="sec-doors-settings__absent">
-          The import is running; its progress cannot be followed from this page. Open the import
-          console to watch it.
-        </p>
-      }
     }
   </section>
 
