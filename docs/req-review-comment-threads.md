@@ -1,6 +1,6 @@
 # Comment threads on the Req review table
 
-**Status:** proposed — extends `docs/features/requirements-review.md` §5.2 and amends `CLAUDE.md`
+**Status:** proposed — extends `docs/REQ_REVIEW.md` §5.2 and amends `CLAUDE.md`
 §9.1/§9.2 (the R7 batch-comment exception).
 **Read first:** root `CLAUDE.md` §2 (R1–R3, R5–R8), `docs/adr/0016-authorization-model.md`,
 `docs/KEYCLOAK_SETUP.md`, `requirements-review.md` §5.2.

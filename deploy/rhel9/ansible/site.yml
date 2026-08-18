@@ -1,0 +1,108 @@
+---
+# The whole deployment, one command.
+#
+#     ansible-playbook -i inventory/hosts.yml site.yml --ask-vault-pass
+#
+# Everything docs/DEPLOY_RHEL9.md describes, done for you. The deployer edits two files
+# (group_vars/all.yml and the vault) and runs this; nothing else is by hand.
+#
+# Idempotent and safe to re-run — that is also the upgrade path: point `sec_jar_src` at a new jar
+# and run again with `--tags backend`.
+#
+# Useful subsets:
+#     --tags certs             just install/refresh the certificate bundle
+#     --tags backend           just ship a new jar and restart
+#     --tags nginx             just the vhost
+#     --tags verify            just re-run the end-to-end checks
+#     --check --diff           show what would change, change nothing
+#
+# WHY ANSIBLE AND NOT THE SHELL SCRIPTS. The scripts are still there and still work, but they are
+# imperative: a deployer has to know the order, notice a failure, and get the file modes right by
+# reading. This does the ordering, is idempotent, refuses to continue on a failed step, and — the
+# part that matters most for a team — keeps every secret in one encrypted file instead of in
+# somebody's shell history.
+
+- name: Preflight — refuse to start on a host that cannot succeed
+  hosts: sec_servers
+  gather_facts: true
+  tags: [always]
+  tasks:
+
+    - name: The target is RHEL 9 or a rebuild of it
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['os_family'] == 'RedHat'
+          - ansible_facts['distribution_major_version'] is version('9', '>=')
+        fail_msg: >-
+          This playbook targets RHEL 9 (or Rocky/Alma 9). Found
+          {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}.
+        success_msg: "{{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+
+    - name: Every value the deployment cannot invent is set
+      ansible.builtin.assert:
+        that:
+          - sec_hostname is defined and sec_hostname | length > 0
+          - sec_hostname != 'sec.example.corp'
+          - sec_deployment_mode in ['native', 'compose']
+        fail_msg: >-
+          Edit group_vars/all.yml first: sec_hostname must be this server's real FQDN (it is still
+          the example value), and sec_deployment_mode must be 'native' or 'compose'.
+
+    # Fails here, before anything is installed, rather than at the first template that needs one.
+    # A half-deployed host is worse than an undeployed one.
+    - name: Every secret is present and is not still a placeholder
+      ansible.builtin.assert:
+        that:
+          - item.value is defined
+          - item.value | length >= 12
+          - "'CHANGE-ME' not in item.value"
+        fail_msg: >-
+          {{ item.name }} is missing, too short, or still CHANGE-ME. Put real values in the vault:
+          ansible-vault edit group_vars/vault.yml
+        quiet: true
+      loop:
+        - { name: 'vault_sec_neo4j_password', value: "{{ vault_sec_neo4j_password | default('') }}" }
+        - { name: 'vault_sec_oidc_client_secret', value: "{{ vault_sec_oidc_client_secret | default('') }}" }
+        - { name: 'vault_sec_kc_db_password', value: "{{ vault_sec_kc_db_password | default('') }}" }
+      loop_control:
+        label: "{{ item.name }}"
+      no_log: true
+
+    - name: The jar to deploy exists on the machine running Ansible
+      ansible.builtin.stat:
+        path: "{{ sec_jar_src }}"
+      register: sec_jar_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Say so clearly when it does not
+      ansible.builtin.assert:
+        that: sec_jar_stat.stat.exists
+        fail_msg: >-
+          No jar at {{ sec_jar_src }}. Build it with scripts/linux/sec-package.sh (or let Jenkins
+          publish one) and set sec_jar_src in group_vars/all.yml.
+
+- name: Deploy the System Engineering Cockpit
+  hosts: sec_servers
+  become: true
+  roles:
+    - role: sec_common
+      tags: [common]
+    - role: sec_certs
+      tags: [certs]
+    - role: sec_neo4j
+      tags: [neo4j]
+      when: sec_deployment_mode == 'native'
+    - role: sec_keycloak
+      tags: [keycloak]
+      when: sec_deployment_mode == 'native'
+    - role: sec_backend
+      tags: [backend]
+      when: sec_deployment_mode == 'native'
+    - role: sec_compose
+      tags: [compose]
+      when: sec_deployment_mode == 'compose'
+    - role: sec_nginx
+      tags: [nginx]
+    - role: sec_verify
+      tags: [verify]

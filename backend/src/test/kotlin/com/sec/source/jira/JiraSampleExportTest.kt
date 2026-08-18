@@ -1,5 +1,6 @@
 package com.sec.source.jira
 
+import com.sec.Fixtures
 import com.sec.config.JiraSettings
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -8,9 +9,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonObject
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,7 +16,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The parser against the real exports in `docs/`, which spec §16.1 names as the fixtures.
+ * The parser against the real exports spec §16.1 names as the fixtures ([Fixtures]).
  *
  * Two jobs, and the second is the less obvious one. It proves the loose types read real JIRA — and
  * it **pins the numbers the design is built on**. Every claim asserted here is one some later
@@ -148,7 +146,7 @@ class JiraSampleExportTest {
 
     @Test
     fun `the client reads the real issue type catalogue end to end`() {
-        val client = clientServing("JIRA_ISSUE_TYPES_DTO_EXAMPLE.md")
+        val client = clientServing(ISSUE_TYPES)
 
         val types = runBlocking { client.issueTypes() }.getOrThrow()
 
@@ -250,34 +248,12 @@ class JiraSampleExportTest {
         },
     )
 
-    /**
-     * The exports live in `docs/`, beside the spec that describes them; the working directory for
-     * these tests is `backend/`.
-     *
-     * The existence check is not defensive noise. Every assertion in this file is *about* the
-     * fixture, so a missing one would turn the whole class into a test of nothing — and it would
-     * do so silently, since a fixture is exactly the kind of file a repository tidy-up moves.
-     */
-    private fun sample(name: String): String {
-        val path: Path = Path.of("..", "docs", name)
-        assertTrue(
-            path.exists(),
-            "sample export $name is missing. It is a committed fixture (spec §16.1); this test " +
-                "would otherwise pass vacuously.",
-        )
-        return path.readText()
-    }
+    private fun sample(name: String): String = Fixtures.text(name)
 
     private companion object {
-        const val SEARCH = "JIRA.json"
-        const val FIELDS = "JIRA_FIELDS.json"
-
-        /**
-         * `.md` rather than `.json`, which is how it was added. The content is a raw `/issuetype`
-         * array; only the extension differs from its siblings, and nothing here parses by
-         * extension. Worth renaming one day, not worth a divergent copy.
-         */
-        const val ISSUE_TYPES = "JIRA_ISSUE_TYPES_DTO_EXAMPLE.md"
+        const val SEARCH = Fixtures.JIRA_SEARCH
+        const val FIELDS = Fixtures.JIRA_FIELDS
+        const val ISSUE_TYPES = Fixtures.JIRA_ISSUE_TYPES
 
         const val JQL = """project in ("ProjectCRPT") AND created <= "2026/08/11 14:32" ORDER BY key ASC"""
     }

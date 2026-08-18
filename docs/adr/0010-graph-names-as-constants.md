@@ -8,7 +8,7 @@ Date: 2026-08-08
 
 ## Context
 
-`docs/REFACTOR_BACKEND.md` items 1 and 2: *"a lot of the attribute names are used as textual
+A 2026 backend review, items 1 and 2: *"a lot of the attribute names are used as textual
 strings in several places. If I have to do a theoretical change of the attribute name, I need to
 change it in a bunch of places of the code."*
 

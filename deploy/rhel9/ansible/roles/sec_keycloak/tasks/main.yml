@@ -1,0 +1,186 @@
+---
+# PostgreSQL, Keycloak, the realm and the theme. Native path.
+#
+# PostgreSQL is not optional: production Keycloak refuses the dev-file store, and the realm holds
+# every group membership — this application's entire authorization model.
+
+# --- the database ---------------------------------------------------------------------------------
+- name: Install PostgreSQL and the Ansible module's dependency
+  ansible.builtin.dnf:
+    name:
+      - postgresql-server
+      - postgresql
+      - python3-psycopg2
+    state: present
+
+- name: Has the cluster been initialised?
+  ansible.builtin.stat:
+    path: /var/lib/pgsql/data/PG_VERSION
+  register: sec_keycloak_pg_data
+
+- name: Initialise it
+  ansible.builtin.command:
+    cmd: postgresql-setup --initdb
+  when: not sec_keycloak_pg_data.stat.exists
+  changed_when: true
+
+- name: Enable and start PostgreSQL
+  ansible.builtin.systemd_service:
+    name: postgresql
+    enabled: true
+    state: started
+
+- name: Create the Keycloak database role
+  community.postgresql.postgresql_user:
+    name: keycloak
+    password: "{{ vault_sec_kc_db_password }}"
+    state: present
+  become: true
+  become_user: postgres
+  no_log: true
+
+- name: Create the Keycloak database
+  community.postgresql.postgresql_db:
+    name: keycloak
+    owner: keycloak
+    state: present
+  become: true
+  become_user: postgres
+
+# --- Keycloak ---------------------------------------------------------------------------------------
+- name: Create the keycloak service account
+  ansible.builtin.user:
+    name: keycloak
+    system: true
+    create_home: false
+    shell: /sbin/nologin
+
+- name: Unpack the distribution
+  # Uploaded by the deployer: there is no internet on the target and this playbook will not invent
+  # one. creates: makes it idempotent without unpacking 200 MB on every run.
+  ansible.builtin.unarchive:
+    src: "{{ sec_keycloak_zip_src }}"
+    dest: /opt
+    owner: keycloak
+    group: keycloak
+    creates: "/opt/keycloak-{{ sec_keycloak_version }}/bin/kc.sh"
+
+- name: Point /opt/keycloak at this version
+  ansible.builtin.file:
+    src: "/opt/keycloak-{{ sec_keycloak_version }}"
+    dest: /opt/keycloak
+    state: link
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: /etc/keycloak
+    state: directory
+    owner: root
+    group: keycloak
+    mode: '0750'
+
+- name: Write Keycloak's environment
+  # The three proxy settings are required TOGETHER. Without KC_PROXY_HEADERS every URL Keycloak
+  # generates says http://localhost and the login redirect goes nowhere; without
+  # KC_HTTP_RELATIVE_PATH the paths it builds do not match nginx's /auth prefix.
+  ansible.builtin.template:
+    src: keycloak.env.j2
+    dest: /etc/keycloak/keycloak.env
+    owner: root
+    group: keycloak
+    mode: '0640'
+  no_log: true
+  notify: Restart keycloak
+
+- name: Install the SEC login theme
+  # Inherits keycloak.v2 and overrides a stylesheet and a logo — no copied .ftl templates, so a
+  # Keycloak upgrade cannot silently drop a new field from a frozen copy.
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../keycloak/themes/sec"
+    dest: /opt/keycloak/themes/
+    owner: keycloak
+    group: keycloak
+    mode: '0644'
+    directory_mode: '0755'
+  notify: Restart keycloak
+
+- name: Build Keycloak with this configuration baked in
+  # The unit starts with --optimized, which SKIPS the build. So the build has to run whenever a
+  # KC_DB / KC_FEATURES / KC_HEALTH_ENABLED value changes, or the old values stay in effect and
+  # nothing says so. Keyed on the environment file's content for exactly that reason.
+  ansible.builtin.shell:
+    cmd: set -a && . /etc/keycloak/keycloak.env && set +a && /opt/keycloak/bin/kc.sh build
+  become: true
+  become_user: keycloak
+  register: sec_keycloak_build
+  changed_when: sec_keycloak_build.rc == 0
+  notify: Restart keycloak
+
+- name: Install the unit
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../systemd/sec-keycloak.service"
+    dest: /etc/systemd/system/sec-keycloak.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for keycloak
+    - Restart keycloak
+
+- name: Enable and start Keycloak
+  ansible.builtin.systemd_service:
+    name: sec-keycloak
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for it to report ready
+  ansible.builtin.uri:
+    url: "http://{{ sec_bind_address }}:9000/health/ready"
+    status_code: 200
+  register: sec_keycloak_ready
+  until: sec_keycloak_ready.status == 200
+  retries: 30
+  delay: 10
+
+# --- the realm --------------------------------------------------------------------------------------
+- name: Does the realm already exist?
+  # Imported on FIRST RUN ONLY. Re-importing over a realm somebody has administered would discard
+  # the groups an access manager created — which is this application's authorization model.
+  ansible.builtin.uri:
+    url: "http://{{ sec_bind_address }}:{{ sec_keycloak_port }}/auth/realms/{{ sec_oidc_realm }}/.well-known/openid-configuration"
+    status_code: [200, 404]
+  register: sec_keycloak_realm_probe
+  failed_when: false
+
+- name: Stage the realm file
+  ansible.builtin.template:
+    src: sec-realm-prod.json.j2
+    dest: /opt/keycloak/data/import/sec-realm-prod.json
+    owner: keycloak
+    group: keycloak
+    mode: '0640'
+  when: sec_keycloak_import_realm | bool and sec_keycloak_realm_probe.status != 200
+
+- name: Import it
+  ansible.builtin.shell:
+    cmd: >
+      set -a && . /etc/keycloak/keycloak.env && set +a &&
+      /opt/keycloak/bin/kc.sh import --file /opt/keycloak/data/import/sec-realm-prod.json
+  become: true
+  become_user: keycloak
+  when: sec_keycloak_import_realm | bool and sec_keycloak_realm_probe.status != 200
+  changed_when: true
+  notify: Restart keycloak
+
+- name: What is still yours to do in the admin console
+  ansible.builtin.debug:
+    msg:
+      - "Keycloak is up at https://{{ sec_hostname }}/auth/"
+      - "1. Create a NAMED admin in the master realm, then remove the bootstrap admin from the vault and re-run."
+      - "2. Clients -> sec-backend -> Credentials -> Regenerate, put it in the vault as"
+      - "   vault_sec_oidc_client_secret, and re-run with --tags backend."
+      - "3. Create your real groups (/SEC/Thermal, ...). A group path is permanent: renaming one"
+      - "   looks like a new group with no grants and its members silently lose access."
+      - "4. Assign sec-admin / sec-access-manager to PEOPLE, not to groups."
+  when: sec_keycloak_realm_probe.status != 200

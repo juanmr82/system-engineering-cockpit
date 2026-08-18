@@ -13,7 +13,7 @@ import {
 import type { CompressedLayout, LayoutBox, LayoutEdge } from './graph-layout';
 import type { GraphEdge, GraphNode, LevelBand } from '../graph.model';
 
-// The pure half of docs/REQ_BREAKDOWN_GRAPH_VIEW §4, exercised without a DOM, without ELK and
+// The pure half of docs/REQ_BREAKDOWN_GRAPH_VIEW.md §4, exercised without a DOM, without ELK and
 // without a driver — the list §7 asks for by name.
 
 function node(ref: string, level: number | null, seed = false): GraphNode {

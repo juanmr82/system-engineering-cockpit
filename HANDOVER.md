@@ -1976,7 +1976,7 @@ all went in, and nothing is carried.
 | 4 | **elkjs 0.11.0** added, pinned exact, worker-only | `layout/elk.worker.ts`, §4 of `CLAUDE.md`, ADR 0011 |
 | 5 | **CLAUDE.md split**: §5 → `backend/`, §6/§8/§9 → `frontend/`, §10 → `importers/`. Root 83,532 → 39,974 chars (~20.9k → ~10.0k tokens) | four `CLAUDE.md` files |
 
-`docs/REQ_BREAKDOWN_GRAPH_VIEW` is the spec; **steps 1–7 of its build order are done, step 8 is
+`docs/REQ_BREAKDOWN_GRAPH_VIEW.md` is the spec; **steps 1–7 of its build order are done, step 8 is
 not** (list tab, keyboard navigation).
 
 ### The card is the point, and it constrains both views from now on

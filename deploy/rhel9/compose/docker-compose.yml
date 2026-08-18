@@ -1,0 +1,188 @@
+# Production compose for RHEL 9 — the container path of docs/DEPLOY_RHEL9.md.
+#
+#     cd /opt/sec/compose
+#     docker compose up -d
+#
+# Four services. nginx is deliberately NOT one of them: it runs on the host, terminates TLS with
+# the host's certificates, and proxies to the ports published below on loopback. Keeping it out
+# means the certificate lives in exactly one place on this machine whichever path you chose, and
+# `systemctl reload nginx` behaves the way every RHEL admin expects.
+#
+# Every port below is bound to 127.0.0.1 on purpose. Publishing "8080:8080" would bind 0.0.0.0 and
+# expose the backend directly — which also makes `server.behindProxy: true` unsafe, because anyone
+# could then send their own X-Forwarded-For (ADR 0021).
+#
+# `docker compose --env-file` supplies the values; see .env.example.
+
+name: sec
+
+services:
+
+  # --- the graph ---------------------------------------------------------------------------------
+  neo4j:
+    image: ${SEC_NEO4J_IMAGE:-neo4j:2026.01-community}
+    container_name: sec-neo4j
+    restart: unless-stopped
+    ports:
+      # Bolt only, and only on loopback. 7474 (the browser UI) is deliberately not published: it
+      # is an administrative interface with one shared credential and no business being reachable.
+      # Reach it when you need it with an ssh tunnel:  ssh -L 7474:127.0.0.1:7474 <host>
+      - "127.0.0.1:7687:7687"
+    environment:
+      NEO4J_AUTH: "${SEC_NEO4J_USER:?set SEC_NEO4J_USER}/${SEC_NEO4J_PASSWORD:?set SEC_NEO4J_PASSWORD}"
+      # Community has no query governor (CLAUDE.md §7), so the heap is one of the few real limits.
+      # 2G/4G suits a few hundred thousand nodes; raise the page cache before the heap if imports
+      # are slow, because this workload is read-heavy over a graph that should fit in cache.
+      NEO4J_server_memory_heap_initial__size: "${SEC_NEO4J_HEAP:-2G}"
+      NEO4J_server_memory_heap_max__size: "${SEC_NEO4J_HEAP:-2G}"
+      NEO4J_server_memory_pagecache_size: "${SEC_NEO4J_PAGECACHE:-2G}"
+      NEO4J_server_default__listen__address: "0.0.0.0"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      # cypher-shell rather than a TCP probe: the port is open well before the database can answer,
+      # and the backend calls verifyConnectivity() at startup and exits when it fails.
+      test: ["CMD-SHELL", "cypher-shell -u $${SEC_NEO4J_USER} -p $${SEC_NEO4J_PASSWORD} 'RETURN 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  # --- Keycloak's database -------------------------------------------------------------------------
+  # Not optional. Production Keycloak refuses to start on the dev-file store, and losing the realm
+  # means losing every group membership — which is this application's entire authorization model.
+  keycloak-db:
+    image: ${SEC_POSTGRES_IMAGE:-postgres:16-alpine}
+    container_name: sec-keycloak-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: "${SEC_KC_DB_PASSWORD:?set SEC_KC_DB_PASSWORD}"
+    volumes:
+      - keycloak-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- identity ------------------------------------------------------------------------------------
+  keycloak:
+    image: ${SEC_KEYCLOAK_IMAGE:-quay.io/keycloak/keycloak:26.0}
+    container_name: sec-keycloak
+    restart: unless-stopped
+    # `start`, not `start-dev`. --optimized skips the build step, which the image already did with
+    # the KC_DB baked in; drop it if you change KC_DB or KC_FEATURES.
+    command: start --optimized
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8180:8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://keycloak-db:5432/keycloak"
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: "${SEC_KC_DB_PASSWORD:?set SEC_KC_DB_PASSWORD}"
+
+      # Behind nginx, which terminates TLS.
+      #
+      # ONE path mechanism, not two. The reverse-proxy guide lists three alternatives for serving
+      # under a prefix — X-Forwarded-Prefix, a hostname URL carrying the path, or http-relative-path
+      # — and says to do ONE of them. nginx here does NOT rewrite (`proxy_pass http://upstream;`
+      # with no URI part passes /auth/... through unchanged), so Keycloak must genuinely serve on
+      # /auth: that makes http-relative-path the required one, and KC_HOSTNAME carries no path.
+      # The issuer it advertises is hostname + relative path = https://<host>/auth/realms/sec,
+      # which is what the backend is configured with. sec_verify asserts the two match.
+      #
+      #   KC_HTTP_ENABLED    — plain http to the proxy over the docker network
+      #   KC_PROXY_HEADERS   — trust X-Forwarded-*; without it every URL Keycloak generates says
+      #                        http://localhost:8080 and the login redirect goes nowhere
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: "xforwarded"
+      # "To ensure that proxy headers are used only from proxies you trust" — the guide's words.
+      # The published port is loopback-only already; this is the second lock on the same door.
+      KC_PROXY_TRUSTED_ADDRESSES: "127.0.0.1,::1,172.16.0.0/12"
+      KC_HOSTNAME: "https://${SEC_HOSTNAME:?set SEC_HOSTNAME}"
+      KC_HTTP_RELATIVE_PATH: "/auth"
+      # The admin console is reachable only through the proxy, which is why this stays strict.
+      KC_HOSTNAME_STRICT: "true"
+
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "false"
+      KC_LOG_LEVEL: "${SEC_KC_LOG_LEVEL:-info}"
+
+      # First start only. Create a named admin account, then DELETE these two lines and
+      # `docker compose up -d keycloak` — a permanent bootstrap admin is a permanent shared login.
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${SEC_KC_ADMIN:-}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${SEC_KC_ADMIN_PASSWORD:-}"
+    volumes:
+      # The SEC login theme (docs/DEPLOY_RHEL9.md §10). Read-only: nothing in the container should
+      # be able to edit the theme it is serving.
+      - ../keycloak/themes/sec:/opt/keycloak/themes/sec:ro
+      # The realm file the Ansible compose role stages here, and that `kc.sh import` reads. Also
+      # where you would drop it by hand for the §7.1 route.
+      - ../keycloak:/opt/keycloak/data/import:ro
+      # The company CA chain, where sec_certs installs it on the host. The container has its own
+      # trust store, so the host trusting it is not enough.
+      #
+      # This path MUST exist before `up`: docker creates a DIRECTORY for a missing bind source,
+      # and a directory where a certificate is expected fails in a confusing way. The Ansible
+      # certs role runs before the compose role for exactly that reason.
+      - /etc/pki/ca-trust/source/anchors/company-ca-chain.crt:/etc/pki/ca-trust/source/anchors/company-ca-chain.crt:ro
+    healthcheck:
+      # The management port (9000) serves /health/ready in Keycloak 25+; it is not published, so
+      # this is reachable from inside the container only, which is the right place to ask.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\nHost: localhost\\nConnection: close\\n\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  # --- the cockpit ----------------------------------------------------------------------------------
+  backend:
+    # Built by scripts/sec-build-image.sh from the jar — there is no Dockerfile build here on
+    # purpose, because the server has no toolchain and no internet (CLAUDE.md, item 6).
+    image: ${SEC_BACKEND_IMAGE:-sec/backend:0.1.0}
+    container_name: sec-backend
+    restart: unless-stopped
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      # Started before, but NOT waited for: the backend survives Keycloak being absent by design
+      # (KEYCLOAK_SETUP.md §7), and making it a hard dependency would turn a Keycloak restart into
+      # a cockpit outage.
+      keycloak:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      # Mode 0600, outside the compose directory, never in git. This is the container path's
+      # equivalent of systemd's EnvironmentFile — see ../config/sec.env.example for why not
+      # .bashrc and not `environment:` lines here (which `docker inspect` shows to anyone).
+      - ${SEC_ENV_FILE:-/etc/sec/sec.env}
+    environment:
+      SEC_BEHIND_PROXY: "true"
+    volumes:
+      - /etc/sec/sec.yaml:/etc/sec/sec.yaml:ro
+      # As above: the JVM in this container must trust the certificate nginx serves, or OIDC
+      # discovery fails at startup with a PKIX error and nobody can log in.
+      - /etc/pki/ca-trust/source/anchors/company-ca-chain.crt:/etc/pki/ca-trust/source/anchors/company-ca-chain.crt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/v1/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  keycloak-db:

@@ -1,0 +1,167 @@
+{
+  "realm": "{{ sec_oidc_realm }}",
+  "enabled": true,
+  "displayName": "System Engineering Cockpit",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "all",
+  "loginTheme": "{{ sec_keycloak_theme }}",
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "waitIncrementSeconds": 60,
+  "failureFactor": 10,
+  "passwordPolicy": "length(12) and notUsername(undefined) and passwordHistory(3)",
+  "defaultRole": {
+    "name": "default-roles-{{ sec_oidc_realm }}",
+    "description": "Assigned to every new user in this realm",
+    "composite": true,
+    "clientRole": false,
+    "containerId": "{{ sec_oidc_realm }}",
+    "composites": {
+      "realm": [
+        "sec-user"
+      ]
+    }
+  },
+  "roles": {
+    "realm": [
+      {
+        "name": "sec-user",
+        "description": "Read what their groups allow; write Tier 2 (comments, reviews, tags) on objects they can see."
+      },
+      {
+        "name": "sec-admin",
+        "description": "Everything under /settings: importer configuration, module settings, running an import. Does not imply visibility."
+      },
+      {
+        "name": "sec-access-manager",
+        "description": "The Access views: categories, grants, containers, import defaults, reconcile. Does not imply visibility."
+      },
+      {
+        "name": "sec-auditor",
+        "description": "Phase 7. Read the access configuration and the audit trail; change nothing."
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "SEC",
+      "path": "/SEC",
+      "subGroups": [
+        {
+          "name": "Importers",
+          "path": "/SEC/Importers"
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "sec-backend",
+      "name": "SEC backend (browser)",
+      "description": "The OIDC client the backend is (ADR 0017). The browser is never an OAuth client.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "https://{{ sec_hostname }}/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://{{ sec_hostname }}/*",
+        "backchannel.logout.session.required": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
+          "name": "realm roles (id token)",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "sec-doors-push",
+      "name": "SEC DOORS push (machine)",
+      "description": "Technical accounts pushing a DOORS export (ADR 0020). No browser ever uses this client.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
+          "name": "realm roles (id token)",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": []
+}

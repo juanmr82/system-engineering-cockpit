@@ -1,0 +1,34 @@
+---
+# The only TLS terminator, and the only thing on this host reachable from the network.
+
+- name: Install nginx
+  ansible.builtin.dnf:
+    name: nginx
+    state: present
+
+- name: Write the TLS parameters
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../nginx/sec-ssl-params.conf"
+    dest: /etc/nginx/conf.d/sec-ssl-params.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload nginx
+
+- name: Write the vhost
+  # Templated rather than copied, so the hostname, ports and upload limit come from group_vars and
+  # there is no sed step for a deployer to forget.
+  ansible.builtin.template:
+    src: sec.conf.j2
+    dest: /etc/nginx/conf.d/sec.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: 'nginx -t -c %s'
+  notify: Reload nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started

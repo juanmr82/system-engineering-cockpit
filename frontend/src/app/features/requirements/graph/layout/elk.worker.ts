@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-// The ELK layout worker (docs/REQ_BREAKDOWN_GRAPH_VIEW §4.2).
+// The ELK layout worker (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §4.2).
 //
 // One import and nothing else, deliberately. `elk-worker.min.js` **is** the worker: it detects a
 // worker context — `document` undefined, `self` defined — and installs its own `onmessage` handler

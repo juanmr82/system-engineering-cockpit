@@ -28,7 +28,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Acceptance criteria from docs/REQ_BREAKDOWN_GRAPH_VIEW §7, against a real Neo4j **Community**
+ * Acceptance criteria from docs/REQ_BREAKDOWN_GRAPH_VIEW.md §7, against a real Neo4j **Community**
  * image (CLAUDE.md §7, §11). Container lifecycle owned explicitly — see ModulesFeatureTest for why.
  *
  * The fixture carries the four shapes that break a naive implementation: a sibling edge that only

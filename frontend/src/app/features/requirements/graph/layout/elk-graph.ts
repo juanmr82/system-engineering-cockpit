@@ -3,7 +3,7 @@ import type { LayoutBox, LayoutEdge, Point } from './graph-layout';
 import { CARD_WIDTH } from './graph-layout';
 
 /**
- * Translating between this view's vocabulary and ELK's (docs/REQ_BREAKDOWN_GRAPH_VIEW §4.2).
+ * Translating between this view's vocabulary and ELK's (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §4.2).
  *
  * Pure, and kept apart from the worker so it can be tested without one: the worker is three lines
  * of message plumbing around `elk.layout()`, and everything worth asserting is here.

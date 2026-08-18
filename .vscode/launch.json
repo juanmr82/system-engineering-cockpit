@@ -1,0 +1,58 @@
+{
+  // Debugging. The Kotlin backend runs under the Java debugger — the JVM does not care which
+  // language produced the bytecode, and breakpoints in .kt files work with the Java extension
+  // pack installed (see extensions.json).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // The straightforward one: launch the backend under the debugger.
+      "type": "java",
+      "name": "Backend (debug)",
+      "request": "launch",
+      "mainClass": "com.sec.ApplicationKt",
+      "projectName": "backend",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "env": {
+        "SEC_NEO4J_USER": "neo4j",
+        "SEC_NEO4J_PASSWORD": "admin1234",
+        "SEC_OIDC_CLIENT_SECRET": "sec-backend-dev-secret",
+        "SEC_AUTH_FRONTEND_URL": "http://localhost:4200"
+      }
+    },
+    {
+      // For attaching to a backend already started by the "Backend: run" task, or to one running
+      // on the RHEL box through an ssh tunnel. Start that JVM with:
+      //   -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+      "type": "java",
+      "name": "Backend (attach to 5005)",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    },
+    {
+      // The Angular app. Assumes "Frontend: serve" is already running — deliberately not wired to
+      // a preLaunchTask, because a background dev server that the debugger owns is a dev server
+      // that dies when you stop debugging.
+      "type": "chrome",
+      "name": "Frontend (Chrome)",
+      "request": "launch",
+      "url": "http://localhost:4200",
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "sourceMapPathOverrides": {
+        "webpack:///./src/*": "${workspaceFolder}/frontend/src/*",
+        "webpack:///src/*": "${workspaceFolder}/frontend/src/*"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      // Both halves at once, which is how the application is actually used: ng serve proxies /api
+      // to the backend (frontend/proxy.conf.json), so the browser sees one origin and the session
+      // cookie works.
+      "name": "Full stack (backend + frontend)",
+      "configurations": ["Backend (debug)", "Frontend (Chrome)"],
+      "stopAll": true
+    }
+  ]
+}

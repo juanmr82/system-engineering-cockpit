@@ -5,6 +5,16 @@ ktor:
   deployment:
     port: 8080
 
+# How this process is exposed (ADR 0021). `false` is the safe default and the packaged value:
+# XForwardedHeaders believes X-Forwarded-For from whoever sent it, so a directly reachable port
+# with this on lets a caller write its own address into this application's audit log.
+#
+# Both deployment paths in docs/DEPLOY_RHEL9.md set it to true *and* bind to loopback, which is the
+# only combination that is both correct and safe. Turning one on without the other is the mistake
+# this comment exists to prevent.
+server:
+  behindProxy: "$SEC_BEHIND_PROXY:false"
+
 neo4j:
   uri: "bolt://localhost:7687"
   database: "neo4j"

@@ -12,7 +12,7 @@
 }
 
 // Shared by every state: a borderless control that fills the cell exactly, so clicking anywhere in
-// it — not a sliver of icon — opens the thread (docs/comments_design.jpg baseline).
+// it — not a sliver of icon — opens the thread.
 %sec-comment-cell-fill {
   display: flex;
   width: 100%;

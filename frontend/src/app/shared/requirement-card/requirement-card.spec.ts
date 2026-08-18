@@ -7,7 +7,7 @@ import { RequirementCard, isClamped } from './requirement-card';
 import type { RequirementCardNode } from './requirement-card.model';
 
 // The shared card of the Breakdown tab and the dependency graph
-// (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+// (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
 //
 // **jsdom has no layout**, so it reports every height as 0 and nothing is ever measured as
 // clamped here. That is not a gap to be worked around: the arithmetic is covered on numbers, and

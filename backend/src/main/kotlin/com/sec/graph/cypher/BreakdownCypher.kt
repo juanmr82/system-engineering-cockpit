@@ -21,7 +21,7 @@ import com.sec.source.doors.DoorsRel.REFERS_TO
  *
  * What is **not** here is the statement that loads the nodes: that is `RequirementCardCypher`,
  * shared with the dependency graph, because both draw the same card and one card shape may have
- * only one query behind it (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+ * only one query behind it (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
  */
 public object BreakdownCypher {
 

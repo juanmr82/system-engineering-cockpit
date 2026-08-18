@@ -1,6 +1,12 @@
 * text=auto eol=lf
 *.bat text eol=crlf
 *.ps1 text eol=crlf
+# Explicit rather than left to `text=auto`: a shell script or a systemd unit checked out with
+# CRLF fails at the shebang with "bad interpreter: /usr/bin/env bash^M", or is silently ignored
+# by systemd. Both are a long way from the truth, the same way a CRLF-mangled jar is below.
+*.sh      text eol=lf
+*.service text eol=lf
+*.timer   text eol=lf
 
 # Binary files. The `* text=auto` rule above asks git to *guess* whether a file is text, and
 # the guess is only "no NUL byte in the first 8000 bytes". A jar that guesses wrong is checked

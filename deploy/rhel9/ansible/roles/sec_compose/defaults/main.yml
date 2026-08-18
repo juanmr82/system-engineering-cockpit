@@ -1,0 +1,6 @@
+---
+# Pin these to the company registry mirror's copies on an air-gapped host.
+# Neo4j must stay on the series the root pom.xml pins (neo4j-image.version).
+sec_compose_neo4j_image: neo4j:2026.01-community
+sec_compose_keycloak_image: quay.io/keycloak/keycloak:26.0
+sec_compose_postgres_image: postgres:16-alpine

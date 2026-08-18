@@ -1,0 +1,20 @@
+{
+  // Suggested on first open. Nothing here is required to build — the Maven wrapper and npm do
+  // that from the terminal — but without the Java/Kotlin pair, .kt files get no completion and
+  // launch.json's debugger configurations do not appear.
+  "recommendations": [
+    "fwcd.kotlin",                    // Kotlin language server: completion, navigation
+    "vscjava.vscode-java-pack",       // the JDK/debugger machinery launch.json needs
+    "vscjava.vscode-maven",
+    "angular.ng-template",            // Angular templates: completion inside .html
+    "dbaeumer.vscode-eslint",
+    "redhat.ansible",                 // deploy/rhel9/ansible — syntax and ansible-lint in-editor
+    "redhat.vscode-yaml",
+    "ms-vscode.live-server"
+  ],
+  "unwantedRecommendations": [
+    // The Angular CLI's own builder handles the build; a second TypeScript compiler watching the
+    // same tree reports errors the real build does not have.
+    "ms-vscode.vscode-typescript-next"
+  ]
+}

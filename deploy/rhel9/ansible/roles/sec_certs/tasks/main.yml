@@ -1,0 +1,136 @@
+---
+# Install the certificate bundle the company PKI issued — and refuse to install a wrong one.
+#
+# Nothing here generates a certificate. The deployer requested it, the PKI issued it, and this
+# role's real job is the validation: the mistakes with a supplied bundle are not typos but a
+# certificate for the wrong name, a key from a different CSR, or a chain missing its intermediate.
+# nginx accepts most of those at `nginx -t` and then fails at handshake time for some clients and
+# not others.
+
+- name: The three files exist on the machine running Ansible
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: sec_certs_files
+  delegate_to: localhost
+  become: false
+  loop:
+    - "{{ sec_cert_src }}"
+    - "{{ sec_key_src }}"
+    - "{{ sec_ca_chain_src }}"
+
+- name: Say which one is missing
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: >-
+      {{ item.item }} not found. Put the bundle your PKI team issued under
+      deploy/rhel9/ansible/files/certs/ and check the sec_cert_src / sec_key_src /
+      sec_ca_chain_src paths in group_vars/all.yml.
+    quiet: true
+  loop: "{{ sec_certs_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# --- validate, locally, BEFORE touching the server ------------------------------------------------
+# Locally on purpose: a bundle that fails these checks should never reach the target at all.
+
+- name: Read the certificate
+  community.crypto.x509_certificate_info:
+    path: "{{ sec_cert_src }}"
+  register: sec_certs_info
+  delegate_to: localhost
+  become: false
+
+- name: The private key belongs to this certificate
+  # THE check. A cert and a key from two different requests are each perfectly valid on their own;
+  # nginx refuses to start with "key values mismatch", but only at start time, after a deploy.
+  community.crypto.openssl_privatekey_info:
+    path: "{{ sec_key_src }}"
+  register: sec_certs_key_info
+  delegate_to: localhost
+  become: false
+  no_log: true
+
+- name: Refuse a bundle whose key and certificate do not match
+  ansible.builtin.assert:
+    that: sec_certs_info.public_key == sec_certs_key_info.public_key
+    fail_msg: >-
+      The private key does not match the certificate — they came from different requests.
+      Go back to the PKI team with the CSR you actually submitted.
+
+- name: Refuse a certificate that is not for this host
+  # Browsers have ignored CN for host matching since 2017. A certificate whose CN is right and
+  # whose SAN omits the name fails with ERR_CERT_COMMON_NAME_INVALID, and the subject line makes
+  # it look correct at a glance.
+  ansible.builtin.assert:
+    that:
+      - sec_certs_info.subject_alt_name is defined
+      - sec_certs_info.subject_alt_name | length > 0
+      - >-
+        ('DNS:' + sec_hostname) in sec_certs_info.subject_alt_name
+        or sec_certs_info.subject_alt_name | select('match', '^DNS:\*\.') | list | length > 0
+    fail_msg: >-
+      The certificate's subjectAltName does not cover {{ sec_hostname }}.
+      It has: {{ sec_certs_info.subject_alt_name | default('no SAN at all') }}
+
+- name: Refuse an expired certificate, and warn about one about to expire
+  ansible.builtin.assert:
+    that: not sec_certs_info.expired
+    fail_msg: "The certificate expired on {{ sec_certs_info.not_after }}."
+
+- name: Note when the certificate expires soon
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: this certificate expires on {{ sec_certs_info.not_after }}.
+      Request the renewal now — re-running this role with --tags certs is all the swap takes.
+  when: sec_certs_info.not_after is defined and
+        (sec_certs_info.not_after | to_datetime('%Y%m%d%H%M%SZ')
+         - '%Y-%m-%d' | strftime(ansible_date_time.epoch) | to_datetime('%Y-%m-%d')).days < 30
+  ignore_errors: true          # noqa ignore-errors — a date-format surprise must not fail a deploy
+
+# --- install --------------------------------------------------------------------------------------
+
+- name: Install the CA chain into the system trust store
+  # This is also what makes the JVM trust it: RHEL's update-ca-trust regenerates
+  # /etc/pki/java/cacerts, which the packaged OpenJDK uses. Without it the backend's OIDC discovery
+  # fails at startup with a PKIX error and nobody can log in — with nothing else looking wrong.
+  ansible.builtin.copy:
+    src: "{{ sec_ca_chain_src }}"
+    dest: /etc/pki/ca-trust/source/anchors/company-ca-chain.crt
+    owner: root
+    group: root
+    # 0644 is not cosmetic: update-ca-trust silently ignores a source file it cannot read, and the
+    # failure surfaces much later as a PKIX error from a completely different process.
+    mode: '0644'
+  when: sec_install_ca_chain | bool
+  notify: Rebuild the trust store
+
+- name: Rebuild the trust store now, before anything needs it
+  ansible.builtin.meta: flush_handlers
+
+- name: Install the server certificate
+  ansible.builtin.copy:
+    src: "{{ sec_cert_src }}"
+    dest: "/etc/pki/tls/certs/{{ sec_hostname }}.crt"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload nginx
+
+- name: Install the private key
+  ansible.builtin.copy:
+    src: "{{ sec_key_src }}"
+    dest: "/etc/pki/tls/private/{{ sec_hostname }}.key"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  notify: Reload nginx
+
+- name: Confirm the host now trusts the certificate it is about to serve
+  # The end-to-end question, asked of the extracted bundle rather than of the chain file: "does
+  # this host trust it?" is what the JVM will ask, and it is what catches a forgotten extract.
+  ansible.builtin.command:
+    cmd: openssl verify -CAfile /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/{{ sec_hostname }}.crt
+  register: sec_certs_verify
+  changed_when: false
+  failed_when: sec_certs_verify.rc != 0

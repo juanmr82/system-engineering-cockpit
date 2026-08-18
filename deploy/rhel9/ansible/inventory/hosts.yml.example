@@ -1,0 +1,14 @@
+---
+# Copy to inventory/hosts.yml and put your server in it.
+#
+# One host is the expected shape. The session store is in memory in one process (ADR 0017 §3), so
+# a second backend behind a load balancer would sign users out at random — that needs a shared
+# session store first, not just another line here.
+all:
+  children:
+    sec_servers:
+      hosts:
+        sec-prod:
+          ansible_host: sec.example.corp
+          # The account you ssh in as. It needs sudo; the playbook uses become: true.
+          ansible_user: deployer

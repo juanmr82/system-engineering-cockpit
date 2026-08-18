@@ -14,7 +14,7 @@ import type { BreakdownRow } from './breakdown.model';
  * point of the tab. The only control is the twisty.
  *
  * The requirement itself is drawn by the shared card, which the dependency graph also uses as a
- * node (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1). What is left here is the *tree's* chrome — the depth
+ * node (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1). What is left here is the *tree's* chrome — the depth
  * rail, the twisty, the parent this row refines, its loop markers — none of which is a fact about
  * the requirement, and none of which the graph wants.
  */

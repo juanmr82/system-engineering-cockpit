@@ -1,0 +1,56 @@
+---
+# Every secret the deployment needs, and nothing else.
+#
+#     cp group_vars/vault.yml.example group_vars/vault.yml
+#     ansible-vault encrypt group_vars/vault.yml
+#     ansible-vault edit    group_vars/vault.yml        # from then on, always this
+#
+# THIS IS THE ANSWER TO "WHERE DO SECRETS LIVE" FOR A TEAM.
+#
+# ansible-vault encrypts the file at rest with a passphrase. The encrypted file is safe to commit —
+# that is the point: the values are versioned, reviewed and rolled back like everything else, and
+# there is exactly one copy of the truth instead of one per engineer's shell profile.
+#
+# What each person needs is the vault passphrase, not the secrets. Keep it in whatever the company
+# already uses for shared credentials (a password manager, a CyberArk safe), or as a file:
+#
+#     ansible-playbook -i inventory/hosts.yml site.yml --vault-password-file ~/.sec-vault-pass
+#
+# ...with that file 0600 and NOT in the repository. `.gitignore` already excludes it and the
+# decrypted vault.yml, so an accidental `git add -A` cannot leak either.
+#
+# ROTATION. `ansible-vault edit`, change the value, re-run the playbook with the matching tag:
+#     --tags backend    for SEC_* secrets  (restarts the backend)
+#     --tags keycloak   for the database password
+# There is no reload — every process reads its configuration once, at startup, deliberately.
+#
+# Rotating the OIDC client secret means changing it in Keycloak FIRST, then here, then running.
+# Logins fail in between, so do it in a window.
+#
+# Generate each one with:  openssl rand -base64 32
+
+# --- Neo4j ---------------------------------------------------------------------------------------
+# The single service account. Community has no RBAC (CLAUDE.md §7), so this one credential is the
+# database's entire access control — which is also why nothing but the backend may reach the port.
+vault_sec_neo4j_user: neo4j
+vault_sec_neo4j_password: CHANGE-ME
+
+# --- Keycloak ------------------------------------------------------------------------------------
+# Clients → sec-backend → Credentials. The backend refuses to start without it: authorization is
+# infrastructure every deployment needs, not an optional source.
+vault_sec_oidc_client_secret: CHANGE-ME
+
+# Keycloak's own PostgreSQL. Losing this database loses every group membership — the whole
+# authorization model — so it is backed up alongside the graph, not instead of it.
+vault_sec_kc_db_password: CHANGE-ME
+
+# The temporary bootstrap admin, used once to create a named administrator. The playbook removes
+# these from Keycloak's environment file after the first successful start; a permanent bootstrap
+# admin is a permanent shared credential.
+vault_sec_kc_admin_user: admin
+vault_sec_kc_admin_password: CHANGE-ME
+
+# --- Optional ---------------------------------------------------------------------------------------
+# A JIRA personal access token (Data Center) or API token (Cloud). Empty is a working state:
+# /api/v1/jira/** answers 503 with a reason the settings page shows, and nothing else is affected.
+vault_sec_jira_token: ""

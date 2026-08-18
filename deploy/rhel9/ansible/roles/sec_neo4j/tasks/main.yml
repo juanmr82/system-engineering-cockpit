@@ -1,0 +1,84 @@
+---
+# Neo4j Community, native. The container path gets its Neo4j from compose instead.
+
+- name: Trust the Neo4j package signing key
+  ansible.builtin.rpm_key:
+    key: https://debian.neo4j.com/neotechnology.gpg.key
+    state: present
+
+- name: Add the Neo4j repository
+  # Point baseurl at the company mirror's copy on an air-gapped host. Pin the series to the one
+  # the project pins in the root pom.xml (neo4j-image.version): the container tests run against
+  # that image, and testing a different major than production defeats testing against Community.
+  ansible.builtin.yum_repository:
+    name: neo4j
+    description: Neo4j RPM Repository
+    baseurl: "{{ sec_neo4j_repo_baseurl }}"
+    gpgcheck: true
+    enabled: true
+
+- name: Install Neo4j and cypher-shell
+  ansible.builtin.dnf:
+    name:
+      - neo4j
+      - cypher-shell
+    state: present
+
+- name: Configure it
+  # Loopback only, and it is load-bearing: Community has exactly one credential (CLAUDE.md §7),
+  # so there is no second line of defence if this port is reachable.
+  ansible.builtin.lineinfile:
+    path: /etc/neo4j/neo4j.conf
+    regexp: "^#?{{ item.key | regex_escape }}="
+    line: "{{ item.key }}={{ item.value }}"
+    state: present
+  loop:
+    - { key: 'server.default_listen_address', value: '{{ sec_bind_address }}' }
+    - { key: 'server.bolt.listen_address', value: '{{ sec_bind_address }}:{{ sec_neo4j_bolt_port }}' }
+    - { key: 'server.http.listen_address', value: '{{ sec_bind_address }}:7474' }
+    - { key: 'server.memory.heap.initial_size', value: '{{ sec_neo4j_heap }}' }
+    - { key: 'server.memory.heap.max_size', value: '{{ sec_neo4j_heap }}' }
+    - { key: 'server.memory.pagecache.size', value: '{{ sec_neo4j_pagecache }}' }
+  loop_control:
+    label: "{{ item.key }}"
+  notify: Restart neo4j
+
+- name: Has the database been initialised before?
+  # set-initial-password works on an empty store ONLY, and silently does nothing afterwards. This
+  # marker is what keeps the play idempotent without pretending a later password change happened.
+  ansible.builtin.stat:
+    path: /var/lib/neo4j/data/dbms/auth
+  register: sec_neo4j_auth_marker
+
+- name: Set the initial password
+  ansible.builtin.command:
+    cmd: neo4j-admin dbms set-initial-password "{{ vault_sec_neo4j_password }}"
+  become: true
+  become_user: neo4j
+  when: not sec_neo4j_auth_marker.stat.exists
+  no_log: true
+  changed_when: true
+
+- name: Enable and start it
+  ansible.builtin.systemd_service:
+    name: neo4j
+    enabled: true
+    state: started
+
+- name: Wait for bolt to answer
+  # The port opens well before the database can serve a query, and the backend calls
+  # verifyConnectivity() at startup and exits when it fails — so the wait belongs here, not there.
+  ansible.builtin.wait_for:
+    host: "{{ sec_bind_address }}"
+    port: "{{ sec_neo4j_bolt_port }}"
+    timeout: 180
+
+- name: Prove it answers a query, not just a TCP connect
+  ansible.builtin.command:
+    cmd: cypher-shell -a bolt://{{ sec_bind_address }}:{{ sec_neo4j_bolt_port }} -u {{ vault_sec_neo4j_user }} -p {{ vault_sec_neo4j_password }} "RETURN 1"
+  register: sec_neo4j_probe_query
+  until: sec_neo4j_probe_query.rc == 0
+  retries: 12
+  delay: 10
+  changed_when: false
+  no_log: true

@@ -1,0 +1,63 @@
+# /etc/systemd/system/sec-keycloak.service
+#
+# Keycloak 26 from the unpacked distribution, in production mode, behind nginx.
+#
+#   install -o root -g root -m 0644 sec-keycloak.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now sec-keycloak
+#
+# Named sec-keycloak rather than keycloak so it cannot collide with a packaged unit if one is ever
+# installed on this host.
+
+[Unit]
+Description=Keycloak — identity provider for SEC
+Documentation=file:/opt/sec/docs/DEPLOY_RHEL9.md
+Documentation=https://www.keycloak.org/server/configuration
+# PostgreSQL is a genuine hard dependency: production Keycloak refuses to start without its
+# database, unlike the backend, which merely fails a readiness probe. Requires= makes that true
+# to systemd as well.
+After=network-online.target postgresql.service
+Requires=postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=keycloak
+Group=keycloak
+WorkingDirectory=/opt/keycloak
+
+# KC_BOOTSTRAP_ADMIN_* and KC_DB_PASSWORD live here, 0640 root:keycloak — same reasoning as
+# /etc/sec/sec.env. Delete the bootstrap admin variables from it after the first start and the
+# creation of a named admin account; a permanent bootstrap admin is a permanent shared credential.
+EnvironmentFile=/etc/keycloak/keycloak.env
+
+# `start`, not `start-dev`: dev mode disables HTTPS requirements, uses an in-memory cache and an
+# ephemeral database, and is not supported for anything but a laptop.
+#
+# --optimized skips the build step at boot, which is what `kc.sh build` already did at install
+# time. Re-run the build whenever a --db, --features or --health-enabled flag changes, or this
+# start will use the old ones and say nothing.
+ExecStart=/opt/keycloak/bin/kc.sh start --optimized
+
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sec-keycloak
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Keycloak writes its transaction-recovery store and its unpacked providers under $KC_HOME/data.
+ReadWritePaths=/opt/keycloak/data
+
+LimitNOFILE=65536
+TimeoutStartSec=180s
+
+[Install]
+WantedBy=multi-user.target

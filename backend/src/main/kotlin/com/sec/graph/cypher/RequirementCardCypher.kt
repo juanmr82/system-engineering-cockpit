@@ -18,7 +18,7 @@ import com.sec.source.doors.DoorsLabel.MODULE as DOORS_MODULE
 
 /**
  * Cypher behind the shared requirement card — the payload the Breakdown tab draws as a row and the
- * dependency graph draws as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1).
+ * dependency graph draws as a node (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1).
  *
  * These two statements were `BreakdownCypher`'s until the graph needed exactly the same card. One
  * card shape means one statement that builds it: a view that fetched the level from somewhere else

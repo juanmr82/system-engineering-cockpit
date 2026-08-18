@@ -36,8 +36,25 @@ public data class ImporterSettings(
     }
 }
 
+/**
+ * How this process is exposed. One setting, and it is a security decision rather than a preference.
+ *
+ * [behindProxy] installs `XForwardedHeaders`, which makes `call.request.origin` report the client
+ * nginx saw instead of nginx itself — without it every audit log line on a proxied deployment names
+ * 127.0.0.1 (ADR 0021).
+ *
+ * **It defaults to false, and must stay that way.** The plugin believes `X-Forwarded-For` from
+ * whoever sent it, so turning it on while the port is reachable directly lets any caller write its
+ * own address into this application's logs. Enable it only together with binding to loopback, which
+ * is what both deployment paths in `docs/DEPLOY_RHEL9.md` do.
+ */
+public data class ServerSettings(
+    public val behindProxy: Boolean = false,
+)
+
 public data class AppConfig(
     public val neo4j: Neo4jSettings,
+    public val server: ServerSettings = ServerSettings(),
     public val jira: JiraSettings,
     // Unconfigured by default, and that is a working state: Windchill's importer is fed by an
     // uploaded file, so the host only decides whether a document row can link back to Windchill.
@@ -63,6 +80,12 @@ public fun loadAppConfig(config: ApplicationConfig): AppConfig {
     // this deployment, and loadJiraSettings says so rather than throwing (see that file).
     return AppConfig(
         neo4j = neo4j,
+        server = ServerSettings(
+            // Anything but an explicit "true" leaves it off: an absent block, a typo and a blank
+            // value all mean "not behind a proxy", which is the safe reading of every one of them.
+            behindProxy = config.propertyOrNull("server.behindProxy")?.getString()?.trim()
+                .equals("true", ignoreCase = true),
+        ),
         jira = loadJiraSettings(config),
         windchill = loadWindchillSettings(config),
         navigation = loadNavigationSettings(config),

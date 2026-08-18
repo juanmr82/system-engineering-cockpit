@@ -1,0 +1,40 @@
+{
+  // Editor behaviour that matches what the build enforces, so the editor and CI never disagree.
+
+  // .gitattributes pins LF for everything but *.bat/*.ps1. An editor writing CRLF into a .sh
+  // makes it die at the shebang with "bad interpreter: ...^M".
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  "[markdown]": { "files.trimTrailingWhitespace": false },
+
+  // Generated or vendored: never worth indexing, and searching them buries real hits.
+  "files.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/.angular": true,
+    "**/dist": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/.angular": true,
+    "**/dist": true,
+    // Multi-megabyte real exports; they drown every search that touches an attribute name.
+    "backend/src/test/resources/fixtures": true
+  },
+
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.format.settings.url": "",
+
+  "eslint.workingDirectories": ["frontend"],
+
+  // deploy/rhel9/ansible — without this the YAML extension validates playbooks against the wrong
+  // schema and flags every module argument.
+  "files.associations": {
+    "**/deploy/rhel9/ansible/**/*.yml": "ansible",
+    "**/deploy/rhel9/ansible/**/*.yaml": "ansible"
+  },
+  "yaml.customTags": ["!vault scalar"]
+}

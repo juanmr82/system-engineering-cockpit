@@ -77,7 +77,7 @@ class ApplicationTest {
         assertTrue(body.contains("Not found"), body)
     }
 
-    // Was a 500 with the JDK's "Illegal base64 character 21" in the body (BACKEND_REVIEW §3.1).
+    // Was a 500 with the JDK's "Illegal base64 character 21" in the body (2026 backend review).
     @Test
     fun `a malformed ref is a 400 and leaks nothing`() = testApplication {
         val client = appWithSession()
@@ -90,7 +90,7 @@ class ApplicationTest {
         assertFalse(body.contains("base64", ignoreCase = true), body)
     }
 
-    // Was a 400 naming the internal DTO class in the body (BACKEND_REVIEW §3.1).
+    // Was a 400 naming the internal DTO class in the body (2026 backend review).
     //
     // Needs `sec-admin`: module settings became an administrative route in phase 5, so a plain
     // `sec-user` is now refused before the body is ever parsed. The refusal is the point of

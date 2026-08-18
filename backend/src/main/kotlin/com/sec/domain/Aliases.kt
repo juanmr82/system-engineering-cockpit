@@ -157,7 +157,7 @@ public object Aliases {
         return TYPE_LABEL_PRIORITY.firstOrNull { it in present }?.let(typeLabels::get)
     }
 
-    // -- The dependency graph's vocabulary (docs/REQ_BREAKDOWN_GRAPH_VIEW §2, §4.1, §4.4) ------
+    // -- The dependency graph's vocabulary (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §2, §4.1, §4.4) ------
 
     /**
      * The scope control's wording, naming the relation rather than a direction.

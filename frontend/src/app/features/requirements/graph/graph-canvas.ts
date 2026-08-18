@@ -65,7 +65,7 @@ const COMPACT_BELOW = 0.5;
 const FIT_PADDING = 48;
 
 /**
- * The dependency graph canvas (docs/REQ_BREAKDOWN_GRAPH_VIEW §5).
+ * The dependency graph canvas (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5).
  *
  * HTML cards over an SVG edge layer, all of it under one composited transform. **Not
  * `<foreignObject>`**: text wrapping, Material theming, focus handling and printing all misbehave

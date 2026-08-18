@@ -18,7 +18,7 @@ import com.sec.security.AccessSet
  * never an authored `:__Meta:__Link`.
  *
  * The nodes themselves are built by [RequirementCardProjection], which the dependency graph also
- * reads (docs/REQ_BREAKDOWN_GRAPH_VIEW §5.1) — one card shape, one query behind it. What is left
+ * reads (docs/REQ_BREAKDOWN_GRAPH_VIEW.md §5.1) — one card shape, one query behind it. What is left
  * here is the walk: which requirements belong in the forest, and how they hang off each other.
  *
  * **Nothing computed here is stored.** The tree is a function of the imported graph and of

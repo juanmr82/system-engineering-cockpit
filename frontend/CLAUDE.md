@@ -104,7 +104,7 @@ table { @include sec.data-table; }
   Styling `th`, `tr` or `table` from a component's own stylesheet is fine: that is the
   template's own markup.
 - `_document.scss` holds the requirement-tree vocabulary (depth rails, object cards,
-  verification and extended-attribute panels) from `docs/proposed_new_style.md`. **The Breakdown
+  verification and extended-attribute panels) from the paper style (ADR 0003). **The Breakdown
   tab is its first consumer** (`docs/requirement-breakdown-tree.md` §5) — reuse it there rather
   than writing a parallel tree vocabulary, and extend it in place when a shape is genuinely
   missing, as `verification-panel($accent)` was. Mixins emit nothing until included, so the
@@ -326,7 +326,7 @@ scale sharing semantic hues would leave neither meaning legible.
 
 ### Surfaces and neutrals — the paper style
 
-The product is styled as **paper on a desk**, specified in `docs/proposed_new_style.md` and
+The product is styled as **paper on a desk**, specified in `docs/adr/0003-paper-visual-style.md` and
 implemented in `styles/_tokens.scss`. Content sits on white sheets with hairline edges over a
 light blue-grey shell. Four rules generate the whole look, and a new pattern is derived from
 them rather than invented:

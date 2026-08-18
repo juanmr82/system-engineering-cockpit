@@ -175,7 +175,7 @@ private fun describe(problem: WindchillExportProblem?): String = when (problem) 
  *
  * **Ops note — a reverse proxy in front of this backend must be told about this limit, or this
  * constant never gets a chance to run.** nginx's own default `client_max_body_size` is 1 MB, so a
- * production deployment fronted by nginx (`docs/REFACTOR_BACKEND.md`'s recommended topology) rejects
+ * production deployment fronted by nginx (`docs/DEPLOY_RHEL9.md` §8) rejects
  * anything past 1 MB with its own `413` before the request reaches Ktor at all. The fix is one
  * directive on whatever `location` proxies `/api` to this service: `client_max_body_size 64m;` (or
  * higher — never lower than this constant). [com.sec.api.routes.DoorsRoutes]'s own upload limit

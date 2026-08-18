@@ -35,9 +35,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.neo4j.driver.Query
 import org.testcontainers.containers.Neo4jContainer
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -825,11 +822,7 @@ class JiraIssueImportTest {
     private fun String.withPrefix(): String =
         if (trimStart().startsWith("CYPHER")) this else "CYPHER 25\n$this"
 
-    private fun sample(name: String): String {
-        val path: Path = Path.of("..", "docs", name)
-        assertTrue(path.exists(), "sample export $name is missing; this test would pass vacuously.")
-        return path.readText()
-    }
+    private fun sample(name: String): String = Fixtures.text(name)
 
     /**
      * An [ImportContext] that records instead of publishing.
@@ -876,9 +869,9 @@ class JiraIssueImportTest {
 
     private companion object {
         const val HOST = "https://jira.example.com"
-        const val SEARCH = "JIRA.json"
-        const val FIELDS = "JIRA_FIELDS.json"
-        const val ISSUE_TYPES = "JIRA_ISSUE_TYPES_DTO_EXAMPLE.md"
+        const val SEARCH = Fixtures.JIRA_SEARCH
+        const val FIELDS = Fixtures.JIRA_FIELDS
+        const val ISSUE_TYPES = Fixtures.JIRA_ISSUE_TYPES
 
         /**
          * Issues that were really imported, as opposed to stubs standing in for link targets.

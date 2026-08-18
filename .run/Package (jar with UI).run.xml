@@ -1,0 +1,47 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    The deployable artifact: ng build, then the jar around it. Same two steps, same order as
+    scripts/linux/sec-package.sh — this exists so nobody has to open a terminal to produce a
+    release candidate.
+
+    "Before launch" runs the Angular build; Maven's -Pui profile only COPIES what it produced
+    (backend/pom.xml), so without that step the jar is silently built with no user interface in it.
+  -->
+  <configuration default="false" name="Package (jar with UI)" type="MavenRunConfiguration" factoryName="Maven">
+    <MavenSettings>
+      <option name="myGeneralSettings" />
+      <option name="myRunnerSettings" />
+      <option name="myRunnerParameters">
+        <MavenRunnerParameters>
+          <option name="cmdOptions" />
+          <option name="profiles">
+            <set>
+              <option value="ui" />
+            </set>
+          </option>
+          <option name="goals">
+            <list>
+              <option value="clean" />
+              <option value="package" />
+            </list>
+          </option>
+          <option name="multimoduleDir" />
+          <option name="pomFileName" value="pom.xml" />
+          <option name="profilesMap">
+            <map>
+              <entry key="ui" value="true" />
+            </map>
+          </option>
+          <option name="projectsCmdOptionValues">
+            <list />
+          </option>
+          <option name="resolveToWorkspace" value="false" />
+          <option name="workingDirPath" value="$PROJECT_DIR$" />
+        </MavenRunnerParameters>
+      </option>
+    </MavenSettings>
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="Frontend Build" run_configuration_type="js.build_tools.npm" />
+    </method>
+  </configuration>
+</component>

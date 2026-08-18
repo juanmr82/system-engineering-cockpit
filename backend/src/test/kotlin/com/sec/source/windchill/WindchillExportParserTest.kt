@@ -1,8 +1,6 @@
 package com.sec.source.windchill
 
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.readText
+import com.sec.Fixtures
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,7 +12,7 @@ import kotlin.test.assertTrue
 /**
  * Reading a Windchill OData export.
  *
- * The committed sample (`docs/WIndchillExportExample.json`) is a real response with the company's
+ * The committed sample ([Fixtures.WINDCHILL_EXPORT]) is a real response with the company's
  * own strings replaced, and it is read here rather than reproduced, so a change in the exporter that
  * changes the file shows up as a failing test instead of as a fixture that has quietly stopped
  * resembling the thing it stands for.
@@ -214,9 +212,5 @@ class WindchillExportParserTest {
     private fun oneDocument() =
         """{"value":[{"@odata.id":"u/1","ID":"OR:1","Number":"N-1","Version":"01 [1]"}]}"""
 
-    private fun sample(): String {
-        val path: Path = Path.of("..", "docs", "WIndchillExportExample.json")
-        assertTrue(path.exists(), "the sample export is missing; this test would pass vacuously.")
-        return path.readText()
-    }
+    private fun sample(): String = Fixtures.text(Fixtures.WINDCHILL_EXPORT)
 }
