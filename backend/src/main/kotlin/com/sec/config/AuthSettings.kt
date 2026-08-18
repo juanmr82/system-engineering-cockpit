@@ -40,10 +40,23 @@ public data class AuthSettings(
      * `http://localhost:4200` for a local `ng serve`.
      */
     public val frontendBaseUrl: String = "",
+    /**
+     * The `azp` a DOORS push bearer token must carry (ADR 0020) — a second, machine-only Keycloak
+     * client (`docs/KEYCLOAK_SETUP.md` §2b), distinct from [clientId]. Blank means the feature is
+     * off for this deployment: no secret to fail hard on, because unlike [clientId] the whole
+     * application does not depend on it existing — the same optional shape [WindchillSettings] has,
+     * not the all-or-nothing shape the rest of this class has. The backend never calls this
+     * client's token endpoint itself, so it holds no secret for it, only the id it checks tokens
+     * against.
+     */
+    public val doorsPushClientId: String = "",
 ) {
+    /** `POST /doors/import/push` answers `503` rather than authenticating anyone when this is false. */
+    public val isDoorsPushConfigured: Boolean get() = doorsPushClientId.isNotBlank()
+
     override fun toString(): String =
         "AuthSettings(issuer=$issuer, clientId=$clientId, callbackUrl=$callbackUrl, " +
-            "frontendBaseUrl=$frontendBaseUrl, clientSecret=<redacted>)"
+            "frontendBaseUrl=$frontendBaseUrl, doorsPushClientId=$doorsPushClientId, clientSecret=<redacted>)"
 }
 
 /**
@@ -61,6 +74,7 @@ public fun loadAuthSettings(config: ApplicationConfig): AuthSettings =
         clientSecret = config.property("auth.clientSecret").getString(),
         callbackUrl = config.stringOr("auth.callbackUrl", "http://localhost:8080/api/v1/auth/callback"),
         frontendBaseUrl = config.stringOr("auth.frontendBaseUrl", "").trimEnd('/'),
+        doorsPushClientId = config.stringOr("auth.doorsPushClientId", ""),
     )
 
 private fun ApplicationConfig.stringOr(path: String, fallback: String): String =

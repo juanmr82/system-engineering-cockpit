@@ -45,6 +45,53 @@ There is **no frontend client.** The browser is not an OAuth client (ADR 0017).
 
 ---
 
+## 2b. Client — `sec-doors-push`, machine push only (ADR 0020)
+
+A **second, dedicated** confidential client, for the technical accounts that push a DOORS export
+straight to `POST /api/v1/doors/import/push` (ADR 0019 §"the planned push importer"; ADR 0020) —
+never a browser, so it needs a headless credential the `sec-backend` client deliberately does not
+offer.
+
+| Setting | Value |
+|---|---|
+| Client ID | `sec-doors-push` |
+| Client authentication | **On** (confidential) |
+| Standard flow | **Off** — no browser ever uses this client |
+| Implicit flow | **Off** |
+| Direct access grants | **On** — the one place this grant type is used in this realm |
+| Service accounts | **Off** — accounts are ordinary Keycloak users (§ Technical accounts below), not this client's own service-account identity |
+| Redirect URIs | none |
+
+**This does not reverse `sec-backend`'s own "Direct access grants — Off" row in §2.** That setting
+stays off on the browser client for the reason stated there — "there is no password endpoint in
+SEC and there must not be" is about a person's password reaching this application through a form.
+A technical account has no browser and no form; it calls Keycloak's token endpoint directly, over
+a channel this application never sees. Confining the grant to its own client, rather than turning
+it on for `sec-backend`, keeps that boundary exact: nothing about the browser-facing client's
+posture changes.
+
+**This client needs its own copy of the `groups` and `realm roles (id token)` protocol mappers**
+(§4) — mapper configuration is per-client in Keycloak, not realm-wide, so without them a push
+token carries no `groups` claim and every push looks like a user in no group, however the caller
+authenticated.
+
+The secret goes in the environment the same way `sec-backend`'s does; the backend does not hold it
+— it never calls this client's token endpoint, only verifies tokens the exporter already obtained.
+
+### Technical accounts
+
+A technical account is an ordinary Keycloak **user** — `svc-doors-<name>` is a reasonable pattern
+— with a generated password, a member of `/SEC/Importers` (or whichever group should own its
+imports; the group is what an access manager later grants categories to, exactly like any human
+group), and **no realm role**. Create one per external exporter instance that needs to push.
+
+**A technical account is deliberately never brokered to the company IdP** (ADR 0016 §3.1). It has
+no person behind it for the company directory to authenticate — it stays a local account in the
+`sec` realm permanently, unlike a human user, who is expected to move onto the brokered IdP when
+that arrives.
+
+---
+
 ## 3. Roles — realm roles, four, exactly these strings
 
 ```
@@ -74,7 +121,14 @@ Suggested shape, since paths are what SEC stores:
 /SEC/Avionics
 /SEC/Programme-Management
 /SEC/All-Read            ← the "sees everything" group, if you want one
+/SEC/Importers           ← technical accounts that push DOORS exports (§2b), granted like any other
 ```
+
+A group is a group regardless of who authenticates into it — `/SEC/Importers` is created on sight
+in the graph the first time a token naming it is resolved (`docs/features/access-control.md` §5),
+exactly like a human group is on first login, and shows up in **Access → Groups** ready for a
+`sec-access-manager` to grant it categories the same way. Nothing about the access-control model
+distinguishes a technical account's group from a person's.
 
 **Add the group membership mapper**, or the claim will not be there and every user will see an
 empty application (spec §12 logs exactly this at `WARN`):
@@ -171,6 +225,7 @@ believe on screen than in a test report:
 | `sec-dev-user` | `sec-user` | `/SEC/Thermal` |
 | `sec-dev-admin` | `sec-user`, `sec-admin`, `sec-access-manager` | `/SEC/All-Read` |
 | `sec-dev-nogroup` | `sec-user` | *(none)* — the empty-application case |
+| `sec-dev-doors-push` | *(none)* | `/SEC/Importers` — a technical account, `sec-doors-push` client, Direct Access Grants (§2b), never a browser login |
 
 ### The workstation that has no Docker
 

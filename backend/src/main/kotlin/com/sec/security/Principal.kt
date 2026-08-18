@@ -50,14 +50,15 @@ public val SecPrincipal.auditName: String get() = name.ifBlank { username }
  * the principal was missing — is exactly the drift §6.3 rules out.
  *
  * **Throws rather than falling back to [AccessSet.NONE]** when there is no principal. Both are
- * fail-closed in what they return, but only one is honest: no principal here means the session guard
- * did not run, which is a wiring defect in `Routes.kt` and not a user in no group. Returning an empty
- * set would hide that behind an application that merely looks empty (R8: "no code path may widen
- * visibility on error" — and none may quietly narrow it either, because a silent narrowing is a bug
- * report about missing data rather than about missing authentication).
+ * fail-closed in what they return, but only one is honest: no principal here means the
+ * authentication guard did not run — [requireSecSession]'s session cookie, or [PushAuthNames]'s
+ * bearer token (ADR 0020) — which is a wiring defect in `Routes.kt` and not a user in no group.
+ * Returning an empty set would hide that behind an application that merely looks empty (R8: "no
+ * code path may widen visibility on error" — and none may quietly narrow it either, because a
+ * silent narrowing is a bug report about missing data rather than about missing authentication).
  */
 public suspend fun ApplicationCall.accessSet(accessResolver: AccessResolver): AccessSet {
     val principal = principal<SecPrincipal>()
-        ?: error("${request.local.uri} ran without a principal despite the session guard")
+        ?: error("${request.local.uri} ran without a principal despite an authentication guard")
     return accessResolver.resolve(principal.groups)
 }

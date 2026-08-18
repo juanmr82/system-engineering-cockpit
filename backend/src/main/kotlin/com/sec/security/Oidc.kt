@@ -43,6 +43,14 @@ private val JSON = Json { ignoreUnknownKeys = true }
 public class KeycloakUnavailableException(cause: Throwable? = null) :
     Exception("Keycloak is not reachable right now", cause)
 
+/**
+ * `POST /doors/import/push` was called on a deployment with no [AuthSettings.doorsPushClientId]
+ * set (ADR 0020). Maps to a `503`, the same shape [KeycloakUnavailableException] does: "not set up
+ * yet", never a `401` that reads as "your credentials are wrong" for a feature nobody configured.
+ */
+public class DoorsPushNotConfiguredException :
+    Exception("The DOORS push importer is not configured on this server")
+
 private data class OidcDiscovery(
     val issuer: String,
     val authorizationEndpoint: String,
@@ -350,6 +358,60 @@ public class Oidc(
             email = decoded.getClaim("email").asString().orEmpty(),
             roles = roles,
             groups = groups,
+        )
+    }
+
+    /**
+     * Validates a DOORS push bearer access token (ADR 0020) — the machine equivalent of
+     * [validateIdToken], called from the `sec-doors-push`-named bearer-authentication provider
+     * (`Application.kt`, [PushAuthNames]) instead of the session provider. Two deliberate
+     * departures from [validateIdToken], both easy to get backwards:
+     *
+     * - **No `.withAudience(...)` check.** An ID token is audience-bound to the requesting client
+     *   by default; a Keycloak access token is not — its default audience is `account`, not the
+     *   client id, absent a custom Audience mapper this deployment does not add. `azp` carries the
+     *   whole check here.
+     * - **The `azp` check is unconditional**, not the `?.let { }` guard [validateIdToken] uses for
+     *   a claim a token may or may not carry: a push token with no `azp` at all is rejected
+     *   outright, the same as one naming the wrong client.
+     *
+     * Builds a [SecPrincipal] directly rather than the file-private [OidcIdentity]: there is no
+     * [UserSession] on this path to build one from later, and downstream code — [accessSet],
+     * `AccessResolver.resolve` — reads a [SecPrincipal] regardless of which provider produced it.
+     * `csrfToken` is empty; it is read only inside `requireSecSession`, which this route never
+     * passes through (ADR 0020, no cookie, no CSRF check).
+     */
+    public suspend fun validatePushAccessToken(token: String): SecPrincipal {
+        if (!settings.isDoorsPushConfigured) {
+            throw DoorsPushNotConfiguredException()
+        }
+        val discovery = discoveryOrNull() ?: throw KeycloakUnavailableException()
+        val jwkProvider = jwkProviderRef.get() ?: throw KeycloakUnavailableException()
+
+        val keyId = JWT.decode(token).keyId ?: error("Access token has no key id")
+        val jwk = withContext(Dispatchers.IO) { jwkProvider.get(keyId) }
+        val publicKey = jwk.publicKey as? RSAPublicKey ?: error("Unsupported JWK key type")
+        val verifier = JWT.require(Algorithm.RSA256(publicKey, null))
+            .withIssuer(discovery.issuer)
+            .build()
+        val decoded = verifier.verify(token)
+
+        require(decoded.getClaim("azp").asString() == settings.doorsPushClientId) { "azp mismatch" }
+
+        @Suppress("UNCHECKED_CAST")
+        val roles = (decoded.getClaim("realm_access").asMap()?.get("roles") as? List<*>)
+            ?.filterIsInstance<String>()?.toSet().orEmpty()
+        val groups = decoded.getClaim("groups").asList(String::class.java).orEmpty()
+        val sub = decoded.subject ?: error("Access token has no sub")
+
+        return SecPrincipal(
+            sub = sub,
+            username = decoded.getClaim("preferred_username").asString() ?: sub,
+            name = decoded.getClaim("name").asString().orEmpty(),
+            email = decoded.getClaim("email").asString().orEmpty(),
+            roles = roles,
+            groups = groups,
+            csrfToken = "",
         )
     }
 

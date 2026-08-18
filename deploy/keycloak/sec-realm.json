@@ -33,7 +33,8 @@
       "subGroups": [
         { "name": "Thermal", "path": "/SEC/Thermal" },
         { "name": "Avionics", "path": "/SEC/Avionics" },
-        { "name": "All-Read", "path": "/SEC/All-Read" }
+        { "name": "All-Read", "path": "/SEC/All-Read" },
+        { "name": "Importers", "path": "/SEC/Importers" }
       ]
     }
   ],
@@ -60,6 +61,49 @@
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:8080/*##http://localhost:4200/*"
       },
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "full.path": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "groups"
+          }
+        },
+        {
+          "name": "realm roles (id token)",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "sec-doors-push",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "sec-doors-push-dev-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "webOrigins": [],
       "protocolMappers": [
         {
           "name": "groups",
@@ -131,6 +175,19 @@
       ],
       "realmRoles": ["sec-user"],
       "groups": []
+    },
+    {
+      "username": "sec-dev-doors-push",
+      "enabled": true,
+      "email": "sec-dev-doors-push@example.com",
+      "emailVerified": true,
+      "firstName": "DOORS",
+      "lastName": "Exporter",
+      "credentials": [
+        { "type": "password", "value": "sec-dev-doors-push", "temporary": false }
+      ],
+      "realmRoles": [],
+      "groups": ["/SEC/Importers"]
     }
   ]
 }

@@ -3,9 +3,15 @@ package com.sec
 import com.sec.config.Neo4jSettings
 import com.sec.domain.Ref
 import com.sec.graph.GraphDriver
+import com.sec.security.FakeKeycloak
+import com.sec.security.Oidc
 import com.sec.security.authenticatedClient
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.sessions.SessionStorageMemory
 import io.ktor.server.testing.ApplicationTestBuilder
@@ -46,6 +52,10 @@ class AuthGuardTest {
     fun `every other route is a 401 with no session`() = testApplication {
         appWithoutGraph()
 
+        // POST /api/v1/doors/import/push is deliberately NOT in this table (ADR 0020). It sits
+        // outside requireSecSession entirely — bearer-authenticated, not session-authenticated —
+        // so "no session" says nothing about whether it is reachable; see the dedicated
+        // `DOORS push` tests below for what actually guards it.
         val protectedGets = listOf(
             "/api/v1/modules",
             "/api/v1/modules/${Ref.encode("module-1")}",
@@ -84,4 +94,85 @@ class AuthGuardTest {
         assertNotEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/windchill/health").status)
         assertNotEquals(HttpStatusCode.Unauthorized, client.get("/api/v1/config/system-levels").status)
     }
+
+    // -- DOORS push (ADR 0020): a second, independent authentication mechanism ------------------
+    //
+    // The interesting regression these guard against is the two mechanisms silently merging —
+    // either the push route starting to accept a session cookie, or a session-authenticated route
+    // starting to accept a push bearer token. Neither should ever happen; both are proven false
+    // here rather than left to be noticed later.
+
+    private val pushPath = "/api/v1/doors/import/push"
+
+    @Test
+    fun `the push route refuses a request with no Authorization header at all`() = testApplication {
+        appWithoutGraph()
+
+        assertEquals(HttpStatusCode.Unauthorized, client.post(pushPath).status)
+    }
+
+    @Test
+    fun `a valid session cookie alone does not authorize the push route`() = testApplication {
+        val sessionStorage = SessionStorageMemory()
+        application {
+            configureApp(
+                GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                sessionStorage = sessionStorage,
+            )
+        }
+        val client = authenticatedClient(sessionStorage)
+
+        // The cookie that satisfies requireSecSession everywhere else carries no
+        // Authorization header, so PushAuthNames.PROVIDER sees no credential at all.
+        assertEquals(HttpStatusCode.Unauthorized, client.post(pushPath).status)
+    }
+
+    @Test
+    fun `a bearer token minted for the browser client is rejected on the push route`() = testApplication {
+        val keycloak = FakeKeycloak()
+        keycloak.start()
+        val oidcHttpClient = HttpClient(OkHttp)
+        try {
+            application {
+                configureApp(
+                    GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                    oidc = Oidc(keycloak.authSettings(), oidcHttpClient),
+                )
+            }
+
+            val response = client.post(pushPath) {
+                header(HttpHeaders.Authorization, "Bearer ${keycloak.signedAccessToken(azp = "sec-backend")}")
+            }
+
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+        } finally {
+            oidcHttpClient.close()
+            keycloak.stop()
+        }
+    }
+
+    @Test
+    fun `a bearer token minted for the push client is not enough alone to reach a session-guarded route`() =
+        testApplication {
+            val keycloak = FakeKeycloak()
+            keycloak.start()
+            val oidcHttpClient = HttpClient(OkHttp)
+            try {
+                application {
+                    configureApp(
+                        GraphDriver(Neo4jSettings("bolt://localhost:7687", "neo4j", "test", "test")),
+                        oidc = Oidc(keycloak.authSettings(), oidcHttpClient),
+                    )
+                }
+
+                val response = client.get("/api/v1/modules") {
+                    header(HttpHeaders.Authorization, "Bearer ${keycloak.signedAccessToken()}")
+                }
+
+                assertEquals(HttpStatusCode.Unauthorized, response.status)
+            } finally {
+                oidcHttpClient.close()
+                keycloak.stop()
+            }
+        }
 }

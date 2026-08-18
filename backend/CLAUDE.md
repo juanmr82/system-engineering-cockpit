@@ -184,6 +184,8 @@ GET  /api/v1/windchill/documents        ← every imported document, unpaged and
 POST /api/v1/windchill/import           ← upload an OData export and import it, one request (ADR 0015)
 POST /api/v1/doors/import               ← upload a DOORS module export and import it — 202 (started),
                                            200 (unchanged, checksum matched) or 404 (not visible) (ADR 0019)
+POST /api/v1/doors/import/push          ← the same import, bearer-token authenticated for a technical
+                                           Keycloak account instead of a session + sec-admin (ADR 0020)
 GET  /api/v1/config/navigation          ← sidenav structure, read-only
 GET  /api/v1/config/system-levels       ← classification vocabulary, cacheable
 GET  /api/v1/auth/login                 ← 302 to Keycloak. The only route reachable with no session

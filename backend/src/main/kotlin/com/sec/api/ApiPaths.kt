@@ -144,6 +144,14 @@ public object ApiPaths {
     public const val DOORS_IMPORT: String = "$DOORS/import"
 
     /**
+     * The second front door ADR 0019 anticipated and ADR 0020 builds: a technical Keycloak account
+     * pushes an export here directly, bearer-token authenticated instead of session-cookie
+     * authenticated, and reaches the exact same gate and the same three outcomes
+     * ([DOORS_IMPORT]'s doc comment) — no browser, no `sec-admin` role, no CSRF token.
+     */
+    public const val DOORS_IMPORT_PUSH: String = "$DOORS_IMPORT/push"
+
+    /**
      * The import framework, source-agnostic: `{importerId}` is the only place a path says which
      * source, and it says it as a string the importer chose.
      *
